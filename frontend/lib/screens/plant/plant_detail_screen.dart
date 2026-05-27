@@ -136,6 +136,13 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                               color: AppColors.surface,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: AppColors.cardBorder),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: AppColors.cardShadow,
+                                  blurRadius: 12,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,6 +291,13 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                                               BorderRadius.circular(16),
                                           border: Border.all(
                                               color: AppColors.cardBorder),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: AppColors.cardShadow,
+                                              blurRadius: 12,
+                                              offset: Offset(0, 2),
+                                            ),
+                                          ],
                                         ),
                                         child: Row(
                                           children: [

@@ -162,6 +162,13 @@ class _ResultScreenState extends State<ResultScreen> {
                               borderRadius: BorderRadius.circular(16),
                               border:
                                   Border.all(color: AppColors.cardBorder),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: AppColors.cardShadow,
+                                  blurRadius: 12,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: Text(
                               _scan!.treatment!,
@@ -184,6 +191,13 @@ class _ResultScreenState extends State<ResultScreen> {
                               borderRadius: BorderRadius.circular(16),
                               border:
                                   Border.all(color: AppColors.cardBorder),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: AppColors.cardShadow,
+                                  blurRadius: 12,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: Text(
                               _scan!.careTips!,

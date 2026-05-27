@@ -2,41 +2,45 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   // Primary
-  static const Color background = Color(0xFF0F2117);
-  static const Color surface = Color(0xFF1A3025);
-  static const Color surfaceLight = Color(0xFF224030);
+  static const Color background = Color(0xFFF5F7F5);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color surfaceLight = Color(0xFFFAFBFA);
 
   // Accents
-  static const Color primary = Color(0xFF7BC96F);
-  static const Color primaryDark = Color(0xFF5AA84E);
-  static const Color amber = Color(0xFFF5A623);
+  static const Color primary = Color(0xFF4CAF7D);
+  static const Color primaryDark = Color(0xFF3D9466);
+  static const Color amber = Color(0xFFF59E0B);
 
   // Text
-  static const Color textPrimary = Color(0xFFF0F7F0);
-  static const Color textSecondary = Color(0xFF8BAF8E);
-  static const Color textMuted = Color(0xFF4D7A55);
+  static const Color textPrimary = Color(0xFF1C2B20);
+  static const Color textSecondary = Color(0xFF6B8F71);
+  static const Color textMuted = Color(0xFF9CB5A0);
 
   // Status
-  static const Color error = Color(0xFFE57373);
-  static const Color success = Color(0xFF7BC96F);
-  static const Color warning = Color(0xFFF5A623);
+  static const Color error = Color(0xFFD9534F);
+  static const Color success = Color(0xFF4CAF7D);
+  static const Color warning = Color(0xFFF59E0B);
 
   // Misc
-  static const Color divider = Color(0xFF1E3828);
-  static const Color cardBorder = Color(0xFF2A4A35);
+  static const Color divider = Color(0xFFE5EBE5);
+  static const Color cardBorder = Color(0xFFE5EBE5);
+  static const Color cardShadow = Color(0x14000000);
 }
 
 class AppTheme {
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.dark(
+      colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
         secondary: AppColors.amber,
         surface: AppColors.surface,
         error: AppColors.error,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: AppColors.textPrimary,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,
@@ -53,7 +57,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.background,
+          foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -90,10 +94,10 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
-        elevation: 0,
+        elevation: 2,
+        shadowColor: AppColors.cardShadow,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.cardBorder),
         ),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(

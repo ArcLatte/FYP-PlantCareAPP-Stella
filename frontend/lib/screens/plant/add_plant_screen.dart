@@ -212,7 +212,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: AppColors.background,
+                            color: Colors.white,
                           ),
                         )
                       : const Text('Add Plant'),
