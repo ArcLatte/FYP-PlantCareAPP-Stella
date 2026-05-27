@@ -143,7 +143,7 @@ class ApiService {
   static Future<Plant> updatePlant(
       int id, String name, String? notes) async {
     final headers = await _authHeaders();
-    final response = await http.patch(
+    final response = await http.put(
       Uri.parse('${AppConstants.plantsUrl}$id/'),
       headers: headers,
       body: jsonEncode({
@@ -159,10 +159,13 @@ class ApiService {
 
   static Future<void> deletePlant(int id) async {
     final headers = await _authHeaders();
-    await http.delete(
+    final response = await http.delete(
       Uri.parse('${AppConstants.plantsUrl}$id/'),
       headers: headers,
     );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to delete plant (status ${response.statusCode})');
+    }
   }
 
   // ─── Scans ──────────────────────────────────────────────────
@@ -174,7 +177,7 @@ class ApiService {
       Uri.parse(AppConstants.scansUrl),
     );
     request.headers['Authorization'] = 'Token $token';
-    request.fields['plant'] = plantId.toString();
+    request.fields['plant_id'] = plantId.toString();
     request.files.add(await http.MultipartFile.fromPath(
       'image',
       imageFile.path,
@@ -193,7 +196,7 @@ class ApiService {
     final response = await http.put(
       Uri.parse('${AppConstants.scansUrl}$scanId/confirm/'),
       headers: headers,
-      body: jsonEncode({'confirmed_disease': diseaseLabel}),
+      body: jsonEncode({'label': diseaseLabel}),
     );
     if (response.statusCode == 200) {
       return ScanResult.fromJson(jsonDecode(response.body));

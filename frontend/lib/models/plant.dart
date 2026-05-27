@@ -17,14 +17,13 @@ class Plant {
 
   factory Plant.fromJson(Map<String, dynamic> json) {
     return Plant(
-      id: json['id'],
-      name: json['name'],
-      species: json['species_name'] ?? json['species'].toString(),
-      speciesId: json['species'] is int
-          ? json['species']
-          : int.parse(json['species'].toString()),
-      notes: json['notes'],
-      createdAt: json['date_planted'] ?? json['created_at'] ?? '',
+      id: json['id'] as int,
+      name: json['name'] as String,
+      species: (json['species_name'] ?? json['species'])?.toString() ?? '',
+      speciesId: (json['species'] as num).toInt(),
+      notes: json['notes']?.toString(),
+      createdAt:
+          (json['date_planted'] ?? json['created_at'] ?? '').toString(),
     );
   }
 }

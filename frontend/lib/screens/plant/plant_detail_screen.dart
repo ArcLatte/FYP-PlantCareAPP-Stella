@@ -74,9 +74,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         ],
       ),
     );
-    if (confirm == true) {
+    if (confirm != true) return;
+    try {
       await ApiService.deletePlant(widget.plantId);
-      if (mounted) context.go('/home');
+      if (mounted) context.pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete plant: $e')),
+        );
+      }
     }
   }
 
@@ -96,7 +103,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         title: Text(_plant?.name ?? 'Plant Detail'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/home'),
+          onPressed: () => context.pop(),
         ),
         actions: [
           IconButton(

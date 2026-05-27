@@ -35,6 +35,11 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load plants: $e')),
+        );
+      }
     }
   }
 
@@ -238,8 +243,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           sliver: SliverList(
                             delegate: SliverChildBuilderDelegate(
-                              (context, index) =>
-                                  _PlantCard(plant: _plants[index]),
+                              (context, index) => _PlantCard(
+                                plant: _plants[index],
+                                onReturn: _loadData,
+                              ),
                               childCount: _plants.length,
                             ),
                           ),
@@ -313,13 +320,17 @@ class _StatItem extends StatelessWidget {
 
 class _PlantCard extends StatelessWidget {
   final Plant plant;
+  final Future<void> Function() onReturn;
 
-  const _PlantCard({required this.plant});
+  const _PlantCard({required this.plant, required this.onReturn});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.push('/plants/${plant.id}'),
+      onTap: () async {
+        await context.push('/plants/${plant.id}');
+        await onReturn();
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),

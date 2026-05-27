@@ -146,7 +146,7 @@ def plant_detail(request, pk):
 
     elif request.method == 'DELETE':
         plant.delete()
-        return Response({'message': 'Plant deleted.'}, status=204)
+        return Response(status=204)
 
 
 @api_view(['GET'])
@@ -274,7 +274,7 @@ def scan_detail(request, pk):
 
     elif request.method == 'DELETE':
         scan.delete()
-        return Response({'message': 'Scan deleted.'}, status=204)
+        return Response(status=204)
 
 
 @api_view(['GET'])
