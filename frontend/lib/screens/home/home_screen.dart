@@ -276,13 +276,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: 0,
-          onTap: (index) {
-            if (index == 1) context.push('/history');
+          onTap: (index) async {
+            if (index == 1) {
+              await context.push('/scan');
+              _loadData();
+            } else if (index == 2) {
+              context.push('/history');
+            }
           },
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home_rounded),
               label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.document_scanner_outlined),
+              label: 'Scan',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.history_rounded),

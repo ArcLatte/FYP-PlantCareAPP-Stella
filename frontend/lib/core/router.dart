@@ -49,6 +49,10 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/scan',
+      builder: (context, state) => const ScanScreen(),
+    ),
+    GoRoute(
       path: '/scan/:plantId',
       builder: (context, state) {
         final plantId = int.parse(state.pathParameters['plantId']!);

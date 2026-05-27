@@ -6,7 +6,7 @@ class Prediction {
 
   factory Prediction.fromJson(Map<String, dynamic> json) {
     return Prediction(
-      label: json['label'],
+      label: json['label'].toString(),
       confidence: (json['confidence'] as num).toDouble(),
     );
   }
@@ -14,7 +14,8 @@ class Prediction {
 
 class ScanResult {
   final int id;
-  final int plantId;
+  final int? plantId;
+  final String? plantName;
   final List<Prediction> predictions;
   final String? confirmedDisease;
   final String? treatment;
@@ -23,7 +24,8 @@ class ScanResult {
 
   ScanResult({
     required this.id,
-    required this.plantId,
+    this.plantId,
+    this.plantName,
     required this.predictions,
     this.confirmedDisease,
     this.treatment,
@@ -32,16 +34,36 @@ class ScanResult {
   });
 
   factory ScanResult.fromJson(Map<String, dynamic> json) {
+    final predictionsRaw =
+        json['top3'] ?? json['predictions'] ?? const [];
+    final List predictionsList =
+        predictionsRaw is List ? predictionsRaw : const [];
+
+    final plantField = json['plant'];
+    int? plantId;
+    String? plantName;
+    if (plantField is int) {
+      plantId = plantField;
+    } else if (plantField is String) {
+      plantName = plantField;
+    } else if (plantField is num) {
+      plantId = plantField.toInt();
+    }
+
     return ScanResult(
-      id: json['id'],
-      plantId: json['plant'],
-      predictions: (json['predictions'] as List)
-          .map((p) => Prediction.fromJson(p))
+      id: ((json['scan_id'] ?? json['id']) as num).toInt(),
+      plantId: plantId,
+      plantName: plantName,
+      predictions: predictionsList
+          .map((p) => Prediction.fromJson(p as Map<String, dynamic>))
           .toList(),
-      confirmedDisease: json['confirmed_disease'],
-      treatment: json['treatment'],
-      careTips: json['care_tips'],
-      createdAt: json['created_at'],
+      confirmedDisease: (json['disease'] ??
+              json['confirmed_disease'] ??
+              json['confirmed_label'])
+          ?.toString(),
+      treatment: json['treatment']?.toString(),
+      careTips: json['care_tips']?.toString(),
+      createdAt: (json['created_at'] ?? '').toString(),
     );
   }
 }
