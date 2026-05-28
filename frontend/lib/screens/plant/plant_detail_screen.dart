@@ -18,6 +18,28 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   Plant? _plant;
   List<ScanResult> _scans = [];
   bool _isLoading = true;
+  bool _isWatering = false;
+
+  Future<void> _waterNow() async {
+    if (_plant == null || _isWatering) return;
+    setState(() => _isWatering = true);
+    try {
+      final updated = await ApiService.waterPlant(_plant!.id);
+      if (!mounted) return;
+      setState(() => _plant = updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${updated.name} watered')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to water: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isWatering = false);
+    }
+  }
 
   @override
   void initState() {
@@ -187,6 +209,56 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                                       ),
                                     ),
                                   ],
+                                ),
+                                const SizedBox(height: 16),
+                                const Divider(color: AppColors.divider),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _DetailStat(
+                                        icon: Icons.place_outlined,
+                                        label: 'LOCATION',
+                                        value: _plant!.location.isEmpty
+                                            ? '—'
+                                            : _plant!.location,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: _DetailStat(
+                                        icon: Icons.water_drop_outlined,
+                                        label: 'WATER EVERY',
+                                        value:
+                                            '${_plant!.wateringFreqDays}d',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _plant!.lastWatered == null
+                                      ? 'Never watered'
+                                      : 'Last watered ${_formatDate(_plant!.lastWatered!.toIso8601String())}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: _isWatering ? null : _waterNow,
+                                    icon: _isWatering
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.water_drop_rounded),
+                                    label:
+                                        const Text('Water now'),
+                                  ),
                                 ),
                                 if (_plant!.notes != null &&
                                     _plant!.notes!.isNotEmpty) ...[
@@ -373,6 +445,50 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _DetailStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _DetailStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.primary, size: 18),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+              ),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

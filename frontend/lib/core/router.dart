@@ -9,6 +9,8 @@ import '../screens/plant/plant_detail_screen.dart';
 import '../screens/scan/scan_screen.dart';
 import '../screens/scan/result_screen.dart';
 import '../screens/history/history_screen.dart';
+import '../screens/tasks/tasks_screen.dart';
+import '../screens/profile/profile_screen.dart';
 import '../core/constants.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -69,6 +71,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/history',
       builder: (context, state) => const HistoryScreen(),
+    ),
+    GoRoute(
+      path: '/tasks',
+      builder: (context, state) => const TasksScreen(),
+    ),
+    GoRoute(
+      path: '/profile',
+      builder: (context, state) => const ProfileScreen(),
     ),
   ],
 );

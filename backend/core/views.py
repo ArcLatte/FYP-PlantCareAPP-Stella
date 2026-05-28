@@ -4,9 +4,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from django.utils import timezone
 from .models import CustomUser
-from .models import CustomUser, Plant, PlantSpecies, Disease, ScanResult
-from .serializers import PlantSerializer, PlantSpeciesSerializer
+from .models import CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location
+from .serializers import PlantSerializer, PlantSpeciesSerializer, LocationSerializer
 import torch
 import torchvision.transforms as transforms
 from torchvision import models
@@ -147,6 +148,53 @@ def plant_detail(request, pk):
     elif request.method == 'DELETE':
         plant.delete()
         return Response(status=204)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def water_plant(request, pk):
+    try:
+        plant = Plant.objects.get(pk=pk, user=request.user)
+    except Plant.DoesNotExist:
+        return Response({'error': 'Plant not found.'}, status=404)
+
+    plant.last_watered = timezone.now()
+    plant.save(update_fields=['last_watered'])
+    serializer = PlantSerializer(plant)
+    return Response(serializer.data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def location_list(request):
+    if request.method == 'GET':
+        locations = Location.objects.filter(user=request.user)
+        serializer = LocationSerializer(locations, many=True)
+        return Response(serializer.data)
+
+    # POST
+    name = (request.data.get('name') or '').strip()
+    if not name:
+        return Response({'error': 'Name is required.'}, status=400)
+
+    # Idempotent: return existing entry if user already saved this name
+    location, _created = Location.objects.get_or_create(
+        user=request.user,
+        name=name,
+    )
+    serializer = LocationSerializer(location)
+    return Response(serializer.data, status=201)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def location_detail(request, pk):
+    try:
+        location = Location.objects.get(pk=pk, user=request.user)
+    except Location.DoesNotExist:
+        return Response({'error': 'Location not found.'}, status=404)
+    location.delete()
+    return Response(status=204)
 
 
 @api_view(['GET'])

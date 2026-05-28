@@ -94,6 +94,44 @@ class ApiService {
     throw Exception('Failed to load species');
   }
 
+  // ─── Locations ──────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getLocations() async {
+    final headers = await _authHeaders();
+    final response = await http.get(
+      Uri.parse(AppConstants.locationsUrl),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load locations');
+  }
+
+  static Future<Map<String, dynamic>> createLocation(String name) async {
+    final headers = await _authHeaders();
+    final response = await http.post(
+      Uri.parse(AppConstants.locationsUrl),
+      headers: headers,
+      body: jsonEncode({'name': name}),
+    );
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body));
+    }
+    throw Exception('Failed to create location');
+  }
+
+  static Future<void> deleteLocation(int id) async {
+    final headers = await _authHeaders();
+    final response = await http.delete(
+      Uri.parse('${AppConstants.locationsUrl}$id/'),
+      headers: headers,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to delete location');
+    }
+  }
+
   // ─── Plants ─────────────────────────────────────────────────
 
   static Future<List<Plant>> getPlants() async {
@@ -123,7 +161,12 @@ class ApiService {
   }
 
   static Future<Plant> createPlant(
-      String name, int speciesId, String? notes) async {
+    String name,
+    int speciesId,
+    String? notes, {
+    String? location,
+    int? wateringFreqDays,
+  }) async {
     final headers = await _authHeaders();
     final response = await http.post(
       Uri.parse(AppConstants.plantsUrl),
@@ -132,12 +175,26 @@ class ApiService {
         'name': name,
         'species': speciesId,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
+        if (location != null && location.isNotEmpty) 'location': location,
+        if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
       }),
     );
     if (response.statusCode == 201) {
       return Plant.fromJson(jsonDecode(response.body));
     }
     throw Exception('Failed to create plant');
+  }
+
+  static Future<Plant> waterPlant(int id) async {
+    final headers = await _authHeaders();
+    final response = await http.post(
+      Uri.parse('${AppConstants.plantsUrl}$id/water/'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return Plant.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to water plant (status ${response.statusCode})');
   }
 
   static Future<Plant> updatePlant(

@@ -38,6 +38,28 @@ class Disease(models.Model):
         return self.label
 
 
+class Location(models.Model):
+    """Per-user list of custom location names that show up in the picker.
+
+    Plant.location is stored as a plain string for simplicity; this table
+    is purely a suggestion list so custom names persist across plant
+    additions.
+    """
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='locations'
+    )
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        unique_together = ('user', 'name')
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Plant(models.Model):
     user = models.ForeignKey(
         CustomUser,
@@ -53,6 +75,9 @@ class Plant(models.Model):
     date_planted = models.DateField(null=True, blank=True)
     photo = models.ImageField(upload_to='plants/', null=True, blank=True)
     notes = models.TextField(blank=True)
+    location = models.CharField(max_length=50, blank=True, default='')
+    last_watered = models.DateTimeField(null=True, blank=True)
+    watering_freq_days = models.PositiveIntegerField(default=7)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
