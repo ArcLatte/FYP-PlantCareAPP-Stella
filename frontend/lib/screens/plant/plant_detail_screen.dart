@@ -176,7 +176,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                                       height: 56,
                                       decoration: BoxDecoration(
                                         color:
-                                            AppColors.primary.withOpacity(0.15),
+                                            AppColors.primary.withValues(alpha: 0.15),
                                         borderRadius:
                                             BorderRadius.circular(14),
                                       ),
@@ -382,9 +382,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                                                                 'healthy') ==
                                                         true
                                                     ? AppColors.success
-                                                        .withOpacity(0.15)
+                                                        .withValues(alpha: 0.15)
                                                     : AppColors.amber
-                                                        .withOpacity(0.15),
+                                                        .withValues(alpha: 0.15),
                                                 borderRadius:
                                                     BorderRadius.circular(12),
                                               ),

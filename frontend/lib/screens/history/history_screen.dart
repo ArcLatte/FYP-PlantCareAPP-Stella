@@ -145,7 +145,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           padding: const EdgeInsets.only(right: 20),
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
-                            color: AppColors.error.withOpacity(0.2),
+                            color: AppColors.error.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(
@@ -182,12 +182,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   height: 44,
                                   decoration: BoxDecoration(
                                     color: isPending
-                                        ? AppColors.textMuted.withOpacity(0.15)
+                                        ? AppColors.textMuted.withValues(alpha: 0.15)
                                         : isHealthy
                                             ? AppColors.success
-                                                .withOpacity(0.15)
+                                                .withValues(alpha: 0.15)
                                             : AppColors.amber
-                                                .withOpacity(0.15),
+                                                .withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(

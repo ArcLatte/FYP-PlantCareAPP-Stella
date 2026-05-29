@@ -221,10 +221,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.1),
+                      color: AppColors.error.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border:
-                          Border.all(color: AppColors.error.withOpacity(0.3)),
+                          Border.all(color: AppColors.error.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -271,7 +271,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                         ),
                       )
                     : DropdownButtonFormField<int>(
-                        value: _selectedSpeciesId,
+                        initialValue: _selectedSpeciesId,
                         dropdownColor: AppColors.surface,
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(
@@ -300,7 +300,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                         ),
                       )
                     : DropdownButtonFormField<String>(
-                        value: _selectedLocation,
+                        initialValue: _selectedLocation,
                         dropdownColor: AppColors.surface,
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(

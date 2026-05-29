@@ -1,4 +1,6 @@
+// ignore_for_file: avoid_print
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
@@ -38,7 +40,37 @@ class Weather {
         cityName: json['cityName'] as String?,
       );
 
-  String get tempDisplay => '${tempC.round()}°';
+  String get tempDisplay => '${tempC.floor()}°C';
+
+  /// Material icon matching the OpenWeather condition. Picks a day/night
+  /// variant for clear-sky based on the icon-code suffix ('d' or 'n').
+  IconData get icon {
+    // iconCode looks like "01d", "10n", etc. The first 2 chars are the
+    // condition group; the third is 'd' (day) or 'n' (night).
+    final group = iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
+    final isNight = iconCode.endsWith('n');
+    switch (group) {
+      case '01':
+        return isNight ? Icons.nightlight_round : Icons.wb_sunny_rounded;
+      case '02':
+        return isNight ? Icons.nights_stay_rounded : Icons.wb_cloudy_rounded;
+      case '03':
+      case '04':
+        return Icons.cloud_rounded;
+      case '09':
+        return Icons.grain_rounded;
+      case '10':
+        return Icons.water_drop_rounded;
+      case '11':
+        return Icons.thunderstorm_rounded;
+      case '13':
+        return Icons.ac_unit_rounded;
+      case '50':
+        return Icons.foggy;
+      default:
+        return Icons.wb_cloudy_rounded;
+    }
+  }
   String get uvLevel {
     final u = uv;
     if (u == null) return '—';
@@ -60,14 +92,17 @@ class WeatherService {
     double lon, {
     bool forceRefresh = false,
   }) async {
+    print('[WX] getWeather lat=$lat lon=$lon forceRefresh=$forceRefresh');
     if (!forceRefresh) {
       final cached = await _readCache();
-      if (cached != null) return cached;
+      if (cached != null) {
+        print('[WX] returning cached (age OK): ${cached.cityName} ${cached.tempDisplay}');
+        return cached;
+      }
     }
 
     if (AppConstants.openWeatherApiKey.isEmpty) {
-      // No key configured — fall back to whatever we cached most recently
-      // (which may be null on first run).
+      print('[WX] no API key configured — returning stale cache if any');
       return _readCache(ignoreAge: true);
     }
 
@@ -77,6 +112,7 @@ class WeatherService {
         '?lat=$lat&lon=$lon&units=metric'
         '&appid=${AppConstants.openWeatherApiKey}',
       );
+      print('[WX] GET $currentUri');
       final uvUri = Uri.parse(
         'https://api.openweathermap.org/data/2.5/uvi'
         '?lat=$lat&lon=$lon'
@@ -84,6 +120,7 @@ class WeatherService {
       );
 
       final currentResp = await http.get(currentUri);
+      print('[WX] current status=${currentResp.statusCode} body=${currentResp.body.substring(0, currentResp.body.length > 200 ? 200 : currentResp.body.length)}');
       if (currentResp.statusCode != 200) {
         return _readCache(ignoreAge: true);
       }
@@ -100,6 +137,28 @@ class WeatherService {
         // UV endpoint is non-critical.
       }
 
+      // Reverse-geocode the coords to a real place name. OpenWeather's
+      // `name` on /weather is the nearest reporting station's label and
+      // often doesn't match the city the user is actually in.
+      String? geoName;
+      try {
+        final geoUri = Uri.parse(
+          'https://api.openweathermap.org/geo/1.0/reverse'
+          '?lat=$lat&lon=$lon&limit=1'
+          '&appid=${AppConstants.openWeatherApiKey}',
+        );
+        final geoResp = await http.get(geoUri);
+        if (geoResp.statusCode == 200) {
+          final list = jsonDecode(geoResp.body) as List;
+          if (list.isNotEmpty) {
+            final first = list.first as Map<String, dynamic>;
+            geoName = first['name']?.toString();
+          }
+        }
+      } catch (_) {
+        // Non-critical; fall back to the /weather name below.
+      }
+
       final main = c['main'] as Map<String, dynamic>? ?? const {};
       final weatherList = (c['weather'] as List?) ?? const [];
       final firstWeather = (weatherList.isNotEmpty
@@ -112,7 +171,7 @@ class WeatherService {
         uv: uv,
         condition: (firstWeather['main'] ?? '').toString(),
         iconCode: (firstWeather['icon'] ?? '01d').toString(),
-        cityName: c['name']?.toString(),
+        cityName: geoName ?? c['name']?.toString(),
       );
       await _writeCache(weather);
       return weather;

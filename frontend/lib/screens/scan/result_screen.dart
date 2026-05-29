@@ -103,13 +103,13 @@ class _ResultScreenState extends State<ResultScreen> {
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
                               color: _isHealthy
-                                  ? AppColors.success.withOpacity(0.1)
-                                  : AppColors.amber.withOpacity(0.1),
+                                  ? AppColors.success.withValues(alpha: 0.1)
+                                  : AppColors.amber.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: _isHealthy
-                                    ? AppColors.success.withOpacity(0.3)
-                                    : AppColors.amber.withOpacity(0.3),
+                                    ? AppColors.success.withValues(alpha: 0.3)
+                                    : AppColors.amber.withValues(alpha: 0.3),
                               ),
                             ),
                             child: Column(
@@ -228,10 +228,10 @@ class _ResultScreenState extends State<ResultScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.error.withOpacity(0.1),
+                              color: AppColors.error.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: AppColors.error.withOpacity(0.3)),
+                                  color: AppColors.error.withValues(alpha: 0.3)),
                             ),
                             child: Text(
                               _errorMessage!,
@@ -259,7 +259,7 @@ class _ResultScreenState extends State<ResultScreen> {
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: isConfirmed
-                                    ? AppColors.primary.withOpacity(0.1)
+                                    ? AppColors.primary.withValues(alpha: 0.1)
                                     : AppColors.surface,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
@@ -277,7 +277,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                     height: 32,
                                     decoration: BoxDecoration(
                                       color: isTop
-                                          ? AppColors.primary.withOpacity(0.2)
+                                          ? AppColors.primary.withValues(alpha: 0.2)
                                           : AppColors.surfaceLight,
                                       borderRadius:
                                           BorderRadius.circular(8),

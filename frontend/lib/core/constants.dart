@@ -29,9 +29,10 @@ class AppConstants {
   static const String lastLatKey = 'last_lat';
   static const String lastLonKey = 'last_lon';
 
-  // OpenWeather — paste your key here OR pass --dart-define=OPENWEATHER_KEY=...
+  // OpenWeather — paste your key as the default, OR override with
+  // --dart-define=OPENWEATHER_KEY=...
   static const String openWeatherApiKey = String.fromEnvironment(
-    '3a79944bda3285d599d9f480a168878d',
-    defaultValue: '',
+    'OPENWEATHER_KEY',
+    defaultValue: '3a79944bda3285d599d9f480a168878d',
   );
 }

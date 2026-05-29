@@ -294,7 +294,7 @@ class _ScanScreenState extends State<ScanScreen>
       return Container(
         height: 48,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(24),
         ),
         alignment: Alignment.center,
@@ -313,7 +313,7 @@ class _ScanScreenState extends State<ScanScreen>
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(24),
         ),
         alignment: Alignment.center,
@@ -329,7 +329,7 @@ class _ScanScreenState extends State<ScanScreen>
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(24),
         ),
         child: Row(
@@ -421,7 +421,7 @@ class _ScanScreenState extends State<ScanScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.9),
+        color: AppColors.error.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -533,7 +533,7 @@ class _CircleButton extends StatelessWidget {
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.4),
         ),
         child: Icon(icon, color: Colors.white, size: 22),
       ),

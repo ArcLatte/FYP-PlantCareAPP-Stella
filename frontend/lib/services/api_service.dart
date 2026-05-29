@@ -176,7 +176,7 @@ class ApiService {
         'species': speciesId,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (location != null && location.isNotEmpty) 'location': location,
-        if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
+        'watering_freq_days': ?wateringFreqDays,
       }),
     );
     if (response.statusCode == 201) {
@@ -205,7 +205,7 @@ class ApiService {
       headers: headers,
       body: jsonEncode({
         'name': name,
-        if (notes != null) 'notes': notes,
+        'notes': ?notes,
       }),
     );
     if (response.statusCode == 200) {

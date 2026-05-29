@@ -101,10 +101,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.1),
+                      color: AppColors.error.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border:
-                          Border.all(color: AppColors.error.withOpacity(0.3)),
+                          Border.all(color: AppColors.error.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -202,8 +202,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Confirm your password';
-                    if (v != _passwordController.text)
+                    if (v != _passwordController.text) {
                       return 'Passwords do not match';
+                    }
                     return null;
                   },
                 ),

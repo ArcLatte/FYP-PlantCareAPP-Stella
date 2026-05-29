@@ -67,8 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted && w != null) setState(() => _weather = w);
     }
 
-    // Then try for a fresh fix.
-    final loc = await LocationService.getCurrent();
+    // Then try for a fresh fix. On forceRefresh, also skip the OS's
+    // last-known cache so a relocated emulator picks up its new coords.
+    final loc = await LocationService.getCurrent(forceRefresh: forceRefresh);
     if (loc == null) return;
     final fresh = await WeatherService.getWeather(
       loc.lat,
@@ -311,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                _weather?.tempDisplay ?? '—°',
+                _weather?.tempDisplay ?? '—°C',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 56,
@@ -322,13 +323,25 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 12),
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _weather?.condition ?? '',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_weather != null)
+                      Icon(
+                        _weather!.icon,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _weather?.condition ?? '',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -337,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -382,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.15),
+              color: AppColors.primary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Row(
@@ -414,7 +427,7 @@ class _HomeScreenState extends State<HomeScreen> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final f = filters[i];
           final selected = f == _filter;
@@ -668,16 +681,16 @@ class _PlantGridCard extends StatelessWidget {
                             imageUrl: plant.photoUrl!,
                             fit: BoxFit.cover,
                             placeholder: (c, _) => Container(
-                              color: AppColors.primary.withOpacity(0.08),
+                              color: AppColors.primary.withValues(alpha: 0.08),
                             ),
-                            errorWidget: (c, _, __) => Container(
-                              color: AppColors.primary.withOpacity(0.08),
+                            errorWidget: (c, _, _) => Container(
+                              color: AppColors.primary.withValues(alpha: 0.08),
                               child: const Icon(Icons.eco_rounded,
                                   color: AppColors.primary, size: 36),
                             ),
                           )
                         : Container(
-                            color: AppColors.primary.withOpacity(0.08),
+                            color: AppColors.primary.withValues(alpha: 0.08),
                             child: const Icon(Icons.eco_rounded,
                                 color: AppColors.primary, size: 36),
                           ),
@@ -789,7 +802,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.92),
+        color: Colors.white.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -832,7 +845,7 @@ class _AddPlantTile extends StatelessWidget {
       onTap: onTap,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.surface.withOpacity(0.4),
+          color: AppColors.surface.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(18),
         ),
         child: CustomPaint(
@@ -848,7 +861,7 @@ class _AddPlantTile extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.12),
+                color: AppColors.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.add_rounded,
@@ -928,7 +941,7 @@ class _ActionIcon extends StatelessWidget {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: color, size: 16),
