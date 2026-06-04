@@ -9,8 +9,8 @@ class Weather {
   final double tempC;
   final int humidity;
   final double? uv;
-  final String condition; // e.g. "Sunny", "Cloudy"
-  final String iconCode; // e.g. "01d"
+  final String condition;
+  final String iconCode;
   final String? cityName;
 
   const Weather({

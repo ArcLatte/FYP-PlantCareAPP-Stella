@@ -8,6 +8,7 @@ import '../../models/plant.dart';
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
+import '../../widgets/skeleton.dart';
 
 const _kAllFilter = '__all__';
 const _kUnsortedFilter = '__unsorted__';
@@ -168,11 +169,20 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _buildGardenHeader()),
               SliverToBoxAdapter(child: _buildFilterChips()),
               if (_isLoadingPlants)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.primary),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 0.72,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => const PlantCardSkeleton(),
+                      childCount: 4,
+                    ),
                   ),
                 )
               else if (_filteredPlants.isEmpty)
@@ -215,19 +225,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'scan',
-        onPressed: () async {
-          await context.push('/scan');
-          _loadPlants();
-        },
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        child: const Icon(Icons.document_scanner_rounded,
-            color: Colors.white, size: 28),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: _buildBottomBar(),
     );
   }
 
@@ -279,10 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               GestureDetector(
-                onTap: () async {
-                  await context.push('/profile');
-                  _loadAll();
-                },
+                onTap: () => context.go('/profile'),
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -498,52 +492,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ───────── Bottom bar ─────────
-
-  Widget _buildBottomBar() {
-    return BottomAppBar(
-      color: AppColors.surface,
-      elevation: 8,
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8,
-      child: SizedBox(
-        height: 60,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavIcon(
-              icon: Icons.home_rounded,
-              label: 'Home',
-              selected: true,
-              onTap: () {},
-            ),
-            _NavIcon(
-              icon: Icons.checklist_rounded,
-              label: 'Tasks',
-              onTap: () async {
-                await context.push('/tasks');
-                _loadPlants();
-              },
-            ),
-            const SizedBox(width: 48), // notch
-            _NavIcon(
-              icon: Icons.history_rounded,
-              label: 'History',
-              onTap: () => context.push('/history'),
-            ),
-            _NavIcon(
-              icon: Icons.person_outline_rounded,
-              label: 'Profile',
-              onTap: () async {
-                await context.push('/profile');
-                _loadAll();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ─── Sub-widgets ───────────────────────────────────────────────
@@ -589,44 +537,6 @@ class _WeatherStat extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NavIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool selected;
-  const _NavIcon({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.selected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.textMuted;
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

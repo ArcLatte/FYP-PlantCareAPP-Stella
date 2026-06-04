@@ -11,6 +11,7 @@ import '../screens/scan/result_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../widgets/app_shell.dart';
 import '../core/constants.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -27,6 +28,7 @@ final GoRouter appRouter = GoRouter(
     return null;
   },
   routes: [
+    // Top-level routes (no shell, no bottom nav).
     GoRoute(
       path: '/login',
       builder: (context, state) => const LoginScreen(),
@@ -34,10 +36,6 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/register',
       builder: (context, state) => const RegisterScreen(),
-    ),
-    GoRoute(
-      path: '/home',
-      builder: (context, state) => const HomeScreen(),
     ),
     GoRoute(
       path: '/plants/add',
@@ -68,17 +66,45 @@ final GoRouter appRouter = GoRouter(
         return ResultScreen(scanId: scanId);
       },
     ),
-    GoRoute(
-      path: '/history',
-      builder: (context, state) => const HistoryScreen(),
-    ),
-    GoRoute(
-      path: '/tasks',
-      builder: (context, state) => const TasksScreen(),
-    ),
-    GoRoute(
-      path: '/profile',
-      builder: (context, state) => const ProfileScreen(),
+    // Persistent shell: Home / Tasks / History / Profile each keep their
+    // own Navigator + state. Bottom nav lives in AppShellScaffold.
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          AppShellScaffold(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/home',
+              builder: (context, state) => const HomeScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/tasks',
+              builder: (context, state) => const TasksScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/history',
+              builder: (context, state) => const HistoryScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/profile',
+              builder: (context, state) => const ProfileScreen(),
+            ),
+          ],
+        ),
+      ],
     ),
   ],
 );

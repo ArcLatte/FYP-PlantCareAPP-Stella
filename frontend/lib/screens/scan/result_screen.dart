@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../models/scan.dart';
 import '../../services/api_service.dart';
+import '../../widgets/skeleton.dart';
 
 class ResultScreen extends StatefulWidget {
   final int scanId;
@@ -84,8 +85,7 @@ class _ResultScreenState extends State<ResultScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
+          ? const _ResultSkeleton()
           : _scan == null
               ? const Center(
                   child: Text('Result not found',
@@ -364,6 +364,38 @@ class _ResultScreenState extends State<ResultScreen> {
                     ),
                   ),
                 ),
+    );
+  }
+}
+
+/// Skeleton scaffold for the scan-result screen. Mirrors the real layout:
+/// a banner card on top, the hero image, then a couple of prediction rows.
+class _ResultSkeleton extends StatelessWidget {
+  const _ResultSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            SkeletonBox(height: 88, radius: 16),
+            SizedBox(height: 20),
+            SkeletonBox(height: 220, radius: 16),
+            SizedBox(height: 24),
+            SkeletonBox(width: 180, height: 18, radius: 6),
+            SizedBox(height: 16),
+            SkeletonBox(height: 56, radius: 12),
+            SizedBox(height: 12),
+            SkeletonBox(height: 56, radius: 12),
+            SizedBox(height: 12),
+            SkeletonBox(height: 56, radius: 12),
+          ],
+        ),
+      ),
     );
   }
 }

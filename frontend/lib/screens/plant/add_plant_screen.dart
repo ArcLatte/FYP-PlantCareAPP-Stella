@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../services/api_service.dart';
+import '../../widgets/skeleton.dart';
 
 const _kAddNewSentinel = '__add_new_location__';
 const _defaultLocations = <String>[
@@ -265,11 +266,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 _isLoadingSpecies
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.primary,
-                        ),
-                      )
+                    ? const SkeletonBox(height: 56, radius: 12)
                     : DropdownButtonFormField<int>(
                         initialValue: _selectedSpeciesId,
                         dropdownColor: AppColors.surface,
@@ -294,11 +291,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 _isLoadingLocations
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.primary,
-                        ),
-                      )
+                    ? const SkeletonBox(height: 56, radius: 12)
                     : DropdownButtonFormField<String>(
                         initialValue: _selectedLocation,
                         dropdownColor: AppColors.surface,

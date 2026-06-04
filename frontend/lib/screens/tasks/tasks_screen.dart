@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 
 class TasksScreen extends StatelessWidget {
@@ -10,10 +9,7 @@ class TasksScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tasks'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
+        automaticallyImplyLeading: false,
       ),
       body: const Center(
         child: Padding(

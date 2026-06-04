@@ -91,10 +91,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Scan History'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/home'),
-        ),
+        automaticallyImplyLeading: false,
       ),
       body: _isLoading
           ? const Center(
@@ -241,27 +238,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     },
                   ),
                 ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.cardBorder)),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: 1,
-          onTap: (index) {
-            if (index == 0) context.go('/home');
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history_rounded),
-              label: 'History',
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

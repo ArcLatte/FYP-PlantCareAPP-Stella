@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../models/scan.dart';
 import '../../services/api_service.dart';
+import '../../widgets/skeleton.dart';
 
 class PlantDetailScreen extends StatefulWidget {
   final int plantId;
@@ -136,8 +137,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
+          ? const _PlantDetailSkeleton()
           : _plant == null
               ? const Center(
                   child: Text('Plant not found',
@@ -489,6 +489,54 @@ class _DetailStat extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Skeleton scaffold rendered while the plant + scan history are being
+/// fetched. Mirrors the real layout: info card with hero shape, water-status
+/// row, and a couple of scan-history rows.
+class _PlantDetailSkeleton extends StatelessWidget {
+  const _PlantDetailSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Info card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                SkeletonBox(width: 180, height: 22, radius: 8),
+                SizedBox(height: 12),
+                SkeletonBox(width: 120, height: 14, radius: 6),
+                SizedBox(height: 24),
+                SkeletonBox(height: 180, radius: 14),
+                SizedBox(height: 20),
+                SkeletonBox(height: 48, radius: 12),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const SkeletonBox(width: 160, height: 18, radius: 6),
+          const SizedBox(height: 16),
+          for (int i = 0; i < 2; i++) ...[
+            const SkeletonBox(height: 72, radius: 14),
+            const SizedBox(height: 12),
+          ],
+        ],
+      ),
     );
   }
 }
