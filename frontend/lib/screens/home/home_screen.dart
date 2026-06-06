@@ -8,10 +8,42 @@ import '../../models/plant.dart';
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
+import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 
 const _kAllFilter = '__all__';
 const _kUnsortedFilter = '__unsorted__';
+
+/// Status-based filter applied on top of the location chips.
+enum _StatusFilter { all, needsWater, needsAttention, healthy }
+
+extension _StatusFilterLabel on _StatusFilter {
+  String get label {
+    switch (this) {
+      case _StatusFilter.all:
+        return 'All plants';
+      case _StatusFilter.needsWater:
+        return 'Needs water';
+      case _StatusFilter.needsAttention:
+        return 'Needs attention';
+      case _StatusFilter.healthy:
+        return 'Healthy';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case _StatusFilter.all:
+        return Icons.grid_view_rounded;
+      case _StatusFilter.needsWater:
+        return Icons.water_drop_outlined;
+      case _StatusFilter.needsAttention:
+        return Icons.warning_amber_rounded;
+      case _StatusFilter.healthy:
+        return Icons.favorite_rounded;
+    }
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _username = '';
   Weather? _weather;
   String _filter = _kAllFilter;
+  _StatusFilter _statusFilter = _StatusFilter.all;
 
   @override
   void initState() {
@@ -54,9 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingPlants = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load plants: $e')),
-      );
+      AppSnackBar.error(context, 'Failed to load plants: $e');
     }
   }
 
@@ -95,14 +126,10 @@ class _HomeScreenState extends State<HomeScreen> {
         final i = _plants.indexWhere((p) => p.id == updated.id);
         if (i != -1) _plants[i] = updated;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${plant.name} watered')),
-      );
+      AppSnackBar.success(context, '${plant.name} watered');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to water: $e')),
-        );
+        AppSnackBar.error(context, 'Failed to water: $e');
       }
     }
   }
@@ -133,11 +160,92 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Plant> get _filteredPlants {
-    if (_filter == _kAllFilter) return _plants;
+    // First narrow by location chip, then by status filter.
+    Iterable<Plant> result = _plants;
     if (_filter == _kUnsortedFilter) {
-      return _plants.where((p) => p.location.isEmpty).toList();
+      result = result.where((p) => p.location.isEmpty);
+    } else if (_filter != _kAllFilter) {
+      result = result.where((p) => p.location == _filter);
     }
-    return _plants.where((p) => p.location == _filter).toList();
+    result = result.where(_matchesStatus);
+    return result.toList();
+  }
+
+  bool _matchesStatus(Plant p) {
+    switch (_statusFilter) {
+      case _StatusFilter.all:
+        return true;
+      case _StatusFilter.needsWater:
+        return p.needsWater;
+      case _StatusFilter.needsAttention:
+        return p.latestHealth == 'diseased';
+      case _StatusFilter.healthy:
+        return p.latestHealth == 'healthy';
+    }
+  }
+
+  int _statusCount(_StatusFilter f) {
+    switch (f) {
+      case _StatusFilter.all:
+        return _plants.length;
+      case _StatusFilter.needsWater:
+        return _plants.where((p) => p.needsWater).length;
+      case _StatusFilter.needsAttention:
+        return _plants.where((p) => p.latestHealth == 'diseased').length;
+      case _StatusFilter.healthy:
+        return _plants.where((p) => p.latestHealth == 'healthy').length;
+    }
+  }
+
+  Future<void> _openFilterSheet() async {
+    final selected = await showModalBottomSheet<_StatusFilter>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Grab handle
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Filter by status',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                for (final f in _StatusFilter.values)
+                  _FilterOption(
+                    icon: f.icon,
+                    label: f.label,
+                    count: _statusCount(f),
+                    selected: f == _statusFilter,
+                    onTap: () => Navigator.pop(sheetContext, f),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (selected != null && mounted) {
+      setState(() => _statusFilter = selected);
+    }
   }
 
   String _filterLabel(String f) {
@@ -385,28 +493,12 @@ class _HomeScreenState extends State<HomeScreen> {
             'Your Garden',
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.tune_rounded,
-                    color: AppColors.primary, size: 16),
-                SizedBox(width: 4),
-                Text(
-                  'Filter',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
+          _FilterButton(
+            active: _statusFilter != _StatusFilter.all,
+            label: _statusFilter == _StatusFilter.all
+                ? 'Filter'
+                : _statusFilter.label,
+            onTap: _openFilterSheet,
           ),
         ],
       ),
@@ -467,14 +559,14 @@ class _HomeScreenState extends State<HomeScreen> {
               size: 64, color: AppColors.textMuted),
           const SizedBox(height: 16),
           Text(
-            _filter == _kAllFilter ? 'No plants yet' : 'No plants here',
+            _plants.isEmpty ? 'No plants yet' : 'No matches',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
           Text(
-            _filter == _kAllFilter
+            _plants.isEmpty
                 ? 'Tap the + button to add your first plant.'
-                : 'Try a different filter or add a plant in this spot.',
+                : 'No plants match this filter. Try a different one.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -495,6 +587,124 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ─── Sub-widgets ───────────────────────────────────────────────
+
+/// The pill next to "Your Garden". Tinted when a status filter is active.
+class _FilterButton extends StatelessWidget {
+  final bool active;
+  final String label;
+  final VoidCallback onTap;
+  const _FilterButton({
+    required this.active,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.primary
+              : AppColors.primary.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.tune_rounded,
+              color: active ? Colors.white : AppColors.primary,
+              size: 16,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : AppColors.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single row inside the filter bottom sheet.
+class _FilterOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+  const _FilterOption({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : AppColors.background,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: selected ? AppColors.primary : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+            Text(
+              '$count',
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              size: 20,
+              color: selected ? AppColors.primary : AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _WeatherStat extends StatelessWidget {
   final IconData icon;

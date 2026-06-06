@@ -16,6 +16,7 @@ class AppConstants {
   static const String plantsUrl = '$baseUrl/plants/';
   static const String speciesUrl = '$baseUrl/species/';
   static const String locationsUrl = '$baseUrl/locations/';
+  static const String streakUrl = '$baseUrl/streak/';
 
   // Scan endpoints
   static const String scansUrl = '$baseUrl/scans/';

@@ -13,6 +13,7 @@ urlpatterns = [
     path('plants/<int:pk>/fertilize/', views.fertilize_plant),
     path('plants/<int:pk>/mist/', views.mist_plant),
     path('species/', views.species_list),
+    path('streak/', views.streak),
     path('locations/', views.location_list),
     path('locations/<int:pk>/', views.location_detail),
     path('scans/', views.scan),

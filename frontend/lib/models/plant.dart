@@ -13,6 +13,11 @@ class Plant {
   final DateTime? lastWatered;
   final int wateringFreqDays;
   final bool needsWater;
+  final bool needsFertilizer;
+  final bool needsMisting;
+  final int? daysUntilWater;
+  final int? daysUntilFertilizer;
+  final int? daysUntilMisting;
   final String? latestHealth; // 'healthy' | 'diseased' | null
   final SpeciesDetail? speciesDetail;
 
@@ -28,6 +33,11 @@ class Plant {
     this.lastWatered,
     this.wateringFreqDays = 7,
     this.needsWater = false,
+    this.needsFertilizer = false,
+    this.needsMisting = false,
+    this.daysUntilWater,
+    this.daysUntilFertilizer,
+    this.daysUntilMisting,
     this.latestHealth,
     this.speciesDetail,
   });
@@ -48,6 +58,11 @@ class Plant {
       wateringFreqDays:
           (json['watering_freq_days'] as num?)?.toInt() ?? 7,
       needsWater: json['needs_water'] == true,
+      needsFertilizer: json['needs_fertilizer'] == true,
+      needsMisting: json['needs_misting'] == true,
+      daysUntilWater: (json['days_until_water'] as num?)?.toInt(),
+      daysUntilFertilizer: (json['days_until_fertilizer'] as num?)?.toInt(),
+      daysUntilMisting: (json['days_until_misting'] as num?)?.toInt(),
       latestHealth: json['latest_health']?.toString(),
       speciesDetail: detail is Map<String, dynamic>
           ? SpeciesDetail.fromJson(detail)

@@ -1,15 +1,47 @@
+from datetime import timedelta
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
+    current_streak = models.PositiveIntegerField(default=0)
+    longest_streak = models.PositiveIntegerField(default=0)
+    last_care_date = models.DateField(null=True, blank=True)
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
 
     def __str__(self):
         return self.email
+
+    def register_care_activity(self):
+        """Call after any water/fertilize/mist action. Advances the streak
+        at most once per calendar day."""
+        today = timezone.localdate()
+        if self.last_care_date == today:
+            return  # already counted today
+        if self.last_care_date == today - timedelta(days=1):
+            self.current_streak += 1
+        else:
+            self.current_streak = 1  # first ever, or a gap broke it
+        self.last_care_date = today
+        self.longest_streak = max(self.longest_streak, self.current_streak)
+        self.save(update_fields=[
+            'current_streak', 'longest_streak', 'last_care_date',
+        ])
+
+    @property
+    def effective_streak(self):
+        """Displayed streak: a stale streak reads as broken (0) without
+        mutating storage until the next action resets it."""
+        if self.last_care_date is None:
+            return 0
+        today = timezone.localdate()
+        if self.last_care_date in (today, today - timedelta(days=1)):
+            return self.current_streak
+        return 0
 
 
 class PlantSpecies(models.Model):

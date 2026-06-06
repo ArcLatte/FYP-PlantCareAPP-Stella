@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../models/user.dart';
 import '../models/plant.dart';
 import '../models/scan.dart';
+import '../models/streak.dart';
 
 class ApiService {
   // ─── Helpers ───────────────────────────────────────────────
@@ -186,15 +187,40 @@ class ApiService {
   }
 
   static Future<Plant> waterPlant(int id) async {
+    return _careAction(id, 'water');
+  }
+
+  static Future<Plant> fertilizePlant(int id) async {
+    return _careAction(id, 'fertilize');
+  }
+
+  static Future<Plant> mistPlant(int id) async {
+    return _careAction(id, 'mist');
+  }
+
+  /// Shared POST for the three daily care actions (water/fertilize/mist).
+  static Future<Plant> _careAction(int id, String activity) async {
     final headers = await _authHeaders();
     final response = await http.post(
-      Uri.parse('${AppConstants.plantsUrl}$id/water/'),
+      Uri.parse('${AppConstants.plantsUrl}$id/$activity/'),
       headers: headers,
     );
     if (response.statusCode == 200) {
       return Plant.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to water plant (status ${response.statusCode})');
+    throw Exception('Failed to $activity plant (status ${response.statusCode})');
+  }
+
+  static Future<Streak> getStreak() async {
+    final headers = await _authHeaders();
+    final response = await http.get(
+      Uri.parse(AppConstants.streakUrl),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return Streak.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load streak');
   }
 
   static Future<Plant> updatePlant(

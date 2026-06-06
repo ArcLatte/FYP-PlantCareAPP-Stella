@@ -160,6 +160,7 @@ def water_plant(request, pk):
 
     plant.last_watered = timezone.now()
     plant.save(update_fields=['last_watered'])
+    request.user.register_care_activity()
     serializer = PlantSerializer(plant)
     return Response(serializer.data)
 
@@ -180,6 +181,7 @@ def fertilize_plant(request, pk):
 
     plant.last_fertilized = timezone.now()
     plant.save(update_fields=['last_fertilized'])
+    request.user.register_care_activity()
     serializer = PlantSerializer(plant)
     return Response(serializer.data)
 
@@ -200,8 +202,22 @@ def mist_plant(request, pk):
 
     plant.last_misted = timezone.now()
     plant.save(update_fields=['last_misted'])
+    request.user.register_care_activity()
     serializer = PlantSerializer(plant)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def streak(request):
+    u = request.user
+    today = timezone.localdate()
+    return Response({
+        'current_streak': u.effective_streak,
+        'longest_streak': u.longest_streak,
+        'last_care_date': u.last_care_date,
+        'active_today': u.last_care_date == today,
+    })
 
 
 @api_view(['GET', 'POST'])

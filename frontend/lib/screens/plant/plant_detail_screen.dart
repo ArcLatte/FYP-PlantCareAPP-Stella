@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../models/scan.dart';
 import '../../services/api_service.dart';
+import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 
 class PlantDetailScreen extends StatefulWidget {
@@ -29,14 +30,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       final updated = await ApiService.waterPlant(_plant!.id);
       if (!mounted) return;
       setState(() => _plant = updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${updated.name} watered')),
-      );
+      AppSnackBar.success(context, '${updated.name} watered');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to water: $e')),
-        );
+        AppSnackBar.error(context, 'Failed to water: $e');
       }
     } finally {
       if (mounted) setState(() => _isWatering = false);
@@ -104,9 +101,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete plant: $e')),
-        );
+        AppSnackBar.error(context, 'Failed to delete plant: $e');
       }
     }
   }

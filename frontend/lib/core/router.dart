@@ -10,6 +10,7 @@ import '../screens/scan/scan_screen.dart';
 import '../screens/scan/result_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
+import '../screens/tasks/task_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../widgets/app_shell.dart';
 import '../core/constants.dart';
@@ -85,6 +86,14 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/tasks',
               builder: (context, state) => const TasksScreen(),
+              routes: [
+                GoRoute(
+                  path: ':activity', // /tasks/water | /fertilize | /mist
+                  builder: (context, state) => TaskDetailScreen(
+                    activity: state.pathParameters['activity']!,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
