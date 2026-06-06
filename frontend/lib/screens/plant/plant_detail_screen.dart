@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
@@ -119,6 +120,66 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     return label.replaceAll('_', ' ').replaceAll('Tomato ', '');
   }
 
+  /// Build the horizontal list of species care cards. Only cards with data
+  /// are included, so plants whose species predates the knowledge base (or
+  /// activities that don't apply, like misting for a tomato) are skipped.
+  List<Widget> _buildCareTips(Plant plant) {
+    final s = plant.speciesDetail;
+    if (s == null) return const [];
+    final cards = <Widget>[];
+
+    if (s.sunlightLabel.isNotEmpty) {
+      cards.add(_CareCard(
+        icon: Icons.wb_sunny_outlined,
+        value: s.sunlightLabel,
+        label: 'SUNLIGHT',
+      ));
+    }
+    if (s.defaultWateringFreqDays != null) {
+      cards.add(_CareCard(
+        icon: Icons.water_drop_outlined,
+        value: 'Every ${s.defaultWateringFreqDays}d',
+        label: 'WATER',
+      ));
+    }
+    if (s.locationLabel.isNotEmpty) {
+      cards.add(_CareCard(
+        icon: Icons.home_outlined,
+        value: s.locationLabel,
+        label: 'LOCATION',
+      ));
+    }
+    if (s.temperatureRange != null) {
+      cards.add(_CareCard(
+        icon: Icons.thermostat_outlined,
+        value: s.temperatureRange!,
+        label: 'TEMP',
+      ));
+    }
+    if (s.defaultFertilizerFreqDays != null) {
+      cards.add(_CareCard(
+        icon: Icons.compost_outlined,
+        value: 'Every ${s.defaultFertilizerFreqDays}d',
+        label: 'FERTILIZE',
+      ));
+    }
+    if (s.defaultMistingFreqDays != null) {
+      cards.add(_CareCard(
+        icon: Icons.cloud_outlined,
+        value: 'Every ${s.defaultMistingFreqDays}d',
+        label: 'MIST',
+      ));
+    }
+    if (s.daysToHarvest != null) {
+      cards.add(_CareCard(
+        icon: Icons.eco_outlined,
+        value: '~${s.daysToHarvest}d',
+        label: 'HARVEST',
+      ));
+    }
+    return cards;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,10 +209,35 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   backgroundColor: AppColors.surface,
                   child: CustomScrollView(
                     slivers: [
+                      // Profile photo
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                          child: _PlantPhoto(photoUrl: _plant!.photoUrl),
+                        ),
+                      ),
+
+                      // Species care cards
+                      if (_buildCareTips(_plant!).isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: SizedBox(
+                              height: 96,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 24),
+                                children: _buildCareTips(_plant!),
+                              ),
+                            ),
+                          ),
+                        ),
+
                       // Plant info card
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.all(24),
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
                           child: Container(
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
@@ -445,6 +531,122 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+/// Hero photo for the plant. Falls back to a soft gradient + leaf glyph when
+/// the plant has no uploaded photo.
+class _PlantPhoto extends StatelessWidget {
+  final String? photoUrl;
+  const _PlantPhoto({required this.photoUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: AspectRatio(
+        aspectRatio: 16 / 10,
+        child: photoUrl != null
+            ? CachedNetworkImage(
+                imageUrl: photoUrl!,
+                fit: BoxFit.cover,
+                placeholder: (_, _) => const SkeletonBox(radius: 0),
+                errorWidget: (_, _, _) => const _PhotoPlaceholder(),
+              )
+            : const _PhotoPlaceholder(),
+      ),
+    );
+  }
+}
+
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary.withValues(alpha: 0.18),
+            AppColors.primary.withValues(alpha: 0.06),
+          ],
+        ),
+      ),
+      child: const Center(
+        child: Icon(Icons.eco_rounded, color: AppColors.primary, size: 56),
+      ),
+    );
+  }
+}
+
+/// Small square card summarizing one species care recommendation
+/// (sunlight, watering cadence, ideal temperature, etc.).
+class _CareCard extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  const _CareCard({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 96,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 18),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

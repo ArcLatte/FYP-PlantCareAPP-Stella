@@ -1,4 +1,5 @@
 import '../core/constants.dart';
+import 'species.dart';
 
 class Plant {
   final int id;
@@ -13,6 +14,7 @@ class Plant {
   final int wateringFreqDays;
   final bool needsWater;
   final String? latestHealth; // 'healthy' | 'diseased' | null
+  final SpeciesDetail? speciesDetail;
 
   Plant({
     required this.id,
@@ -27,9 +29,11 @@ class Plant {
     this.wateringFreqDays = 7,
     this.needsWater = false,
     this.latestHealth,
+    this.speciesDetail,
   });
 
   factory Plant.fromJson(Map<String, dynamic> json) {
+    final detail = json['species_detail'];
     return Plant(
       id: json['id'] as int,
       name: json['name'] as String,
@@ -45,6 +49,9 @@ class Plant {
           (json['watering_freq_days'] as num?)?.toInt() ?? 7,
       needsWater: json['needs_water'] == true,
       latestHealth: json['latest_health']?.toString(),
+      speciesDetail: detail is Map<String, dynamic>
+          ? SpeciesDetail.fromJson(detail)
+          : null,
     );
   }
 }

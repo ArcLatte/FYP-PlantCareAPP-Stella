@@ -13,8 +13,39 @@ class CustomUser(AbstractUser):
 
 
 class PlantSpecies(models.Model):
+    class Sunlight(models.TextChoices):
+        FULL_SUN = 'full_sun', 'Full sun'
+        PARTIAL_SUN = 'partial_sun', 'Partial sun'
+        PARTIAL_SHADE = 'partial_shade', 'Partial shade'
+        SHADE = 'shade', 'Shade'
+
+    class Location(models.TextChoices):
+        INDOOR = 'indoor', 'Indoor'
+        OUTDOOR = 'outdoor', 'Outdoor'
+        BOTH = 'both', 'Indoor or outdoor'
+
+    # Existing fields
     name = models.CharField(max_length=100, unique=True)  # e.g. "Tomato"
-    growing_tips = models.TextField()
+    growing_tips = models.TextField(blank=True)
+
+    # Identity / blurb
+    scientific_name = models.CharField(max_length=120, blank=True)
+    description = models.TextField(blank=True)  # 1–2 sentence teaser
+
+    # Environment
+    sunlight = models.CharField(max_length=20, choices=Sunlight.choices, blank=True)
+    recommended_location = models.CharField(max_length=10, choices=Location.choices, blank=True)
+    temperature_min_c = models.IntegerField(null=True, blank=True)
+    temperature_max_c = models.IntegerField(null=True, blank=True)
+
+    # Care cadence baselines. NULL means "doesn't apply to this species"
+    # and the UI should hide that activity row.
+    default_watering_freq_days = models.PositiveIntegerField(default=7)
+    default_fertilizer_freq_days = models.PositiveIntegerField(null=True, blank=True)
+    default_misting_freq_days = models.PositiveIntegerField(null=True, blank=True)
+
+    # Growth (vegetables / annuals)
+    days_to_harvest = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         verbose_name_plural = 'Plant Species'
@@ -77,6 +108,8 @@ class Plant(models.Model):
     notes = models.TextField(blank=True)
     location = models.CharField(max_length=50, blank=True, default='')
     last_watered = models.DateTimeField(null=True, blank=True)
+    last_fertilized = models.DateTimeField(null=True, blank=True)
+    last_misted = models.DateTimeField(null=True, blank=True)
     watering_freq_days = models.PositiveIntegerField(default=7)
     created_at = models.DateTimeField(auto_now_add=True)
 

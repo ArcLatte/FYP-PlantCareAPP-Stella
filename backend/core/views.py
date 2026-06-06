@@ -164,6 +164,46 @@ def water_plant(request, pk):
     return Response(serializer.data)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def fertilize_plant(request, pk):
+    try:
+        plant = Plant.objects.get(pk=pk, user=request.user)
+    except Plant.DoesNotExist:
+        return Response({'error': 'Plant not found.'}, status=404)
+
+    if plant.species.default_fertilizer_freq_days is None:
+        return Response(
+            {'error': f'{plant.species.name} has no fertilizer schedule.'},
+            status=400,
+        )
+
+    plant.last_fertilized = timezone.now()
+    plant.save(update_fields=['last_fertilized'])
+    serializer = PlantSerializer(plant)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mist_plant(request, pk):
+    try:
+        plant = Plant.objects.get(pk=pk, user=request.user)
+    except Plant.DoesNotExist:
+        return Response({'error': 'Plant not found.'}, status=404)
+
+    if plant.species.default_misting_freq_days is None:
+        return Response(
+            {'error': f'{plant.species.name} does not need misting.'},
+            status=400,
+        )
+
+    plant.last_misted = timezone.now()
+    plant.save(update_fields=['last_misted'])
+    serializer = PlantSerializer(plant)
+    return Response(serializer.data)
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def location_list(request):

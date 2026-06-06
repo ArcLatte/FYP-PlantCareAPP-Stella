@@ -10,6 +10,8 @@ urlpatterns = [
     path('plants/', views.plant_list),
     path('plants/<int:pk>/', views.plant_detail),
     path('plants/<int:pk>/water/', views.water_plant),
+    path('plants/<int:pk>/fertilize/', views.fertilize_plant),
+    path('plants/<int:pk>/mist/', views.mist_plant),
     path('species/', views.species_list),
     path('locations/', views.location_list),
     path('locations/<int:pk>/', views.location_detail),
