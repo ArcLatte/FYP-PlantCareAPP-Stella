@@ -31,6 +31,18 @@ enum CareActivity {
     }
   }
 
+  /// Past-tense label for history entries, e.g. "Watered".
+  String get pastTense {
+    switch (this) {
+      case CareActivity.water:
+        return 'Watered';
+      case CareActivity.fertilize:
+        return 'Fertilized';
+      case CareActivity.mist:
+        return 'Misted';
+    }
+  }
+
   /// Gerund used as the detail-screen title, e.g. "Watering".
   String get title {
     switch (this) {

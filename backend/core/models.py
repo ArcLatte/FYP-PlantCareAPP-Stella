@@ -10,11 +10,64 @@ class CustomUser(AbstractUser):
     longest_streak = models.PositiveIntegerField(default=0)
     last_care_date = models.DateField(null=True, blank=True)
 
+    # Levelling
+    xp = models.PositiveIntegerField(default=0)
+    level = models.PositiveIntegerField(default=1)
+
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
 
     def __str__(self):
         return self.email
+
+    # ─── Levelling ───────────────────────────────────────────
+
+    @staticmethod
+    def xp_threshold(level: int) -> int:
+        """Cumulative XP required to *reach* the given level.
+
+        Triangular curve: `100 * N * (N-1) / 2`. Level 2 = 100, Level 5 =
+        1000, Level 10 = 4500. One care tap = 5 XP, so this paces nicely.
+        """
+        return 100 * level * (level - 1) // 2
+
+    @property
+    def xp_into_level(self) -> int:
+        return self.xp - self.xp_threshold(self.level)
+
+    @property
+    def xp_for_next_level(self) -> int:
+        return self.xp_threshold(self.level + 1) - self.xp_threshold(self.level)
+
+    @property
+    def tier(self) -> str:
+        """Plant-themed tier label derived from the current level."""
+        L = self.level
+        if L < 5:   return 'Seedling'
+        if L < 10:  return 'Sprout'
+        if L < 20:  return 'Sapling'
+        if L < 35:  return 'Gardener'
+        if L < 50:  return 'Cultivator'
+        if L < 75:  return 'Botanist'
+        if L < 100: return 'Plantsmith'
+        return 'Garden Sage'
+
+    def award_xp(self, amount: int) -> dict:
+        """Grant XP, bumping level past every crossed threshold. Returns the
+        delta so views can include `xp_gained` / `leveled_up_to` in their
+        response payload.
+        """
+        if amount <= 0:
+            return {'xp_gained': 0, 'leveled_up': False, 'new_level': self.level}
+        self.xp += amount
+        leveled = False
+        while self.xp >= self.xp_threshold(self.level + 1):
+            self.level += 1
+            leveled = True
+        self.save(update_fields=['xp', 'level'])
+        return {'xp_gained': amount, 'leveled_up': leveled, 'new_level': self.level}
+
+    # ─── Streak ───────────────────────────────────────────────
 
     def register_care_activity(self):
         """Call after any water/fertilize/mist action. Advances the streak
@@ -169,3 +222,86 @@ class ScanResult(models.Model):
 
     def __str__(self):
         return f"Scan #{self.id} — {self.plant.name}"
+
+
+class CareLog(models.Model):
+    """One row per care action performed on a plant. Powers the History
+    timeline. Unlike Plant.last_* (which keep only the latest timestamp),
+    this preserves every event."""
+
+    class Activity(models.TextChoices):
+        WATER = 'water', 'Watered'
+        FERTILIZE = 'fertilize', 'Fertilized'
+        MIST = 'mist', 'Misted'
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='care_logs',
+    )
+    plant = models.ForeignKey(
+        Plant,
+        on_delete=models.CASCADE,
+        related_name='care_logs',
+    )
+    activity = models.CharField(max_length=12, choices=Activity.choices)
+    # Plain default (not auto_now_add) so the backfill migration can stamp
+    # historical timestamps from existing Plant.last_* fields.
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.activity} — {self.plant.name} @ {self.created_at:%Y-%m-%d}"
+
+
+class Achievement(models.Model):
+    """A badge definition. Seeded via `python manage.py seed_achievements`.
+
+    Codes are stable slugs (`first_plant`, `streak_7`, …) used as the unique
+    key in predicates and on the frontend.
+    """
+
+    class Tier(models.TextChoices):
+        BRONZE = 'bronze', 'Bronze'
+        SILVER = 'silver', 'Silver'
+        GOLD = 'gold', 'Gold'
+
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=80)
+    description = models.CharField(max_length=200)
+    icon = models.CharField(max_length=40)  # Material icon name string
+    tier = models.CharField(max_length=8, choices=Tier.choices, default=Tier.BRONZE)
+    xp_reward = models.PositiveIntegerField(default=25)
+
+    class Meta:
+        ordering = ['tier', 'code']
+
+    def __str__(self):
+        return f"{self.name} ({self.tier})"
+
+
+class UserAchievement(models.Model):
+    """Join row: a user has unlocked an achievement. Pin flag controls
+    whether the badge appears in the Profile screen's pinned slots."""
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='user_achievements',
+    )
+    achievement = models.ForeignKey(
+        Achievement,
+        on_delete=models.CASCADE,
+        related_name='unlocked_by',
+    )
+    unlocked_at = models.DateTimeField(default=timezone.now)
+    is_pinned = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('user', 'achievement')
+        ordering = ['-unlocked_at']
+
+    def __str__(self):
+        return f"{self.user.username} ✓ {self.achievement.code}"

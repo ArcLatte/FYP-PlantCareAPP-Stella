@@ -6,6 +6,7 @@ import '../../models/plant.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/xp_toast.dart';
 import 'care_activity.dart';
 
 /// Lists every plant for which a single care activity (water / fertilize /
@@ -63,6 +64,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         _busy.remove(plant.id);
       });
       AppSnackBar.success(context, '${plant.name} — ${activity.label} done');
+      XpToast.flush(context);
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy.remove(plant.id));

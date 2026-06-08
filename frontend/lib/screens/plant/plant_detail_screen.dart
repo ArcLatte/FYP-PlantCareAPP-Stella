@@ -7,6 +7,7 @@ import '../../models/scan.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/xp_toast.dart';
 
 class PlantDetailScreen extends StatefulWidget {
   final int plantId;
@@ -31,6 +32,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       if (!mounted) return;
       setState(() => _plant = updated);
       AppSnackBar.success(context, '${updated.name} watered');
+      XpToast.flush(context);
     } catch (e) {
       if (mounted) {
         AppSnackBar.error(context, 'Failed to water: $e');

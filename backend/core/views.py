@@ -5,8 +5,11 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.utils import timezone
-from .models import CustomUser
-from .models import CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location
+from .models import (
+    CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location, CareLog,
+    Achievement, UserAchievement,
+)
+from .achievements import check_achievements
 from .serializers import PlantSerializer, PlantSpeciesSerializer, LocationSerializer
 import torch
 import torchvision.transforms as transforms
@@ -48,6 +51,34 @@ transform = transforms.Compose([
 ])
 
 
+# ─── Gamification helper ─────────────────────────────────────────
+
+def _grant_xp_and_check(user, amount: int) -> dict:
+    """Award XP then run achievement predicates (which may grant more XP).
+    Returns a dict to spread into a JSON response so the frontend can show
+    the gain / level-up / unlocked-badge toasts.
+    """
+    initial_level = user.level
+    grant = user.award_xp(amount)
+    newly = check_achievements(user)
+    # If an achievement reward leveled us up, prefer the post-unlock level.
+    leveled = grant['leveled_up'] or (user.level > initial_level)
+    return {
+        'xp_gained': grant['xp_gained'] + sum(a.xp_reward for a in newly),
+        'leveled_up_to': user.level if leveled else None,
+        'unlocked': [
+            {
+                'code': a.code,
+                'name': a.name,
+                'icon': a.icon,
+                'tier': a.tier,
+                'xp_reward': a.xp_reward,
+            }
+            for a in newly
+        ],
+    }
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
@@ -83,7 +114,23 @@ def login(request):
 
     token, _ = Token.objects.get_or_create(user=user)
 
-    return Response({'token': token.key, 'username': user.username})
+    # Daily login bonus: only on the first login of the calendar day.
+    today = timezone.localdate()
+    last_local = (
+        timezone.localtime(user.last_login).date()
+        if user.last_login else None
+    )
+    xp_result = {'xp_gained': 0, 'leveled_up_to': None, 'unlocked': []}
+    if last_local != today:
+        xp_result = _grant_xp_and_check(user, 10)
+    user.last_login = timezone.now()
+    user.save(update_fields=['last_login'])
+
+    return Response({
+        'token': token.key,
+        'username': user.username,
+        **xp_result,
+    })
 
 
 @api_view(['POST'])
@@ -122,7 +169,8 @@ def plant_list(request):
         serializer = PlantSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(user=request.user)
-            return Response(serializer.data, status=201)
+            xp = _grant_xp_and_check(request.user, 20)
+            return Response({**serializer.data, **xp}, status=201)
         return Response(serializer.errors, status=400)
 
 
@@ -161,8 +209,10 @@ def water_plant(request, pk):
     plant.last_watered = timezone.now()
     plant.save(update_fields=['last_watered'])
     request.user.register_care_activity()
+    CareLog.objects.create(user=request.user, plant=plant, activity='water')
+    xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
-    return Response(serializer.data)
+    return Response({**serializer.data, **xp})
 
 
 @api_view(['POST'])
@@ -182,8 +232,10 @@ def fertilize_plant(request, pk):
     plant.last_fertilized = timezone.now()
     plant.save(update_fields=['last_fertilized'])
     request.user.register_care_activity()
+    CareLog.objects.create(user=request.user, plant=plant, activity='fertilize')
+    xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
-    return Response(serializer.data)
+    return Response({**serializer.data, **xp})
 
 
 @api_view(['POST'])
@@ -203,8 +255,10 @@ def mist_plant(request, pk):
     plant.last_misted = timezone.now()
     plant.save(update_fields=['last_misted'])
     request.user.register_care_activity()
+    CareLog.objects.create(user=request.user, plant=plant, activity='mist')
+    xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
-    return Response(serializer.data)
+    return Response({**serializer.data, **xp})
 
 
 @api_view(['GET'])
@@ -218,6 +272,65 @@ def streak(request):
         'last_care_date': u.last_care_date,
         'active_today': u.last_care_date == today,
     })
+
+
+def _scan_label_health(scan):
+    """Return (label, health) for a scan: confirmed disease if present,
+    else the top model prediction. health is 'healthy'/'diseased'/None."""
+    label = None
+    if scan.disease_id:
+        label = scan.disease.label
+    elif scan.top3_predictions:
+        top = scan.top3_predictions[0]
+        if isinstance(top, dict):
+            label = top.get('label')
+    if not label:
+        return None, None
+    health = 'healthy' if 'healthy' in label.lower() else 'diseased'
+    return label, health
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def activity(request):
+    """Unified, reverse-chronological feed of the user's plant activity:
+    care actions (water/fertilize/mist) merged with disease scans."""
+    events = []
+
+    care_logs = (
+        CareLog.objects
+        .filter(user=request.user)
+        .select_related('plant')[:100]
+    )
+    for log in care_logs:
+        events.append({
+            'type': 'care',
+            'activity': log.activity,
+            'plant_id': log.plant_id,
+            'plant_name': log.plant.name,
+            'created_at': log.created_at,
+        })
+
+    scans = (
+        ScanResult.objects
+        .filter(plant__user=request.user)
+        .select_related('plant', 'disease')
+        .order_by('-created_at')[:100]
+    )
+    for s in scans:
+        label, health = _scan_label_health(s)
+        events.append({
+            'type': 'scan',
+            'scan_id': s.id,
+            'plant_id': s.plant_id,
+            'plant_name': s.plant.name,
+            'label': label,
+            'health': health,
+            'created_at': s.created_at,
+        })
+
+    events.sort(key=lambda e: e['created_at'], reverse=True)
+    return Response(events[:100])
 
 
 @api_view(['GET', 'POST'])
@@ -300,11 +413,14 @@ def scan(request):
         top3_predictions=top3_predictions,
     )
 
+    xp = _grant_xp_and_check(request.user, 5)
+
     return Response({
         'scan_id': scan_result.id,
         'top3': top3_predictions,
         'predicted_label': top_label,
         'confidence': top_confidence,
+        **xp,
     }, status=201)
     
     
@@ -396,3 +512,99 @@ def all_scans(request):
         for s in scans
     ]
     return Response(data)
+
+
+# ─── Gamification: profile + achievements ───────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def profile(request):
+    u = request.user
+    unlocked = UserAchievement.objects.filter(user=u).count()
+    total = Achievement.objects.count()
+    return Response({
+        'username': u.username,
+        'email': u.email,
+        'level': u.level,
+        'tier': u.tier,
+        'xp': u.xp,
+        'xp_into_level': u.xp_into_level,
+        'xp_for_next_level': u.xp_for_next_level,
+        'current_streak': u.effective_streak,
+        'longest_streak': u.longest_streak,
+        'achievements_unlocked': unlocked,
+        'achievements_total': total,
+    })
+
+
+def _serialize_achievement(ach, user_view):
+    return {
+        'code': ach.code,
+        'name': ach.name,
+        'description': ach.description,
+        'icon': ach.icon,
+        'tier': ach.tier,
+        'xp_reward': ach.xp_reward,
+        'unlocked': user_view is not None,
+        'unlocked_at': user_view.unlocked_at if user_view else None,
+        'is_pinned': bool(user_view and user_view.is_pinned),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def achievements_list(request):
+    own = {
+        ua.achievement_id: ua
+        for ua in UserAchievement.objects.filter(user=request.user)
+    }
+    data = [
+        _serialize_achievement(a, own.get(a.id))
+        for a in Achievement.objects.all()
+    ]
+    return Response(data)
+
+
+PIN_CAP = 3
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def pin_achievement(request, code):
+    try:
+        ua = UserAchievement.objects.select_related('achievement').get(
+            user=request.user,
+            achievement__code=code,
+        )
+    except UserAchievement.DoesNotExist:
+        return Response({'error': 'Achievement not unlocked.'}, status=404)
+
+    if not ua.is_pinned:
+        pinned = UserAchievement.objects.filter(
+            user=request.user, is_pinned=True,
+        ).count()
+        if pinned >= PIN_CAP:
+            return Response(
+                {'error': f'Pin cap reached ({PIN_CAP}). Unpin one first.'},
+                status=400,
+            )
+        ua.is_pinned = True
+        ua.save(update_fields=['is_pinned'])
+    return Response(_serialize_achievement(ua.achievement, ua))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unpin_achievement(request, code):
+    try:
+        ua = UserAchievement.objects.select_related('achievement').get(
+            user=request.user,
+            achievement__code=code,
+        )
+    except UserAchievement.DoesNotExist:
+        return Response({'error': 'Achievement not unlocked.'}, status=404)
+
+    if ua.is_pinned:
+        ua.is_pinned = False
+        ua.save(update_fields=['is_pinned'])
+    return Response(_serialize_achievement(ua.achievement, ua))

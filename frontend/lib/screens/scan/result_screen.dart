@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 import '../../models/scan.dart';
 import '../../services/api_service.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/xp_toast.dart';
 
 class ResultScreen extends StatefulWidget {
   final int scanId;
@@ -24,6 +25,12 @@ class _ResultScreenState extends State<ResultScreen> {
   void initState() {
     super.initState();
     _loadScan();
+    // Surface any XP / unlocks the scan endpoint awarded (lastXpResult was
+    // populated inside ApiService.scanPlant). Has to run after first frame
+    // so the ScaffoldMessenger is attached.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) XpToast.flush(context);
+    });
   }
 
   Future<void> _loadScan() async {

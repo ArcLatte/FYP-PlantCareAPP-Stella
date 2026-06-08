@@ -7,8 +7,32 @@ import '../models/user.dart';
 import '../models/plant.dart';
 import '../models/scan.dart';
 import '../models/streak.dart';
+import '../models/activity.dart';
+import '../models/user_profile.dart';
+import '../models/achievement.dart';
+import '../models/xp_result.dart';
 
 class ApiService {
+  /// Side-channel for XP awards. Care/scan/plant-create/login endpoints
+  /// populate this whenever the backend returns an `xp_gained` field; the
+  /// UI calls [consumeLastXpResult] right after to surface a toast. Lets
+  /// us avoid changing every existing call-site's return type.
+  static XpResult? lastXpResult;
+
+  static XpResult? consumeLastXpResult() {
+    final r = lastXpResult;
+    lastXpResult = null;
+    return r;
+  }
+
+  /// Internal helper: pluck XP fields from a response body and stash them.
+  static void _captureXp(Map<String, dynamic> body) {
+    final r = XpResult.fromJsonOrNull(body);
+    if (r != null && r.hasAnything) {
+      lastXpResult = r;
+    }
+  }
+
   // ─── Helpers ───────────────────────────────────────────────
 
   static Future<String?> _getToken() async {
@@ -33,7 +57,9 @@ class ApiService {
       body: jsonEncode({'username': username, 'password': password}),
     );
     if (response.statusCode == 200) {
-      return User.fromJson(jsonDecode(response.body));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      _captureXp(body);
+      return User.fromJson(body);
     }
     throw Exception(jsonDecode(response.body)['non_field_errors']?[0] ??
         'Login failed');
@@ -181,7 +207,9 @@ class ApiService {
       }),
     );
     if (response.statusCode == 201) {
-      return Plant.fromJson(jsonDecode(response.body));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      _captureXp(body);
+      return Plant.fromJson(body);
     }
     throw Exception('Failed to create plant');
   }
@@ -206,7 +234,9 @@ class ApiService {
       headers: headers,
     );
     if (response.statusCode == 200) {
-      return Plant.fromJson(jsonDecode(response.body));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      _captureXp(body);
+      return Plant.fromJson(body);
     }
     throw Exception('Failed to $activity plant (status ${response.statusCode})');
   }
@@ -221,6 +251,71 @@ class ApiService {
       return Streak.fromJson(jsonDecode(response.body));
     }
     throw Exception('Failed to load streak');
+  }
+
+  static Future<List<ActivityEvent>> getActivity() async {
+    final headers = await _authHeaders();
+    final response = await http.get(
+      Uri.parse(AppConstants.activityUrl),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List)
+          .map((e) => ActivityEvent.fromJson(e))
+          .toList();
+    }
+    throw Exception('Failed to load activity');
+  }
+
+  // ─── Profile + achievements ────────────────────────────────
+
+  static Future<UserProfile> getProfile() async {
+    final headers = await _authHeaders();
+    final response = await http.get(
+      Uri.parse(AppConstants.profileUrl),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return UserProfile.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load profile');
+  }
+
+  static Future<List<Achievement>> getAchievements() async {
+    final headers = await _authHeaders();
+    final response = await http.get(
+      Uri.parse(AppConstants.achievementsUrl),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List)
+          .map((e) => Achievement.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    throw Exception('Failed to load achievements');
+  }
+
+  static Future<Achievement> pinAchievement(String code) =>
+      _togglePin(code, pin: true);
+  static Future<Achievement> unpinAchievement(String code) =>
+      _togglePin(code, pin: false);
+
+  static Future<Achievement> _togglePin(String code, {required bool pin}) async {
+    final headers = await _authHeaders();
+    final action = pin ? 'pin' : 'unpin';
+    final response = await http.post(
+      Uri.parse('${AppConstants.achievementsUrl}$code/$action/'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return Achievement.fromJson(jsonDecode(response.body));
+    }
+    final body = jsonDecode(response.body);
+    throw Exception(
+      (body is Map && body['error'] is String)
+          ? body['error'] as String
+          : 'Failed to $action achievement',
+    );
   }
 
   static Future<Plant> updatePlant(
@@ -268,7 +363,9 @@ class ApiService {
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     if (response.statusCode == 201) {
-      return ScanResult.fromJson(jsonDecode(response.body));
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      _captureXp(body);
+      return ScanResult.fromJson(body);
     }
     throw Exception('Scan failed');
   }

@@ -9,9 +9,11 @@ import '../screens/plant/plant_detail_screen.dart';
 import '../screens/scan/scan_screen.dart';
 import '../screens/scan/result_screen.dart';
 import '../screens/history/history_screen.dart';
+import '../screens/history/history_detail_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
 import '../screens/tasks/task_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/profile/achievements_screen.dart';
 import '../widgets/app_shell.dart';
 import '../core/constants.dart';
 
@@ -102,6 +104,16 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/history',
               builder: (context, state) => const HistoryScreen(),
+              routes: [
+                GoRoute(
+                  // /history/water/2026-06-08 — per-day, per-activity timeline.
+                  path: ':activity/:date',
+                  builder: (context, state) => HistoryDetailScreen(
+                    activity: state.pathParameters['activity']!,
+                    date: DateTime.parse(state.pathParameters['date']!),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -110,6 +122,12 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
+              routes: [
+                GoRoute(
+                  path: 'achievements',
+                  builder: (context, state) => const AchievementsScreen(),
+                ),
+              ],
             ),
           ],
         ),

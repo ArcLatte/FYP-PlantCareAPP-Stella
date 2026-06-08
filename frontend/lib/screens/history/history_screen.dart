@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
-import '../../models/scan.dart';
+import '../../models/activity.dart';
 import '../../services/api_service.dart';
+import '../../widgets/skeleton.dart';
+import '../tasks/care_activity.dart';
+import 'history_timeline.dart';
 
+/// Per-day activity timeline. Each day groups same-type events into one row
+/// ("Watered 3 plants — last 3:42 PM") so a busy day doesn't drown the page.
+/// Tap a row → per-day-per-activity detail at `/history/{activity}/{date}`.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -12,232 +18,239 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  List<ScanResult> _scans = [];
+  List<ActivityEvent> _events = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _load();
   }
 
-  Future<void> _loadHistory() async {
+  Future<void> _load() async {
     try {
-      final scans = await ApiService.getAllScans();
+      final events = await ApiService.getActivity();
+      if (!mounted) return;
       setState(() {
-        _scans = scans;
+        _events = events;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _deleteScan(int scanId) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.cardBorder),
-        ),
-        title: const Text(
-          'Delete Scan',
-          style: TextStyle(color: AppColors.textPrimary),
-        ),
-        content: const Text(
-          'Are you sure you want to delete this scan?',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
+  // ─── Grouping ────────────────────────────────────────────────
+
+  /// Returns a list of (date label, list of activity groups for that day).
+  /// Outer order is reverse-chronological (newest day first); inner groups
+  /// are reverse-chronological by their latest event timestamp.
+  List<_DayBuckets> get _days {
+    // First, bucket events by local date in arrival order (newest first).
+    final byDate = <DateTime, List<ActivityEvent>>{};
+    final dateOrder = <DateTime>[];
+    for (final e in _events) {
+      final local = e.createdAt.toLocal();
+      final day = DateTime(local.year, local.month, local.day);
+      if (!byDate.containsKey(day)) {
+        dateOrder.add(day);
+        byDate[day] = [];
+      }
+      byDate[day]!.add(e);
+    }
+
+    // Then within each day, group by activity key.
+    return [
+      for (final day in dateOrder)
+        _DayBuckets(date: day, groups: _groupDay(byDate[day]!)),
+    ];
+  }
+
+  List<_ActivityGroup> _groupDay(List<ActivityEvent> dayEvents) {
+    final byKey = <String, List<ActivityEvent>>{};
+    final keyOrder = <String>[];
+    for (final e in dayEvents) {
+      final key = e.isCare ? (e.activity ?? '') : 'scan';
+      if (!byKey.containsKey(key)) {
+        keyOrder.add(key);
+        byKey[key] = [];
+      }
+      byKey[key]!.add(e);
+    }
+    return [for (final k in keyOrder) _ActivityGroup(key: k, events: byKey[k]!)];
+  }
+
+  // ─── Per-group styling ──────────────────────────────────────
+
+  _Style _styleFor(_ActivityGroup g) {
+    if (g.key == 'scan') {
+      // Pending wins (muted), else any diseased → amber, else all healthy → success.
+      final pending = g.events.any((e) => e.label == null);
+      final anyDiseased = g.events.any((e) => e.health == 'diseased');
+      if (pending) {
+        return _Style(
+          color: AppColors.textMuted,
+          icon: Icons.hourglass_empty_rounded,
+        );
+      }
+      if (anyDiseased) {
+        return _Style(
+          color: AppColors.amber,
+          icon: Icons.warning_amber_rounded,
+        );
+      }
+      return _Style(color: AppColors.success, icon: Icons.favorite_rounded);
+    }
+    final a = CareActivity.fromKey(g.key);
+    return _Style(
+      color: a?.color ?? AppColors.primary,
+      icon: a?.icon ?? Icons.eco_rounded,
+    );
+  }
+
+  String _titleFor(_ActivityGroup g) {
+    final n = g.events.length;
+    final unit = n == 1 ? 'plant' : 'plants';
+    if (g.key == 'scan') return 'Scanned $n $unit';
+    final pastTense = CareActivity.fromKey(g.key)?.pastTense ?? 'Cared for';
+    return '$pastTense $n $unit';
+  }
+
+  String _subtitleFor(_ActivityGroup g) {
+    // Events arrive newest-first within the day; `.first` is the latest.
+    final latest = timeLabel(g.events.first.createdAt);
+    return g.events.length == 1 ? latest : 'last $latest';
+  }
+
+  // ─── Build ───────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final days = _days;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('History'),
+        automaticallyImplyLeading: false,
+      ),
+      body: _isLoading
+          ? const _LandingSkeleton()
+          : days.isEmpty
+          ? _buildEmpty()
+          : RefreshIndicator(
+              onRefresh: _load,
+              color: AppColors.primary,
+              backgroundColor: AppColors.surface,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                children: [
+                  for (final day in days) ...[
+                    DateHeader(label: dateBucket(day.date)),
+                    for (int i = 0; i < day.groups.length; i++)
+                      _buildTile(
+                        day,
+                        day.groups[i],
+                        isFirst: i == 0,
+                        isLast: i == day.groups.length - 1,
+                      ),
+                  ],
+                ],
+              ),
             ),
+    );
+  }
+
+  Widget _buildTile(
+    _DayBuckets day,
+    _ActivityGroup g, {
+    required bool isFirst,
+    required bool isLast,
+  }) {
+    final style = _styleFor(g);
+    return TimelineTile(
+      isFirst: isFirst,
+      isLast: isLast,
+      color: style.color,
+      icon: style.icon,
+      title: _titleFor(g),
+      subtitle: _subtitleFor(g),
+      trailingCount: g.events.length > 1 ? '${g.events.length}' : null,
+      showChevron: true,
+      onTap: () async {
+        await context.push('/history/${g.key}/${isoDate(day.date)}');
+        _load();
+      },
+    );
+  }
+
+  Widget _buildEmpty() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.history_rounded,
+            size: 64,
+            color: AppColors.textMuted,
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: AppColors.error),
-            ),
+          const SizedBox(height: 16),
+          Text(
+            'No activity yet',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Watering, fertilizing and scans will show up here.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
       ),
     );
-    if (confirm == true) {
-      await ApiService.deleteScan(scanId);
-      _loadHistory();
-    }
   }
+}
 
-  String _formatDate(String dateStr) {
-    final date = DateTime.parse(dateStr);
-    return '${date.day}/${date.month}/${date.year}';
-  }
+class _DayBuckets {
+  final DateTime date;
+  final List<_ActivityGroup> groups;
+  const _DayBuckets({required this.date, required this.groups});
+}
 
-  String _formatLabel(String label) {
-    return label
-        .replaceAll('_', ' ')
-        .replaceAll('Tomato ', '')
-        .trim();
-  }
+class _ActivityGroup {
+  final String key; // 'water' | 'fertilize' | 'mist' | 'scan'
+  final List<ActivityEvent> events; // newest-first
+  const _ActivityGroup({required this.key, required this.events});
+}
+
+class _Style {
+  final Color color;
+  final IconData icon;
+  const _Style({required this.color, required this.icon});
+}
+
+class _LandingSkeleton extends StatelessWidget {
+  const _LandingSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan History'),
-        automaticallyImplyLeading: false,
-      ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
-          : _scans.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.history_rounded,
-                        size: 64,
-                        color: AppColors.textMuted,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No scans yet',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Your scan history will appear here',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadHistory,
-                  color: AppColors.primary,
-                  backgroundColor: AppColors.surface,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(24),
-                    itemCount: _scans.length,
-                    itemBuilder: (context, index) {
-                      final scan = _scans[index];
-                      final isHealthy = scan.confirmedDisease
-                              ?.toLowerCase()
-                              .contains('healthy') ==
-                          true;
-                      final isPending = scan.confirmedDisease == null;
-
-                      return Dismissible(
-                        key: Key(scan.id.toString()),
-                        direction: DismissDirection.endToStart,
-                        background: Container(
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20),
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            Icons.delete_outline_rounded,
-                            color: AppColors.error,
-                          ),
-                        ),
-                        confirmDismiss: (direction) async {
-                          await _deleteScan(scan.id);
-                          return false;
-                        },
-                        child: GestureDetector(
-                          onTap: () => context.push('/result/${scan.id}'),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border:
-                                  Border.all(color: AppColors.cardBorder),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: AppColors.cardShadow,
-                                  blurRadius: 12,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: isPending
-                                        ? AppColors.textMuted.withValues(alpha: 0.15)
-                                        : isHealthy
-                                            ? AppColors.success
-                                                .withValues(alpha: 0.15)
-                                            : AppColors.amber
-                                                .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    isPending
-                                        ? Icons.hourglass_empty_rounded
-                                        : isHealthy
-                                            ? Icons.favorite_rounded
-                                            : Icons.warning_amber_rounded,
-                                    color: isPending
-                                        ? AppColors.textMuted
-                                        : isHealthy
-                                            ? AppColors.success
-                                            : AppColors.amber,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        scan.confirmedDisease != null
-                                            ? _formatLabel(
-                                                scan.confirmedDisease!)
-                                            : 'Pending confirmation',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _formatDate(scan.createdAt),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: AppColors.textMuted,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      children: [
+        const SkeletonBox(width: 80, height: 14, radius: 6),
+        const SizedBox(height: 16),
+        for (int i = 0; i < 4; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Row(
+              children: const [
+                SkeletonBox(width: 28, height: 28, radius: 14),
+                SizedBox(width: 12),
+                Expanded(child: SkeletonBox(height: 56, radius: 14)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
