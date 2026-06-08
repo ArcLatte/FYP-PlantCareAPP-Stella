@@ -3,9 +3,13 @@ import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 
 /// Scaffold wrapper rendered by `StatefulShellRoute.indexedStack` in
-/// `core/router.dart`. Hosts the persistent bottom navigation across the
-/// four main tabs (Home, Tasks, History, Profile) and includes a Scan cell
-/// that pushes a modal route over the shell.
+/// `core/router.dart`. Hosts the persistent **floating pill bar** for the
+/// four main tabs (Home, Tasks, History, Profile) plus a Scan cell that
+/// pushes a modal route over the shell.
+///
+/// Visual: a rounded surface bar floats above the bottom safe-area with
+/// horizontal margin. Each cell shows icon-above-label; the active cell
+/// just changes color (primary green) — no expansion.
 class AppShellScaffold extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
 
@@ -42,21 +46,39 @@ class AppShellScaffold extends StatelessWidget {
     ),
   ];
 
+  static const _TabSpec _scanSpec = _TabSpec(
+    branchIndex: -1,
+    label: 'Scan',
+    inactiveIcon: Icons.document_scanner_outlined,
+    activeIcon: Icons.document_scanner_rounded,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Body extends behind the floating pill so screens fill the full height.
+      extendBody: true,
       body: navigationShell,
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(
-            top: BorderSide(color: AppColors.cardBorder),
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
             height: 64,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(40),
+              border: Border.all(color: AppColors.cardBorder),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.cardShadow,
+                  blurRadius: 18,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
             child: Row(
               children: [
                 _NavCell(
@@ -69,15 +91,8 @@ class AppShellScaffold extends StatelessWidget {
                   selected: navigationShell.currentIndex == 1,
                   onTap: () => _goBranch(1),
                 ),
-                // Scan is centred between the two halves. Never marked
-                // active because it isn't a shell branch.
                 _NavCell(
-                  spec: const _TabSpec(
-                    branchIndex: -1,
-                    label: 'Scan',
-                    inactiveIcon: Icons.document_scanner_outlined,
-                    activeIcon: Icons.document_scanner_rounded,
-                  ),
+                  spec: _scanSpec,
                   selected: false,
                   onTap: () => context.push('/scan'),
                 ),
@@ -123,6 +138,8 @@ class _TabSpec {
   });
 }
 
+/// A single cell in the pill bar. Icon above label, equal width regardless
+/// of selection. Active state changes color only (primary green).
 class _NavCell extends StatelessWidget {
   final _TabSpec spec;
   final bool selected;
@@ -139,12 +156,13 @@ class _NavCell extends StatelessWidget {
     final color = selected ? AppColors.primary : AppColors.textMuted;
     final icon = selected ? spec.activeIcon : spec.inactiveIcon;
     return Expanded(
-      child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 24),
+            Icon(icon, color: color, size: 22),
             const SizedBox(height: 2),
             Text(
               spec.label,

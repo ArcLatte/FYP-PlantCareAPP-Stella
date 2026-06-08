@@ -1,6 +1,4 @@
 class AppConstants {
-  // Change this to your machine's local IP when testing on physical device
-  // For emulator, 10.0.2.2 maps to your PC's localhost
   static const String baseUrl = 'http://10.0.2.2:8000/api';
 
   // Root host (no /api) — used for absolute media URLs returned by Django.
@@ -33,8 +31,7 @@ class AppConstants {
   static const String lastLatKey = 'last_lat';
   static const String lastLonKey = 'last_lon';
 
-  // OpenWeather — paste your key as the default, OR override with
-  // --dart-define=OPENWEATHER_KEY=...
+
   static const String openWeatherApiKey = String.fromEnvironment(
     'OPENWEATHER_KEY',
     defaultValue: '3a79944bda3285d599d9f480a168878d',
