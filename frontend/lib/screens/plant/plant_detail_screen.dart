@@ -28,6 +28,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   List<ScanResult> _scans = [];
   bool _isLoading = true;
   bool _isWatering = false;
+  bool _isFertilizing = false;
+  bool _isMisting = false;
 
   Future<void> _waterNow() async {
     if (_plant == null || _isWatering) return;
@@ -44,6 +46,38 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _isWatering = false);
+    }
+  }
+
+  Future<void> _fertilizeNow() async {
+    if (_plant == null || _isFertilizing) return;
+    setState(() => _isFertilizing = true);
+    try {
+      final updated = await ApiService.fertilizePlant(_plant!.id);
+      if (!mounted) return;
+      setState(() => _plant = updated);
+      AppSnackBar.success(context, '${updated.name} fertilized');
+      XpToast.flush(context);
+    } catch (e) {
+      if (mounted) AppSnackBar.error(context, 'Failed to fertilize: $e');
+    } finally {
+      if (mounted) setState(() => _isFertilizing = false);
+    }
+  }
+
+  Future<void> _mistNow() async {
+    if (_plant == null || _isMisting) return;
+    setState(() => _isMisting = true);
+    try {
+      final updated = await ApiService.mistPlant(_plant!.id);
+      if (!mounted) return;
+      setState(() => _plant = updated);
+      AppSnackBar.success(context, '${updated.name} misted');
+      XpToast.flush(context);
+    } catch (e) {
+      if (mounted) AppSnackBar.error(context, 'Failed to mist: $e');
+    } finally {
+      if (mounted) setState(() => _isMisting = false);
     }
   }
 
@@ -128,6 +162,14 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     if (days == 0) return 'Today';
     if (days < 0) return 'Overdue ${-days}d';
     return 'in ${days}d';
+  }
+
+  /// "Due today" / "Due in 3d" / "Overdue 2d" for the care action rows.
+  String _careDueLabel(int? days) {
+    if (days == null) return '';
+    if (days == 0) return 'Due today';
+    if (days < 0) return 'Overdue ${-days}d';
+    return 'Due in ${days}d';
   }
 
   /// "Planted today" / "12 days ago" / "—" from createdAt string.
@@ -296,6 +338,46 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                           ),
                         ),
                       ),
+
+                      // 2b. Fertilize / mist quick actions — only when the
+                      // species actually has those schedules. Watering stays
+                      // in the pinned bottom bar as the primary action.
+                      if (_plant!.daysUntilFertilizer != null ||
+                          _plant!.daysUntilMisting != null)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                            child: Column(
+                              children: [
+                                if (_plant!.daysUntilFertilizer != null)
+                                  _CareActionRow(
+                                    icon: Icons.compost_rounded,
+                                    color: AppColors.amber,
+                                    label: 'Fertilize',
+                                    due: _careDueLabel(
+                                        _plant!.daysUntilFertilizer),
+                                    overdue:
+                                        (_plant!.daysUntilFertilizer ?? 1) <= 0,
+                                    busy: _isFertilizing,
+                                    onLog: _fertilizeNow,
+                                  ),
+                                if (_plant!.daysUntilFertilizer != null &&
+                                    _plant!.daysUntilMisting != null)
+                                  const SizedBox(height: 10),
+                                if (_plant!.daysUntilMisting != null)
+                                  _CareActionRow(
+                                    icon: Icons.cloud_rounded,
+                                    color: _kMistColor,
+                                    label: 'Mist',
+                                    due: _careDueLabel(_plant!.daysUntilMisting),
+                                    overdue: (_plant!.daysUntilMisting ?? 1) <= 0,
+                                    busy: _isMisting,
+                                    onLog: _mistNow,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
 
                       // 3. Species care cards
                       if (_buildCareTips(_plant!).isNotEmpty)
@@ -711,6 +793,106 @@ class _HealthChip extends StatelessWidget {
   }
 }
 
+/// Quick-log row for fertilize/mist: tinted icon, due status, "Log" button.
+class _CareActionRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String due;
+  final bool overdue;
+  final bool busy;
+  final VoidCallback onLog;
+  const _CareActionRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.due,
+    required this.overdue,
+    required this.busy,
+    required this.onLog,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  due,
+                  style: TextStyle(
+                    color: overdue ? AppColors.amber : AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight:
+                        overdue ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 36,
+            child: ElevatedButton(
+              onPressed: busy ? null : onLog,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: color.withValues(alpha: 0.6),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              child: busy
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Log'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One cell in the 2×2 status grid. Tinted icon tile + label/value column.
 class _StatTile extends StatelessWidget {
   final IconData icon;
@@ -789,6 +971,9 @@ class _PlantPhoto extends StatelessWidget {
             ? CachedNetworkImage(
                 imageUrl: photoUrl!,
                 fit: BoxFit.cover,
+                // Hero spans the screen width; cap decode size well under
+                // full camera resolution.
+                memCacheWidth: 900,
                 placeholder: (_, _) => const SkeletonBox(radius: 0),
                 errorWidget: (_, _, _) => const _PhotoPlaceholder(),
               )

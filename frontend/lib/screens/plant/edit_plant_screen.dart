@@ -3,11 +3,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/photo_picker_sheet.dart';
 import '../../widgets/skeleton.dart';
 
 const _kAddNewSentinel = '__add_new_location__';
@@ -36,7 +36,6 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
   final _nameController = TextEditingController();
   final _notesController = TextEditingController();
   final _freqController = TextEditingController();
-  final ImagePicker _picker = ImagePicker();
 
   Plant? _plant;
   List<Map<String, dynamic>> _species = [];
@@ -186,85 +185,17 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
     }
   }
 
-  Future<void> _pickPhoto(ImageSource source) async {
-    try {
-      final picked = await _picker.pickImage(
-        source: source,
-        imageQuality: 85,
-        maxWidth: 1600,
-      );
-      if (picked == null) return;
-      if (!mounted) return;
-      setState(() => _newPhoto = File(picked.path));
-    } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Could not pick image: $e');
-    }
-  }
-
   Future<void> _showPhotoSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.divider,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const Icon(Icons.photo_camera_outlined,
-                    color: AppColors.primary),
-                title: const Text('Take photo',
-                    style: TextStyle(color: AppColors.textPrimary)),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _pickPhoto(ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined,
-                    color: AppColors.primary),
-                title: const Text('Choose from gallery',
-                    style: TextStyle(color: AppColors.textPrimary)),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _pickPhoto(ImageSource.gallery);
-                },
-              ),
-              if (_newPhoto != null || _plant?.photoUrl != null)
-                ListTile(
-                  leading: const Icon(Icons.delete_outline_rounded,
-                      color: AppColors.error),
-                  title: const Text('Remove selected photo',
-                      style: TextStyle(color: AppColors.error)),
-                  subtitle: const Text(
-                    'Cancels your pending change; the saved photo is kept until save.',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 11),
-                  ),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    setState(() => _newPhoto = null);
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final result =
+        await showPhotoPickerSheet(context, showClear: _newPhoto != null);
+    if (result == null || !mounted) return;
+    setState(() {
+      if (result.cleared) {
+        _newPhoto = null;
+      } else if (result.file != null) {
+        _newPhoto = result.file;
+      }
+    });
   }
 
   Future<void> _save() async {

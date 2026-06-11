@@ -14,6 +14,8 @@ class Achievement {
   final bool unlocked;
   final bool isPinned;
   final DateTime? unlockedAt;
+  final int? progressCurrent; // only present on locked achievements
+  final int? progressTarget;
 
   const Achievement({
     required this.code,
@@ -25,6 +27,8 @@ class Achievement {
     required this.unlocked,
     required this.isPinned,
     this.unlockedAt,
+    this.progressCurrent,
+    this.progressTarget,
   });
 
   factory Achievement.fromJson(Map<String, dynamic> json) {
@@ -41,7 +45,16 @@ class Achievement {
       unlocked: json['unlocked'] is bool ? json['unlocked'] as bool : true,
       isPinned: json['is_pinned'] == true,
       unlockedAt: (ts == null || ts.isEmpty) ? null : DateTime.tryParse(ts),
+      progressCurrent: (json['progress_current'] as num?)?.toInt(),
+      progressTarget: (json['progress_target'] as num?)?.toInt(),
     );
+  }
+
+  /// 0..1 fraction toward unlocking; null when no progress data.
+  double? get progressFraction {
+    final c = progressCurrent, t = progressTarget;
+    if (c == null || t == null || t <= 0) return null;
+    return (c / t).clamp(0.0, 1.0);
   }
 
   /// Tier-tinted accent color used for the badge background + level pip.
@@ -60,6 +73,48 @@ class Achievement {
   String get tierLabel {
     if (tier.isEmpty) return '';
     return tier[0].toUpperCase() + tier.substring(1);
+  }
+
+  // ─── Gacha rarity mapping ──────────────────────────────────
+  // bronze → ★★ Rare, silver → ★★★ Epic, gold → ★★★★ Legendary.
+  // Used by the medal-book achievements screen; tierColor stays in use for
+  // toasts and pinned tiles.
+
+  int get rarityStars {
+    switch (tier) {
+      case 'gold':
+        return 4;
+      case 'silver':
+        return 3;
+      case 'bronze':
+      default:
+        return 2;
+    }
+  }
+
+  String get rarityLabel {
+    switch (tier) {
+      case 'gold':
+        return 'Legendary';
+      case 'silver':
+        return 'Epic';
+      case 'bronze':
+      default:
+        return 'Rare';
+    }
+  }
+
+  /// Gacha-convention rarity color: Rare blue, Epic purple, Legendary gold.
+  Color get rarityColor {
+    switch (tier) {
+      case 'gold':
+        return const Color(0xFFE5A722);
+      case 'silver':
+        return const Color(0xFF9C6ADE);
+      case 'bronze':
+      default:
+        return const Color(0xFF5B8DEF);
+    }
   }
 
   /// Map the backend's icon-name string to an actual [IconData]. The set is
@@ -91,6 +146,30 @@ class Achievement {
         return Icons.biotech_rounded;
       case 'diversity_3':
         return Icons.diversity_3_rounded;
+      case 'hub':
+        return Icons.hub_rounded;
+      case 'forest':
+        return Icons.forest_rounded;
+      case 'waves':
+        return Icons.waves_rounded;
+      case 'cloud':
+        return Icons.cloud_rounded;
+      case 'air':
+        return Icons.air_rounded;
+      case 'grass':
+        return Icons.grass_rounded;
+      case 'bolt':
+        return Icons.bolt_rounded;
+      case 'military_tech':
+        return Icons.military_tech_rounded;
+      case 'radar':
+        return Icons.radar_rounded;
+      case 'health_and_safety':
+        return Icons.health_and_safety_rounded;
+      case 'trending_up':
+        return Icons.trending_up_rounded;
+      case 'rocket_launch':
+        return Icons.rocket_launch_rounded;
       default:
         return Icons.emoji_events_rounded;
     }

@@ -9,7 +9,7 @@ from .models import (
     CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location, CareLog,
     Achievement, UserAchievement,
 )
-from .achievements import check_achievements
+from .achievements import check_achievements, progress_snapshot, PROGRESS
 from .serializers import PlantSerializer, PlantSpeciesSerializer, LocationSerializer
 import torch
 import torchvision.transforms as transforms
@@ -537,8 +537,8 @@ def profile(request):
     })
 
 
-def _serialize_achievement(ach, user_view):
-    return {
+def _serialize_achievement(ach, user_view, snapshot=None):
+    data = {
         'code': ach.code,
         'name': ach.name,
         'description': ach.description,
@@ -549,6 +549,15 @@ def _serialize_achievement(ach, user_view):
         'unlocked_at': user_view.unlocked_at if user_view else None,
         'is_pinned': bool(user_view and user_view.is_pinned),
     }
+    # Progress toward locked achievements ("12/50"), when a snapshot of the
+    # user's counters is supplied and the code has a registered metric.
+    if snapshot is not None and user_view is None:
+        metric = PROGRESS.get(ach.code)
+        if metric is not None:
+            key, target = metric
+            data['progress_current'] = min(snapshot.get(key, 0), target)
+            data['progress_target'] = target
+    return data
 
 
 @api_view(['GET'])
@@ -558,8 +567,9 @@ def achievements_list(request):
         ua.achievement_id: ua
         for ua in UserAchievement.objects.filter(user=request.user)
     }
+    snapshot = progress_snapshot(request.user)
     data = [
-        _serialize_achievement(a, own.get(a.id))
+        _serialize_achievement(a, own.get(a.id), snapshot)
         for a in Achievement.objects.all()
     ]
     return Response(data)

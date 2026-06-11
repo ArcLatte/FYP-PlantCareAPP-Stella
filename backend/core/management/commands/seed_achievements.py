@@ -114,6 +114,112 @@ ACHIEVEMENTS = [
         tier=Achievement.Tier.SILVER,
         xp_reward=50,
     ),
+    dict(
+        code='species_master',
+        name='Species Master',
+        description='Own plants of 6 different species.',
+        icon='hub',
+        tier=Achievement.Tier.GOLD,
+        xp_reward=100,
+    ),
+
+    # ─── Growth, continued ──────────────────────────────────
+    dict(
+        code='grand_garden',
+        name='Grand Garden',
+        description='Grow your collection to 20 plants.',
+        icon='forest',
+        tier=Achievement.Tier.GOLD,
+        xp_reward=100,
+    ),
+
+    # ─── Care, continued ────────────────────────────────────
+    dict(
+        code='water_centurion',
+        name='Water Centurion',
+        description='Water plants 100 times.',
+        icon='waves',
+        tier=Achievement.Tier.GOLD,
+        xp_reward=100,
+    ),
+    dict(
+        code='first_mist',
+        name='Morning Dew',
+        description='Mist a plant for the first time.',
+        icon='cloud',
+        tier=Achievement.Tier.BRONZE,
+        xp_reward=25,
+    ),
+    dict(
+        code='mist_maestro',
+        name='Mist Maestro',
+        description='Mist plants 25 times.',
+        icon='air',
+        tier=Achievement.Tier.SILVER,
+        xp_reward=50,
+    ),
+    dict(
+        code='fertilizer_fanatic',
+        name='Fertilizer Fanatic',
+        description='Fertilize plants 20 times.',
+        icon='grass',
+        tier=Achievement.Tier.SILVER,
+        xp_reward=50,
+    ),
+
+    # ─── Streak, continued ──────────────────────────────────
+    dict(
+        code='streak_14',
+        name='Fortnight Force',
+        description='Keep a 14-day care streak going.',
+        icon='bolt',
+        tier=Achievement.Tier.SILVER,
+        xp_reward=50,
+    ),
+    dict(
+        code='streak_100',
+        name='Centurion Streak',
+        description='Hit a 100-day care streak. Immortal.',
+        icon='military_tech',
+        tier=Achievement.Tier.GOLD,
+        xp_reward=150,
+    ),
+
+    # ─── Scans, continued ───────────────────────────────────
+    dict(
+        code='scan_addict',
+        name='Lab Technician',
+        description='Run 10 plant disease scans.',
+        icon='radar',
+        tier=Achievement.Tier.SILVER,
+        xp_reward=50,
+    ),
+    dict(
+        code='clean_bill',
+        name='Clean Bill of Health',
+        description='Get 5 healthy scan results.',
+        icon='health_and_safety',
+        tier=Achievement.Tier.SILVER,
+        xp_reward=50,
+    ),
+
+    # ─── Levels ─────────────────────────────────────────────
+    dict(
+        code='level_5',
+        name='Sprouting Up',
+        description='Reach level 5.',
+        icon='trending_up',
+        tier=Achievement.Tier.BRONZE,
+        xp_reward=25,
+    ),
+    dict(
+        code='level_10',
+        name='Rising Gardener',
+        description='Reach level 10.',
+        icon='rocket_launch',
+        tier=Achievement.Tier.SILVER,
+        xp_reward=50,
+    ),
 ]
 
 

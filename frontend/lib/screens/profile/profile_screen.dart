@@ -6,6 +6,7 @@ import '../../models/user_profile.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/tier_frame.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -27,8 +28,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     // Load both endpoints independently so one failure can't hide the other.
-    // We always flip `_isLoading` off in a finally so the screen can't get
-    // wedged on the skeleton.
     UserProfile? profile;
     List<Achievement> pinned = const [];
     String? error;
@@ -63,6 +62,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) context.go('/login');
   }
 
+  Future<void> _openChangePassword() async {
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true, // keyboard-aware
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _ChangePasswordSheet(),
+    );
+    if (changed == true && mounted) {
+      // Backend revokes the token after a password change; route to login.
+      AppSnackBar.success(context, 'Password changed — please log in again');
+      context.go('/login');
+    }
+  }
+
   Future<void> _openAchievements() async {
     await context.push('/profile/achievements');
     _load();
@@ -84,34 +100,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 children: [
-                  if (_profile != null) _LevelCard(profile: _profile!),
-                  const SizedBox(height: 16),
-                  if (_profile != null) _StatsRow(profile: _profile!),
-                  const SizedBox(height: 24),
-                  _PinnedHeader(onTapSeeAll: _openAchievements),
+                  if (_profile != null) ...[
+                    _HeroCard(profile: _profile!),
+                    const SizedBox(height: 16),
+                    _StatsGrid(profile: _profile!),
+                    const SizedBox(height: 24),
+                  ],
+                  _SectionHeader(
+                    title: 'Medal showcase',
+                    actionLabel: 'Medal book',
+                    onAction: _openAchievements,
+                  ),
                   const SizedBox(height: 12),
-                  _PinnedRow(
+                  _ShowcaseRow(
                     pinned: _pinned,
                     onTapSlot: _openAchievements,
                   ),
-                  const SizedBox(height: 32),
-                  OutlinedButton.icon(
-                    onPressed: _logout,
-                    icon: const Icon(
-                      Icons.logout_rounded,
-                      color: AppColors.error,
-                    ),
-                    label: const Text(
-                      'Log out',
-                      style: TextStyle(color: AppColors.error),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 52),
-                      side: const BorderSide(color: AppColors.error),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+                  const SizedBox(height: 24),
+                  Text('Account', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  _AccountCard(
+                    email: _profile?.email ?? '',
+                    onChangePassword: _openChangePassword,
+                    onLogout: _logout,
                   ),
                 ],
               ),
@@ -120,12 +131,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _LevelCard extends StatelessWidget {
+/// Gradient identity card: framed avatar, name, tier pill, XP ring of
+/// progress toward the next level.
+class _HeroCard extends StatelessWidget {
   final UserProfile profile;
-  const _LevelCard({required this.profile});
+  const _HeroCard({required this.profile});
 
   @override
   Widget build(BuildContext context) {
+    final tierColor = TierFrame.tierColor(profile.tier);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -148,22 +162,24 @@ class _LevelCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: Colors.white24,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  profile.username.isEmpty
-                      ? '?'
-                      : profile.username[0].toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
+              TierFrame(
+                tier: profile.tier,
+                size: 84,
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Colors.white24,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    profile.username.isEmpty
+                        ? '?'
+                        : profile.username[0].toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
@@ -174,19 +190,45 @@ class _LevelCard extends StatelessWidget {
                   children: [
                     Text(
                       profile.username,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${profile.tier} · Lv. ${profile.level}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(height: 6),
+                    // Tier pill — dot tinted with the tier's frame color so
+                    // the label visually links to the avatar frame.
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: tierColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${profile.tier} · Lv. ${profile.level}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -194,7 +236,7 @@ class _LevelCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
@@ -215,68 +257,133 @@ class _LevelCard extends StatelessWidget {
   }
 }
 
-class _StatsRow extends StatelessWidget {
+/// 2×2 grid of soft stat tiles — same tinted-icon language as the plant
+/// detail status card and the Tasks screen.
+class _StatsGrid extends StatelessWidget {
   final UserProfile profile;
-  const _StatsRow({required this.profile});
+  const _StatsGrid({required this.profile});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _StatChip(
-            icon: Icons.local_fire_department_rounded,
-            iconColor: AppColors.amber,
-            label: '${profile.currentStreak}-day streak',
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _StatTile(
+                icon: Icons.local_fire_department_rounded,
+                color: AppColors.amber,
+                label: 'CURRENT STREAK',
+                value: '${profile.currentStreak} days',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatTile(
+                icon: Icons.bolt_rounded,
+                color: const Color(0xFF4F9FD9),
+                label: 'LONGEST STREAK',
+                value: '${profile.longestStreak} days',
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatChip(
-            icon: Icons.emoji_events_rounded,
-            iconColor: AppColors.primary,
-            label:
-                '${profile.achievementsUnlocked} / ${profile.achievementsTotal} badges',
-          ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _StatTile(
+                icon: Icons.emoji_events_rounded,
+                color: const Color(0xFFE5A722),
+                label: 'MEDALS',
+                value:
+                    '${profile.achievementsUnlocked} / ${profile.achievementsTotal}',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatTile(
+                icon: Icons.auto_awesome_rounded,
+                color: AppColors.primary,
+                label: 'TOTAL XP',
+                value: '${profile.xp}',
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _StatChip extends StatelessWidget {
+class _StatTile extends StatelessWidget {
   final IconData icon;
-  final Color iconColor;
+  final Color color;
   final String label;
-  const _StatChip({
+  final String value;
+  const _StatTile({
     required this.icon,
-    required this.iconColor,
+    required this.color,
     required this.label,
+    required this.value,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(icon, color: iconColor, size: 20),
-          const SizedBox(width: 8),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 21),
+          ),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -285,33 +392,36 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-class _PinnedHeader extends StatelessWidget {
-  final VoidCallback onTapSeeAll;
-  const _PinnedHeader({required this.onTapSeeAll});
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String actionLabel;
+  final VoidCallback onAction;
+  const _SectionHeader({
+    required this.title,
+    required this.actionLabel,
+    required this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          'Pinned achievements',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
         GestureDetector(
-          onTap: onTapSeeAll,
-          child: const Row(
+          onTap: onAction,
+          child: Row(
             children: [
               Text(
-                'See all',
-                style: TextStyle(
+                actionLabel,
+                style: const TextStyle(
                   color: AppColors.primary,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),
               ),
-              SizedBox(width: 2),
-              Icon(
+              const SizedBox(width: 2),
+              const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.primary,
                 size: 20,
@@ -324,108 +434,431 @@ class _PinnedHeader extends StatelessWidget {
   }
 }
 
-class _PinnedRow extends StatelessWidget {
+/// The three pinned medals as gacha medallions on one soft shelf card —
+/// matching the medal book's gradient-and-glow style.
+class _ShowcaseRow extends StatelessWidget {
   static const int slotCount = 3;
   final List<Achievement> pinned;
   final VoidCallback onTapSlot;
 
-  const _PinnedRow({required this.pinned, required this.onTapSlot});
+  const _ShowcaseRow({required this.pinned, required this.onTapSlot});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (int i = 0; i < slotCount; i++) ...[
-          if (i > 0) const SizedBox(width: 12),
-          Expanded(
-            child: i < pinned.length
-                ? _PinnedTile(achievement: pinned[i], onTap: onTapSlot)
-                : _EmptySlot(onTap: onTapSlot),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 10,
+            offset: Offset(0, 2),
           ),
         ],
-      ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              for (int i = 0; i < slotCount; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: i < pinned.length
+                      ? _Medallion(
+                          achievement: pinned[i], onTap: onTapSlot)
+                      : _EmptyMedalSlot(onTap: onTapSlot),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Shelf line under the medals, echoing the medal book pages.
+          Container(
+            height: 3,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: AppColors.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _PinnedTile extends StatelessWidget {
+class _Medallion extends StatelessWidget {
   final Achievement achievement;
   final VoidCallback onTap;
-  const _PinnedTile({required this.achievement, required this.onTap});
+  const _Medallion({required this.achievement, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final color = achievement.tierColor;
+    final color = achievement.rarityColor;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.4),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 10,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.18),
-                shape: BoxShape.circle,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [color.withValues(alpha: 0.85), color],
               ),
-              child: Icon(achievement.iconData, color: color, size: 22),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              achievement.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.7),
+                width: 2.2,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ],
             ),
+            child:
+                Icon(achievement.iconData, color: Colors.white, size: 26),
+          ),
+          const SizedBox(height: 5),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (int i = 0; i < achievement.rarityStars; i++)
+                Icon(Icons.star_rounded, size: 11, color: color),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            achievement.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyMedalSlot extends StatelessWidget {
+  final VoidCallback onTap;
+  const _EmptyMedalSlot({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.background,
+              border: Border.all(color: AppColors.cardBorder, width: 1.6),
+            ),
+            child: const Icon(
+              Icons.add_rounded,
+              color: AppColors.textMuted,
+              size: 24,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Pin a medal',
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Soft account card: email, change password, and logout rows, replacing
+/// the loud full-width red button.
+class _AccountCard extends StatelessWidget {
+  final String email;
+  final VoidCallback onChangePassword;
+  final VoidCallback onLogout;
+  const _AccountCard({
+    required this.email,
+    required this.onChangePassword,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (email.isNotEmpty) ...[
+            _AccountRow(
+              icon: Icons.mail_outline_rounded,
+              iconColor: AppColors.primary,
+              label: email,
+              labelColor: AppColors.textPrimary,
+            ),
+            const Divider(
+                color: AppColors.divider, height: 1, indent: 56),
           ],
+          _AccountRow(
+            icon: Icons.lock_outline_rounded,
+            iconColor: AppColors.textSecondary,
+            label: 'Change password',
+            labelColor: AppColors.textPrimary,
+            onTap: onChangePassword,
+            trailing: const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textMuted,
+              size: 20,
+            ),
+          ),
+          const Divider(color: AppColors.divider, height: 1, indent: 56),
+          _AccountRow(
+            icon: Icons.logout_rounded,
+            iconColor: AppColors.error,
+            label: 'Log out',
+            labelColor: AppColors.error,
+            onTap: onLogout,
+            trailing: const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textMuted,
+              size: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Old/new/confirm password form. Pops `true` after a successful change so
+/// the caller can route to login (the backend revokes the token).
+class _ChangePasswordSheet extends StatefulWidget {
+  const _ChangePasswordSheet();
+
+  @override
+  State<_ChangePasswordSheet> createState() => _ChangePasswordSheetState();
+}
+
+class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _oldController = TextEditingController();
+  final _newController = TextEditingController();
+  final _confirmController = TextEditingController();
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _oldController.dispose();
+    _newController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      await ApiService.changePassword(
+        _oldController.text,
+        _newController.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _error = e.toString().replaceAll('Exception: ', '');
+        });
+      }
+    }
+  }
+
+  InputDecoration _decoration(String hint, IconData icon) =>
+      InputDecoration(hintText: hint, prefixIcon: Icon(icon));
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      // Lift above the keyboard.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Change password',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                if (_error != null) ...[
+                  Text(
+                    _error!,
+                    style: const TextStyle(
+                        color: AppColors.error, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: _oldController,
+                  obscureText: true,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: _decoration(
+                      'Current password', Icons.lock_outline_rounded),
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Enter your current password'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _newController,
+                  obscureText: true,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: _decoration(
+                      'New password', Icons.lock_rounded),
+                  validator: (v) => v == null || v.length < 8
+                      ? 'At least 8 characters'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _confirmController,
+                  obscureText: true,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: _decoration(
+                      'Confirm new password', Icons.lock_rounded),
+                  validator: (v) => v != _newController.text
+                      ? 'Passwords don\'t match'
+                      : null,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _isSaving ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Change password'),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _EmptySlot extends StatelessWidget {
-  final VoidCallback onTap;
-  const _EmptySlot({required this.onTap});
+class _AccountRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color labelColor;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  const _AccountRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.labelColor,
+    this.onTap,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      child: Container(
-        height: 104,
-        decoration: BoxDecoration(
-          color: AppColors.surface.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: AppColors.cardBorder,
-            style: BorderStyle.solid,
-          ),
-        ),
-        child: const Center(
-          child: Icon(
-            Icons.add_rounded,
-            color: AppColors.textMuted,
-            size: 28,
-          ),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ?trailing,
+          ],
         ),
       ),
     );
@@ -441,13 +874,31 @@ class _ProfileSkeleton extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: const [
-        SkeletonBox(height: 132, radius: 20),
+        SkeletonBox(height: 170, radius: 20),
         SizedBox(height: 16),
-        SkeletonBox(height: 50, radius: 14),
-        SizedBox(height: 24),
-        SkeletonBox(width: 200, height: 22, radius: 8),
+        Row(
+          children: [
+            Expanded(child: SkeletonBox(height: 68, radius: 16)),
+            SizedBox(width: 12),
+            Expanded(child: SkeletonBox(height: 68, radius: 16)),
+          ],
+        ),
         SizedBox(height: 12),
-        SkeletonBox(height: 104, radius: 14),
+        Row(
+          children: [
+            Expanded(child: SkeletonBox(height: 68, radius: 16)),
+            SizedBox(width: 12),
+            Expanded(child: SkeletonBox(height: 68, radius: 16)),
+          ],
+        ),
+        SizedBox(height: 24),
+        SkeletonBox(width: 180, height: 22, radius: 8),
+        SizedBox(height: 12),
+        SkeletonBox(height: 130, radius: 16),
+        SizedBox(height: 24),
+        SkeletonBox(width: 120, height: 22, radius: 8),
+        SizedBox(height: 12),
+        SkeletonBox(height: 110, radius: 16),
       ],
     );
   }

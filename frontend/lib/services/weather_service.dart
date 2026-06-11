@@ -1,4 +1,3 @@
-// ignore_for_file: avoid_print
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -72,35 +71,6 @@ class Weather {
     }
   }
 
-  /// Lottie animation asset matching the condition, with day/night variants
-  /// for clear and lightly-clouded skies. The UI falls back to [icon] when
-  /// the file isn't present yet (see the home weather header).
-  String get animationAsset {
-    const base = 'assets/lottie/weather/';
-    final group = iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
-    final isNight = iconCode.endsWith('n');
-    switch (group) {
-      case '01':
-        return '$base${isNight ? 'clear_night' : 'sunny'}.json';
-      case '02':
-        return '$base${isNight ? 'partly_cloudy_night' : 'partly_cloudy'}.json';
-      case '03':
-      case '04':
-        return '${base}cloudy.json';
-      case '09':
-      case '10':
-        return '${base}rain.json';
-      case '11':
-        return '${base}thunder.json';
-      case '13':
-        return '${base}snow.json';
-      case '50':
-        return '${base}fog.json';
-      default:
-        return '${base}cloudy.json';
-    }
-  }
-
   String get uvLevel {
     final u = uv;
     if (u == null) return '—';
@@ -122,17 +92,14 @@ class WeatherService {
     double lon, {
     bool forceRefresh = false,
   }) async {
-    print('[WX] getWeather lat=$lat lon=$lon forceRefresh=$forceRefresh');
     if (!forceRefresh) {
       final cached = await _readCache();
       if (cached != null) {
-        print('[WX] returning cached (age OK): ${cached.cityName} ${cached.tempDisplay}');
         return cached;
       }
     }
 
     if (AppConstants.openWeatherApiKey.isEmpty) {
-      print('[WX] no API key configured — returning stale cache if any');
       return _readCache(ignoreAge: true);
     }
 
@@ -142,7 +109,6 @@ class WeatherService {
         '?lat=$lat&lon=$lon&units=metric'
         '&appid=${AppConstants.openWeatherApiKey}',
       );
-      print('[WX] GET $currentUri');
       final uvUri = Uri.parse(
         'https://api.openweathermap.org/data/2.5/uvi'
         '?lat=$lat&lon=$lon'
@@ -150,7 +116,6 @@ class WeatherService {
       );
 
       final currentResp = await http.get(currentUri);
-      print('[WX] current status=${currentResp.statusCode} body=${currentResp.body.substring(0, currentResp.body.length > 200 ? 200 : currentResp.body.length)}');
       if (currentResp.statusCode != 200) {
         return _readCache(ignoreAge: true);
       }

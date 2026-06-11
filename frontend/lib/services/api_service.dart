@@ -48,6 +48,21 @@ class ApiService {
     };
   }
 
+  /// Authed GET with expired-session handling: a 401 clears the stored
+  /// credentials (so the router guard bounces to /login on the next
+  /// navigation) and surfaces a friendly error instead of a raw status.
+  static Future<http.Response> _authGet(String url) async {
+    final headers = await _authHeaders();
+    final response = await http.get(Uri.parse(url), headers: headers);
+    if (response.statusCode == 401) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(AppConstants.tokenKey);
+      await prefs.remove(AppConstants.usernameKey);
+      throw Exception('Session expired — please log in again');
+    }
+    return response;
+  }
+
   // ─── Auth ───────────────────────────────────────────────────
 
   static Future<User> login(String username, String password) async {
@@ -110,11 +125,7 @@ class ApiService {
   // ─── Species ────────────────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getSpecies() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.speciesUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.speciesUrl);
     if (response.statusCode == 200) {
       return List<Map<String, dynamic>>.from(jsonDecode(response.body));
     }
@@ -124,11 +135,7 @@ class ApiService {
   // ─── Locations ──────────────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getLocations() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.locationsUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.locationsUrl);
     if (response.statusCode == 200) {
       return List<Map<String, dynamic>>.from(jsonDecode(response.body));
     }
@@ -162,11 +169,7 @@ class ApiService {
   // ─── Plants ─────────────────────────────────────────────────
 
   static Future<List<Plant>> getPlants() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.plantsUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.plantsUrl);
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((p) => Plant.fromJson(p))
@@ -176,11 +179,7 @@ class ApiService {
   }
 
   static Future<Plant> getPlant(int id) async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse('${AppConstants.plantsUrl}$id/'),
-      headers: headers,
-    );
+    final response = await _authGet('${AppConstants.plantsUrl}$id/');
     if (response.statusCode == 200) {
       return Plant.fromJson(jsonDecode(response.body));
     }
@@ -193,6 +192,9 @@ class ApiService {
     String? notes, {
     String? location,
     int? wateringFreqDays,
+    DateTime? lastWatered,
+    DateTime? lastFertilized,
+    DateTime? lastMisted,
   }) async {
     final headers = await _authHeaders();
     final response = await http.post(
@@ -204,6 +206,9 @@ class ApiService {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (location != null && location.isNotEmpty) 'location': location,
         'watering_freq_days': ?wateringFreqDays,
+        'last_watered': ?lastWatered?.toIso8601String(),
+        'last_fertilized': ?lastFertilized?.toIso8601String(),
+        'last_misted': ?lastMisted?.toIso8601String(),
       }),
     );
     if (response.statusCode == 201) {
@@ -242,11 +247,7 @@ class ApiService {
   }
 
   static Future<Streak> getStreak() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.streakUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.streakUrl);
     if (response.statusCode == 200) {
       return Streak.fromJson(jsonDecode(response.body));
     }
@@ -254,11 +255,7 @@ class ApiService {
   }
 
   static Future<List<ActivityEvent>> getActivity() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.activityUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.activityUrl);
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((e) => ActivityEvent.fromJson(e))
@@ -270,11 +267,7 @@ class ApiService {
   // ─── Profile + achievements ────────────────────────────────
 
   static Future<UserProfile> getProfile() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.profileUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.profileUrl);
     if (response.statusCode == 200) {
       return UserProfile.fromJson(jsonDecode(response.body));
     }
@@ -282,11 +275,7 @@ class ApiService {
   }
 
   static Future<List<Achievement>> getAchievements() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.achievementsUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.achievementsUrl);
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((e) => Achievement.fromJson(e as Map<String, dynamic>))
@@ -424,11 +413,7 @@ class ApiService {
   }
 
   static Future<List<ScanResult>> getPlantScans(int plantId) async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse('${AppConstants.plantsUrl}$plantId/scans/'),
-      headers: headers,
-    );
+    final response = await _authGet('${AppConstants.plantsUrl}$plantId/scans/');
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((s) => ScanResult.fromJson(s))
@@ -438,11 +423,7 @@ class ApiService {
   }
 
   static Future<List<ScanResult>> getAllScans() async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse(AppConstants.scanHistoryUrl),
-      headers: headers,
-    );
+    final response = await _authGet(AppConstants.scanHistoryUrl);
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((s) => ScanResult.fromJson(s))
@@ -452,11 +433,7 @@ class ApiService {
   }
 
   static Future<ScanResult> getScan(int scanId) async {
-    final headers = await _authHeaders();
-    final response = await http.get(
-      Uri.parse('${AppConstants.scansUrl}$scanId/'),
-      headers: headers,
-    );
+    final response = await _authGet('${AppConstants.scansUrl}$scanId/');
     if (response.statusCode == 200) {
       return ScanResult.fromJson(jsonDecode(response.body));
     }
