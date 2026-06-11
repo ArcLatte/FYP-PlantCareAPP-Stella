@@ -301,6 +301,16 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Scaffold(
         extendBody: true,
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.only(bottom: 76),
+          child: FloatingActionButton(
+            onPressed: _openAddPlant,
+            backgroundColor: AppColors.primary,
+            elevation: 4,
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         body: RefreshIndicator(
           onRefresh: _onRefresh,
           color: AppColors.primary,
@@ -371,10 +381,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           childAspectRatio: 0.72,
                         ),
                     delegate: SliverChildBuilderDelegate((context, i) {
-                      // Last tile is the "Add Plant" placeholder.
-                      if (i == _filteredPlants.length) {
-                        return _AddPlantTile(onTap: _openAddPlant);
-                      }
                       return _PlantGridCard(
                         plant: _filteredPlants[i],
                         onTap: () async {
@@ -385,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                         onWater: () => _waterPlant(_filteredPlants[i]),
                       );
-                    }, childCount: _filteredPlants.length + 1),
+                    }, childCount: _filteredPlants.length),
                   ),
                 ),
             ],
@@ -717,7 +723,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           Text(
             _plants.isEmpty
-                ? 'Tap the + button to add your first plant.'
+                ? 'Tap the + button in the bottom right to add your first plant.'
                 : 'No plants match this filter. Try a different one.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
@@ -1107,93 +1113,6 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-class _AddPlantTile extends StatelessWidget {
-  final VoidCallback onTap;
-  const _AddPlantTile({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.surface.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: CustomPaint(
-          painter: _DashedBorderPainter(
-            color: AppColors.textMuted,
-            radius: 18,
-            strokeWidth: 1.4,
-            dash: 6,
-            gap: 4,
-          ),
-          child: Center(
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.add_rounded,
-                color: AppColors.primary,
-                size: 28,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  final Color color;
-  final double radius;
-  final double strokeWidth;
-  final double dash;
-  final double gap;
-
-  _DashedBorderPainter({
-    required this.color,
-    required this.radius,
-    required this.strokeWidth,
-    required this.dash,
-    required this.gap,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
-    final rect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      Radius.circular(radius),
-    );
-    final path = Path()..addRRect(rect);
-    final metrics = path.computeMetrics();
-    for (final m in metrics) {
-      double distance = 0;
-      while (distance < m.length) {
-        final next = (distance + dash).clamp(0, m.length);
-        canvas.drawPath(m.extractPath(distance, next.toDouble()), paint);
-        distance = next + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedBorderPainter old) =>
-      old.color != color ||
-      old.radius != radius ||
-      old.strokeWidth != strokeWidth ||
-      old.dash != dash ||
-      old.gap != gap;
-}
 
 class _ActionIcon extends StatelessWidget {
   final IconData icon;

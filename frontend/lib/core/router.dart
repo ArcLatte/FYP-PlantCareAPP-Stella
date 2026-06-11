@@ -5,6 +5,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/plant/add_plant_screen.dart';
+import '../screens/plant/edit_plant_screen.dart';
 import '../screens/plant/plant_detail_screen.dart';
 import '../screens/scan/scan_screen.dart';
 import '../screens/scan/result_screen.dart';
@@ -49,6 +50,13 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final plantId = int.parse(state.pathParameters['id']!);
         return PlantDetailScreen(plantId: plantId);
+      },
+    ),
+    GoRoute(
+      path: '/plants/:id/edit',
+      builder: (context, state) {
+        final plantId = int.parse(state.pathParameters['id']!);
+        return EditPlantScreen(plantId: plantId);
       },
     ),
     GoRoute(

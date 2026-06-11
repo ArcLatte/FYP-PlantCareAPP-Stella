@@ -318,15 +318,54 @@ class ApiService {
     );
   }
 
+  /// Edit any subset of plant metadata. If [photo] is provided the request is
+  /// sent as multipart so the new image lands in the same write as the rest
+  /// of the changes; otherwise a JSON PUT is used.
   static Future<Plant> updatePlant(
-      int id, String name, String? notes) async {
+    int id, {
+    String? name,
+    String? notes,
+    String? location,
+    int? wateringFreqDays,
+    int? speciesId,
+    File? photo,
+  }) async {
+    final url = Uri.parse('${AppConstants.plantsUrl}$id/');
+
+    if (photo != null) {
+      final token = await _getToken();
+      final request = http.MultipartRequest('PUT', url);
+      request.headers['Authorization'] = 'Token $token';
+      if (name != null) request.fields['name'] = name;
+      if (notes != null) request.fields['notes'] = notes;
+      if (location != null) request.fields['location'] = location;
+      if (wateringFreqDays != null) {
+        request.fields['watering_freq_days'] = wateringFreqDays.toString();
+      }
+      if (speciesId != null) {
+        request.fields['species'] = speciesId.toString();
+      }
+      request.files.add(
+        await http.MultipartFile.fromPath('photo', photo.path),
+      );
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      if (response.statusCode == 200) {
+        return Plant.fromJson(jsonDecode(response.body));
+      }
+      throw Exception('Failed to update plant (status ${response.statusCode})');
+    }
+
     final headers = await _authHeaders();
     final response = await http.put(
-      Uri.parse('${AppConstants.plantsUrl}$id/'),
+      url,
       headers: headers,
       body: jsonEncode({
-        'name': name,
+        'name': ?name,
         'notes': ?notes,
+        'location': ?location,
+        'watering_freq_days': ?wateringFreqDays,
+        'species': ?speciesId,
       }),
     );
     if (response.statusCode == 200) {

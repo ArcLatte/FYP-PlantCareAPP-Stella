@@ -9,6 +9,11 @@ import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/xp_toast.dart';
 
+// Per-topic colors — mirror the palette used on the Tasks screen so the
+// profile feels cohesive with the rest of the app.
+const _kWaterColor = Color(0xFF4F9FD9);
+const _kMistColor = Color(0xFF26A69A);
+
 class PlantDetailScreen extends StatefulWidget {
   final int plantId;
 
@@ -117,6 +122,43 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     return label.replaceAll('_', ' ').replaceAll('Tomato ', '');
   }
 
+  /// "Today" / "in 3d" / "Overdue 2d" / "—" from days-until-water.
+  String _nextWateringLabel(int? days) {
+    if (days == null) return '—';
+    if (days == 0) return 'Today';
+    if (days < 0) return 'Overdue ${-days}d';
+    return 'in ${days}d';
+  }
+
+  /// "Planted today" / "12 days ago" / "—" from createdAt string.
+  String _ageLabel(String createdAt) {
+    final planted = DateTime.tryParse(createdAt);
+    if (planted == null) return '—';
+    final days = DateTime.now().difference(planted).inDays;
+    if (days <= 0) return 'Today';
+    if (days == 1) return 'Yesterday';
+    return '$days days ago';
+  }
+
+  /// Per-topic colour for the species care strip. Mirrors the Tasks screen
+  /// palette so water/mist/sun read the same wherever they appear.
+  Color _careCardColor(String label) {
+    switch (label) {
+      case 'WATER':
+        return _kWaterColor;
+      case 'SUNLIGHT':
+      case 'FERTILIZE':
+      case 'TEMP':
+        return AppColors.amber;
+      case 'MIST':
+        return _kMistColor;
+      case 'LOCATION':
+      case 'HARVEST':
+      default:
+        return AppColors.primary;
+    }
+  }
+
   /// Build the horizontal list of species care cards. Only cards with data
   /// are included, so plants whose species predates the knowledge base (or
   /// activities that don't apply, like misting for a tomato) are skipped.
@@ -125,54 +167,38 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     if (s == null) return const [];
     final cards = <Widget>[];
 
-    if (s.sunlightLabel.isNotEmpty) {
+    void add(IconData icon, String value, String label) {
       cards.add(_CareCard(
-        icon: Icons.wb_sunny_outlined,
-        value: s.sunlightLabel,
-        label: 'SUNLIGHT',
+        icon: icon,
+        value: value,
+        label: label,
+        color: _careCardColor(label),
       ));
+    }
+
+    if (s.sunlightLabel.isNotEmpty) {
+      add(Icons.wb_sunny_outlined, s.sunlightLabel, 'SUNLIGHT');
     }
     if (s.defaultWateringFreqDays != null) {
-      cards.add(_CareCard(
-        icon: Icons.water_drop_outlined,
-        value: 'Every ${s.defaultWateringFreqDays}d',
-        label: 'WATER',
-      ));
+      add(Icons.water_drop_outlined,
+          'Every ${s.defaultWateringFreqDays}d', 'WATER');
     }
     if (s.locationLabel.isNotEmpty) {
-      cards.add(_CareCard(
-        icon: Icons.home_outlined,
-        value: s.locationLabel,
-        label: 'LOCATION',
-      ));
+      add(Icons.home_outlined, s.locationLabel, 'LOCATION');
     }
     if (s.temperatureRange != null) {
-      cards.add(_CareCard(
-        icon: Icons.thermostat_outlined,
-        value: s.temperatureRange!,
-        label: 'TEMP',
-      ));
+      add(Icons.thermostat_outlined, s.temperatureRange!, 'TEMP');
     }
     if (s.defaultFertilizerFreqDays != null) {
-      cards.add(_CareCard(
-        icon: Icons.compost_outlined,
-        value: 'Every ${s.defaultFertilizerFreqDays}d',
-        label: 'FERTILIZE',
-      ));
+      add(Icons.compost_outlined,
+          'Every ${s.defaultFertilizerFreqDays}d', 'FERTILIZE');
     }
     if (s.defaultMistingFreqDays != null) {
-      cards.add(_CareCard(
-        icon: Icons.cloud_outlined,
-        value: 'Every ${s.defaultMistingFreqDays}d',
-        label: 'MIST',
-      ));
+      add(Icons.cloud_outlined,
+          'Every ${s.defaultMistingFreqDays}d', 'MIST');
     }
     if (s.daysToHarvest != null) {
-      cards.add(_CareCard(
-        icon: Icons.eco_outlined,
-        value: '~${s.daysToHarvest}d',
-        label: 'HARVEST',
-      ));
+      add(Icons.eco_outlined, '~${s.daysToHarvest}d', 'HARVEST');
     }
     return cards;
   }
@@ -187,10 +213,49 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           onPressed: () => context.pop(),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded,
-                color: AppColors.error),
-            onPressed: _deletePlant,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppColors.cardBorder),
+            ),
+            onSelected: (value) async {
+              switch (value) {
+                case 'edit':
+                  final changed =
+                      await context.push<bool>('/plants/${widget.plantId}/edit');
+                  if (changed == true && mounted) _loadData();
+                case 'delete':
+                  _deletePlant();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined,
+                        color: AppColors.textPrimary, size: 20),
+                    SizedBox(width: 12),
+                    Text('Edit plant',
+                        style: TextStyle(color: AppColors.textPrimary)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline_rounded,
+                        color: AppColors.error, size: 20),
+                    SizedBox(width: 12),
+                    Text('Delete plant',
+                        style: TextStyle(color: AppColors.error)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -206,7 +271,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   backgroundColor: AppColors.surface,
                   child: CustomScrollView(
                     slivers: [
-                      // Profile photo
+                      // 1. Hero photo
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -214,198 +279,69 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                         ),
                       ),
 
-                      // Species care cards
+                      // 2. Plant details (status bar)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                          child: _PlantDetailsCard(
+                            plant: _plant!,
+                            nextWatering:
+                                _nextWateringLabel(_plant!.daysUntilWater),
+                            age: _ageLabel(_plant!.createdAt),
+                            lastWatered: _plant!.lastWatered == null
+                                ? 'Never'
+                                : _formatDate(
+                                    _plant!.lastWatered!.toIso8601String()),
+                            added: _formatDate(_plant!.createdAt),
+                          ),
+                        ),
+                      ),
+
+                      // 3. Species care cards
                       if (_buildCareTips(_plant!).isNotEmpty)
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 16),
-                            child: SizedBox(
-                              height: 96,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 24),
-                                children: _buildCareTips(_plant!),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      // Plant info card
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                          child: Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.cardBorder),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: AppColors.cardShadow,
-                                  blurRadius: 12,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
+                            padding: const EdgeInsets.fromLTRB(24, 20, 0, 0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 56,
-                                      height: 56,
-                                      decoration: BoxDecoration(
-                                        color:
-                                            AppColors.primary.withValues(alpha: 0.15),
-                                        borderRadius:
-                                            BorderRadius.circular(14),
-                                      ),
-                                      child: const Icon(
-                                        Icons.eco_rounded,
-                                        color: AppColors.primary,
-                                        size: 28,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _plant!.name,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleLarge,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _plant!.species,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                const Divider(color: AppColors.divider),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _DetailStat(
-                                        icon: Icons.place_outlined,
-                                        label: 'LOCATION',
-                                        value: _plant!.location.isEmpty
-                                            ? '—'
-                                            : _plant!.location,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _DetailStat(
-                                        icon: Icons.water_drop_outlined,
-                                        label: 'WATER EVERY',
-                                        value:
-                                            '${_plant!.wateringFreqDays}d',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _plant!.lastWatered == null
-                                      ? 'Never watered'
-                                      : 'Last watered ${_formatDate(_plant!.lastWatered!.toIso8601String())}',
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 24),
+                                  child: Text('Plant care',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge),
                                 ),
                                 const SizedBox(height: 12),
                                 SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: _isWatering ? null : _waterNow,
-                                    icon: _isWatering
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Icon(Icons.water_drop_rounded),
-                                    label:
-                                        const Text('Water now'),
+                                  height: 96,
+                                  child: ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    padding:
+                                        const EdgeInsets.only(right: 12),
+                                    children: _buildCareTips(_plant!),
                                   ),
-                                ),
-                                if (_plant!.notes != null &&
-                                    _plant!.notes!.isNotEmpty) ...[
-                                  const SizedBox(height: 16),
-                                  const Divider(color: AppColors.divider),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Notes',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                            color: AppColors.textMuted,
-                                            fontWeight: FontWeight.w600),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _plant!.notes!,
-                                    style:
-                                        Theme.of(context).textTheme.bodyMedium,
-                                  ),
-                                ],
-                                const SizedBox(height: 16),
-                                const Divider(color: AppColors.divider),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Added ${_formatDate(_plant!.createdAt)}',
-                                  style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
 
-                      // Scan button
+                      // 4. Scan History
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                          child: ElevatedButton.icon(
-                            onPressed: () =>
-                                context.push('/scan/${widget.plantId}'),
-                            icon: const Icon(Icons.document_scanner_outlined),
-                            label: const Text('Scan This Plant'),
-                          ),
-                        ),
-                      ),
-
-                      // Scan history header
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
                           child: Text(
                             'Scan History',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ),
                       ),
-
-                      // Scan list
                       _scans.isEmpty
                           ? SliverToBoxAdapter(
                               child: Padding(
-                                padding: const EdgeInsets.all(24),
+                                padding: const EdgeInsets.fromLTRB(
+                                    24, 8, 24, 100),
                                 child: Center(
                                   child: Column(
                                     children: [
@@ -427,8 +363,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                               ),
                             )
                           : SliverPadding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 24),
+                              // Bottom padding clears the persistent action
+                              // bar so the last card isn't hidden behind it.
+                              padding: const EdgeInsets.fromLTRB(
+                                  24, 0, 24, 100),
                               sliver: SliverList(
                                 delegate: SliverChildBuilderDelegate(
                                   (context, index) {
@@ -528,6 +466,309 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                     ],
                   ),
                 ),
+      // 5. Persistent action bar — Scan on the left, Water on the right.
+      bottomNavigationBar: _plant == null
+          ? null
+          : SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(
+                    top: BorderSide(color: AppColors.cardBorder),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.push('/scan/${widget.plantId}'),
+                        icon: const Icon(Icons.document_scanner_rounded,
+                            color: AppColors.primary),
+                        label: const Text(
+                          'Scan',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          side: const BorderSide(
+                              color: AppColors.primary, width: 1.4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isWatering ? null : _waterNow,
+                        icon: _isWatering
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.water_drop_rounded),
+                        label: const Text('Water now'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _kWaterColor,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                              _kWaterColor.withValues(alpha: 0.6),
+                          disabledForegroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// Status card sitting under the hero photo. Shows identity (name + species),
+/// a health chip, and a 2×2 grid of per-plant stats: next watering, last
+/// watered, location, age.
+class _PlantDetailsCard extends StatelessWidget {
+  final Plant plant;
+  final String nextWatering;
+  final String age;
+  final String lastWatered;
+  final String added;
+
+  const _PlantDetailsCard({
+    required this.plant,
+    required this.nextWatering,
+    required this.age,
+    required this.lastWatered,
+    required this.added,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final health = plant.latestHealth;
+    final (healthLabel, healthColor) = switch (health) {
+      'healthy' => ('Healthy', AppColors.success),
+      'diseased' => ('Needs treatment', AppColors.amber),
+      _ => ('Unknown', AppColors.textMuted),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 12,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(plant.name,
+                        style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 4),
+                    Text(plant.species,
+                        style: Theme.of(context).textTheme.bodyMedium),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _HealthChip(label: healthLabel, color: healthColor),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(color: AppColors.divider, height: 1),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.water_drop_rounded,
+                  color: _kWaterColor,
+                  label: 'NEXT WATERING',
+                  value: nextWatering,
+                ),
+              ),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.event_rounded,
+                  color: _kWaterColor,
+                  label: 'LAST WATERED',
+                  value: lastWatered,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.place_rounded,
+                  color: AppColors.primary,
+                  label: 'LOCATION',
+                  value: plant.location.isEmpty ? '—' : plant.location,
+                ),
+              ),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.eco_rounded,
+                  color: AppColors.amber,
+                  label: 'PLANTED',
+                  value: age,
+                ),
+              ),
+            ],
+          ),
+          if (plant.notes != null && plant.notes!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Divider(color: AppColors.divider, height: 1),
+            const SizedBox(height: 12),
+            Text(
+              'NOTES',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(plant.notes!,
+                style: Theme.of(context).textTheme.bodyMedium),
+          ],
+          const SizedBox(height: 14),
+          Text('Added $added',
+              style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _HealthChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _HealthChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One cell in the 2×2 status grid. Tinted icon tile + label/value column.
+class _StatTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String value;
+
+  const _StatTile({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -586,10 +827,12 @@ class _CareCard extends StatelessWidget {
   final IconData icon;
   final String value;
   final String label;
+  final Color color;
   const _CareCard({
     required this.icon,
     required this.value,
     required this.label,
+    required this.color,
   });
 
   @override
@@ -616,10 +859,10 @@ class _CareCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
+              color: color.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: AppColors.primary, size: 18),
+            child: Icon(icon, color: color, size: 18),
           ),
           const Spacer(),
           Text(
@@ -648,53 +891,8 @@ class _CareCard extends StatelessWidget {
   }
 }
 
-class _DetailStat extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  const _DetailStat({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: AppColors.primary, size: 18),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.6,
-              ),
-            ),
-            Text(
-              value,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
 /// Skeleton scaffold rendered while the plant + scan history are being
-/// fetched. Mirrors the real layout: info card with hero shape, water-status
-/// row, and a couple of scan-history rows.
+/// fetched. Mirrors the new layout: photo → details card → care strip → list.
 class _PlantDetailSkeleton extends StatelessWidget {
   const _PlantDetailSkeleton();
 
@@ -702,11 +900,15 @@ class _PlantDetailSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Info card
+          const AspectRatio(
+            aspectRatio: 16 / 10,
+            child: SkeletonBox(radius: 20),
+          ),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -720,16 +922,20 @@ class _PlantDetailSkeleton extends StatelessWidget {
                 SkeletonBox(width: 180, height: 22, radius: 8),
                 SizedBox(height: 12),
                 SkeletonBox(width: 120, height: 14, radius: 6),
-                SizedBox(height: 24),
-                SkeletonBox(height: 180, radius: 14),
                 SizedBox(height: 20),
-                SkeletonBox(height: 48, radius: 12),
+                SkeletonBox(height: 44, radius: 10),
+                SizedBox(height: 12),
+                SkeletonBox(height: 44, radius: 10),
               ],
             ),
           ),
           const SizedBox(height: 24),
-          const SkeletonBox(width: 160, height: 18, radius: 6),
-          const SizedBox(height: 16),
+          const SkeletonBox(width: 120, height: 20, radius: 6),
+          const SizedBox(height: 12),
+          const SkeletonBox(height: 96, radius: 16),
+          const SizedBox(height: 24),
+          const SkeletonBox(width: 160, height: 20, radius: 6),
+          const SizedBox(height: 12),
           for (int i = 0; i < 2; i++) ...[
             const SkeletonBox(height: 72, radius: 14),
             const SizedBox(height: 12),
