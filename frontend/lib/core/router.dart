@@ -15,6 +15,7 @@ import '../screens/tasks/tasks_screen.dart';
 import '../screens/tasks/task_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/profile/achievements_screen.dart';
+import '../screens/profile/settings_screen.dart';
 import '../widgets/app_shell.dart';
 import '../core/constants.dart';
 
@@ -134,6 +135,10 @@ final GoRouter appRouter = GoRouter(
                 GoRoute(
                   path: 'achievements',
                   builder: (context, state) => const AchievementsScreen(),
+                ),
+                GoRoute(
+                  path: 'settings',
+                  builder: (context, state) => const SettingsScreen(),
                 ),
               ],
             ),

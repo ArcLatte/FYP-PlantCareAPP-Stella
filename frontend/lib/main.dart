@@ -29,7 +29,7 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
-      const BouncingScrollPhysics(
+      const _SoftBouncePhysics(
         parent: AlwaysScrollableScrollPhysics(),
       );
 
@@ -38,4 +38,22 @@ class AppScrollBehavior extends MaterialScrollBehavior {
   Widget buildOverscrollIndicator(
           BuildContext context, Widget child, ScrollableDetails details) =>
       child;
+}
+
+/// Bouncing physics with a softer, slightly overdamped settle spring so
+/// releasing an overscroll (e.g. pulling the home weather header down)
+/// glides back into place instead of snapping.
+class _SoftBouncePhysics extends BouncingScrollPhysics {
+  const _SoftBouncePhysics({super.parent});
+
+  @override
+  _SoftBouncePhysics applyTo(ScrollPhysics? ancestor) =>
+      _SoftBouncePhysics(parent: buildParent(ancestor));
+
+  @override
+  SpringDescription get spring => SpringDescription.withDampingRatio(
+        mass: 0.6,
+        stiffness: 120,
+        ratio: 1.1,
+      );
 }

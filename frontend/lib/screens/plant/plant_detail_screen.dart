@@ -866,6 +866,10 @@ class _CareActionRow extends StatelessWidget {
                 backgroundColor: color,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: color.withValues(alpha: 0.6),
+                // The app theme's ElevatedButton minimumSize is
+                // (infinity, 52); inside a Row that forces an infinite
+                // width and kills layout for the whole screen. Override.
+                minimumSize: const Size(64, 36),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),

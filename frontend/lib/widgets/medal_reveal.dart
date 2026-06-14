@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/achievement.dart';
+import '../models/medal_series.dart';
+import 'medal.dart';
 
 /// Full-screen gacha-style reveal for newly unlocked medals: dark scrim,
 /// rotating ray burst, medallion springing in with its rarity glow, stars
@@ -95,7 +97,8 @@ class _RevealOverlayState extends State<_RevealOverlay>
   @override
   Widget build(BuildContext context) {
     final a = widget.achievement;
-    final color = a.rarityColor;
+    final info = medalInfoFor(a);
+    final color = info.metal.color;
     return GestureDetector(
       onTap: _dismiss,
       behavior: HitTestBehavior.opaque,
@@ -138,33 +141,16 @@ class _RevealOverlayState extends State<_RevealOverlay>
                     ),
                     ScaleTransition(
                       scale: _medalScale,
-                      child: Container(
-                        width: 130,
-                        height: 130,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              color.withValues(alpha: 0.85),
-                              color,
-                            ],
-                          ),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            width: 3.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: color.withValues(alpha: 0.6),
-                              blurRadius: 36,
-                              spreadRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: Icon(a.iconData,
-                            color: Colors.white, size: 60),
+                      child: Medal(
+                        metal: info.metal,
+                        shape: info.shape,
+                        icon: a.iconData,
+                        level: info.level,
+                        maxLevel: info.maxLevel,
+                        size: 124,
+                        glow: true,
+                        // The reveal animates its own star row below.
+                        showStars: false,
                       ),
                     ),
                   ],
@@ -174,12 +160,16 @@ class _RevealOverlayState extends State<_RevealOverlay>
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (int i = 0; i < a.rarityStars; i++)
-                    ScaleTransition(
-                      scale: _starPop(i, a.rarityStars),
-                      child: Icon(Icons.star_rounded,
-                          size: 30, color: color),
-                    ),
+                  for (int i = 0; i < info.maxLevel; i++)
+                    if (i < info.level)
+                      ScaleTransition(
+                        scale: _starPop(i, info.level),
+                        child: Icon(Icons.star_rounded,
+                            size: 30, color: color),
+                      )
+                    else
+                      const Icon(Icons.star_outline_rounded,
+                          size: 30, color: Colors.white24),
                 ],
               ),
               const SizedBox(height: 12),
@@ -198,7 +188,9 @@ class _RevealOverlayState extends State<_RevealOverlay>
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${a.rarityLabel} · +${a.xpReward} XP',
+                      info.maxLevel > 1
+                          ? '${info.seriesName} · ${info.metal.label} · Lv ${info.level} · +${a.xpReward} XP'
+                          : '${info.metal.label} · +${a.xpReward} XP',
                       style: TextStyle(
                         color: color,
                         fontSize: 15,

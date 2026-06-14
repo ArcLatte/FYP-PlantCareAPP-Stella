@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../models/achievement.dart';
+import '../../models/medal_series.dart';
 import '../../models/user_profile.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/medal.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tier_frame.dart';
 
@@ -18,6 +20,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   UserProfile? _profile;
   List<Achievement> _pinned = [];
+  List<MedalSeries> _series = [];
   bool _isLoading = true;
 
   @override
@@ -36,9 +39,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       error = 'profile: $e';
     }
+    List<MedalSeries> series = const [];
     try {
       final all = await ApiService.getAchievements();
       pinned = all.where((a) => a.isPinned).toList();
+      series = MedalSeries.fromAchievements(all);
     } catch (e) {
       error = error == null ? 'achievements: $e' : '$error; achievements: $e';
     }
@@ -46,36 +51,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _profile = profile;
       _pinned = pinned;
+      _series = series;
       _isLoading = false;
     });
     if (error != null) {
       AppSnackBar.error(context, 'Profile load failed — $error');
-    }
-  }
-
-  Future<void> _logout() async {
-    try {
-      await ApiService.logout();
-    } catch (_) {
-      // Even if the server call fails, clear local creds below.
-    }
-    if (mounted) context.go('/login');
-  }
-
-  Future<void> _openChangePassword() async {
-    final changed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true, // keyboard-aware
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => const _ChangePasswordSheet(),
-    );
-    if (changed == true && mounted) {
-      // Backend revokes the token after a password change; route to login.
-      AppSnackBar.success(context, 'Password changed — please log in again');
-      context.go('/login');
     }
   }
 
@@ -90,6 +70,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const Text('Profile'),
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_rounded),
+            onPressed: () => context.push('/profile/settings'),
+          ),
+        ],
       ),
       body: _isLoading
           ? const _ProfileSkeleton()
@@ -114,15 +100,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                   _ShowcaseRow(
                     pinned: _pinned,
+                    series: _series,
                     onTapSlot: _openAchievements,
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Account', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  _AccountCard(
-                    email: _profile?.email ?? '',
-                    onChangePassword: _openChangePassword,
-                    onLogout: _logout,
                   ),
                 ],
               ),
@@ -434,14 +413,27 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// The three pinned medals as gacha medallions on one soft shelf card —
-/// matching the medal book's gradient-and-glow style.
+/// The three pinned medals on one soft shelf card, rendered with the
+/// ribboned [Medal] widget so they match the medal book.
 class _ShowcaseRow extends StatelessWidget {
   static const int slotCount = 3;
   final List<Achievement> pinned;
+  final List<MedalSeries> series;
   final VoidCallback onTapSlot;
 
-  const _ShowcaseRow({required this.pinned, required this.onTapSlot});
+  const _ShowcaseRow({
+    required this.pinned,
+    required this.series,
+    required this.onTapSlot,
+  });
+
+  /// The series a pinned achievement belongs to (for stars/metal display).
+  MedalSeries? _seriesFor(Achievement a) {
+    for (final s in series) {
+      if (s.levels.any((l) => l.code == a.code)) return s;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -462,13 +454,17 @@ class _ShowcaseRow extends StatelessWidget {
       child: Column(
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               for (int i = 0; i < slotCount; i++) ...[
                 if (i > 0) const SizedBox(width: 8),
                 Expanded(
                   child: i < pinned.length
-                      ? _Medallion(
-                          achievement: pinned[i], onTap: onTapSlot)
+                      ? _ShowcaseMedal(
+                          achievement: pinned[i],
+                          series: _seriesFor(pinned[i]),
+                          onTap: onTapSlot,
+                        )
                       : _EmptyMedalSlot(onTap: onTapSlot),
                 ),
               ],
@@ -490,55 +486,40 @@ class _ShowcaseRow extends StatelessWidget {
   }
 }
 
-class _Medallion extends StatelessWidget {
+class _ShowcaseMedal extends StatelessWidget {
   final Achievement achievement;
+  final MedalSeries? series;
   final VoidCallback onTap;
-  const _Medallion({required this.achievement, required this.onTap});
+  const _ShowcaseMedal({
+    required this.achievement,
+    required this.series,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final color = achievement.rarityColor;
+    final s = series;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [color.withValues(alpha: 0.85), color],
-              ),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.7),
-                width: 2.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child:
-                Icon(achievement.iconData, color: Colors.white, size: 26),
-          ),
-          const SizedBox(height: 5),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (int i = 0; i < achievement.rarityStars; i++)
-                Icon(Icons.star_rounded, size: 11, color: color),
-            ],
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: s != null
+                ? Medal.series(s, size: 56)
+                : Medal(
+                    metal: MedalMetal.bronze,
+                    icon: achievement.iconData,
+                    level: 1,
+                    maxLevel: 1,
+                    size: 56,
+                  ),
           ),
           const SizedBox(height: 2),
           Text(
-            achievement.name,
+            s?.name ?? achievement.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -589,277 +570,6 @@ class _EmptyMedalSlot extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Soft account card: email, change password, and logout rows, replacing
-/// the loud full-width red button.
-class _AccountCard extends StatelessWidget {
-  final String email;
-  final VoidCallback onChangePassword;
-  final VoidCallback onLogout;
-  const _AccountCard({
-    required this.email,
-    required this.onChangePassword,
-    required this.onLogout,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (email.isNotEmpty) ...[
-            _AccountRow(
-              icon: Icons.mail_outline_rounded,
-              iconColor: AppColors.primary,
-              label: email,
-              labelColor: AppColors.textPrimary,
-            ),
-            const Divider(
-                color: AppColors.divider, height: 1, indent: 56),
-          ],
-          _AccountRow(
-            icon: Icons.lock_outline_rounded,
-            iconColor: AppColors.textSecondary,
-            label: 'Change password',
-            labelColor: AppColors.textPrimary,
-            onTap: onChangePassword,
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textMuted,
-              size: 20,
-            ),
-          ),
-          const Divider(color: AppColors.divider, height: 1, indent: 56),
-          _AccountRow(
-            icon: Icons.logout_rounded,
-            iconColor: AppColors.error,
-            label: 'Log out',
-            labelColor: AppColors.error,
-            onTap: onLogout,
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textMuted,
-              size: 20,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Old/new/confirm password form. Pops `true` after a successful change so
-/// the caller can route to login (the backend revokes the token).
-class _ChangePasswordSheet extends StatefulWidget {
-  const _ChangePasswordSheet();
-
-  @override
-  State<_ChangePasswordSheet> createState() => _ChangePasswordSheetState();
-}
-
-class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
-  final _formKey = GlobalKey<FormState>();
-  final _oldController = TextEditingController();
-  final _newController = TextEditingController();
-  final _confirmController = TextEditingController();
-  bool _isSaving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _oldController.dispose();
-    _newController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() {
-      _isSaving = true;
-      _error = null;
-    });
-    try {
-      await ApiService.changePassword(
-        _oldController.text,
-        _newController.text,
-      );
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-          _error = e.toString().replaceAll('Exception: ', '');
-        });
-      }
-    }
-  }
-
-  InputDecoration _decoration(String hint, IconData icon) =>
-      InputDecoration(hintText: hint, prefixIcon: Icon(icon));
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      // Lift above the keyboard.
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.divider,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text('Change password',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 16),
-                if (_error != null) ...[
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                        color: AppColors.error, fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                TextFormField(
-                  controller: _oldController,
-                  obscureText: true,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: _decoration(
-                      'Current password', Icons.lock_outline_rounded),
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Enter your current password'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _newController,
-                  obscureText: true,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: _decoration(
-                      'New password', Icons.lock_rounded),
-                  validator: (v) => v == null || v.length < 8
-                      ? 'At least 8 characters'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _confirmController,
-                  obscureText: true,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: _decoration(
-                      'Confirm new password', Icons.lock_rounded),
-                  validator: (v) => v != _newController.text
-                      ? 'Passwords don\'t match'
-                      : null,
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _isSaving ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 52),
-                  ),
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Change password'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AccountRow extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final Color labelColor;
-  final VoidCallback? onTap;
-  final Widget? trailing;
-  const _AccountRow({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.labelColor,
-    this.onTap,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: iconColor, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: labelColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            ?trailing,
-          ],
-        ),
       ),
     );
   }
