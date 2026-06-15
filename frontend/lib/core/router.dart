@@ -9,6 +9,7 @@ import '../screens/plant/edit_plant_screen.dart';
 import '../screens/plant/plant_detail_screen.dart';
 import '../screens/scan/scan_screen.dart';
 import '../screens/scan/result_screen.dart';
+import '../screens/disease/disease_detail_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/history/history_detail_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
@@ -76,6 +77,16 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final scanId = int.parse(state.pathParameters['scanId']!);
         return ResultScreen(scanId: scanId);
+      },
+    ),
+    GoRoute(
+      path: '/disease/:label',
+      builder: (context, state) {
+        final label = Uri.decodeComponent(state.pathParameters['label']!);
+        // `?scanId=` puts the page in confirm mode (reached from a scan).
+        final scanIdRaw = state.uri.queryParameters['scanId'];
+        final scanId = scanIdRaw == null ? null : int.tryParse(scanIdRaw);
+        return DiseaseDetailScreen(label: label, scanId: scanId);
       },
     ),
     // Persistent shell: Home / Tasks / History / Profile each keep their

@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../models/user.dart';
 import '../models/plant.dart';
 import '../models/scan.dart';
+import '../models/disease.dart';
 import '../models/streak.dart';
 import '../models/activity.dart';
 import '../models/user_profile.dart';
@@ -446,5 +447,17 @@ class ApiService {
       Uri.parse('${AppConstants.scansUrl}$scanId/'),
       headers: headers,
     );
+  }
+
+  // ─── Disease knowledge base ─────────────────────────────────
+
+  static Future<Disease> getDisease(String label) async {
+    final response = await _authGet(
+      '${AppConstants.diseasesUrl}${Uri.encodeComponent(label)}/',
+    );
+    if (response.statusCode == 200) {
+      return Disease.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load disease');
   }
 }

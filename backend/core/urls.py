@@ -26,4 +26,5 @@ urlpatterns = [
     path('plants/<int:pk>/scans/', views.plant_scan_history),
     path('scans/<int:pk>/', views.scan_detail),
     path('scans/history/', views.all_scans),
+    path('diseases/<str:label>/', views.disease_detail),
 ]

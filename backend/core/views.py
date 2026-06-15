@@ -10,7 +10,10 @@ from .models import (
     Achievement, UserAchievement,
 )
 from .achievements import check_achievements, progress_snapshot, PROGRESS
-from .serializers import PlantSerializer, PlantSpeciesSerializer, LocationSerializer
+from .serializers import (
+    PlantSerializer, PlantSpeciesSerializer, LocationSerializer,
+    DiseaseSerializer,
+)
 import torch
 import torchvision.transforms as transforms
 from torchvision import models
@@ -374,6 +377,29 @@ def species_list(request):
     return Response(serializer.data)
 
 
+def _enrich_predictions(preds):
+    """Attach the disease display `name` + first reference `image` to each
+    top-N prediction so the scan result cards can show an example photo and a
+    friendly name without extra requests. Unknown labels are passed through."""
+    if not preds:
+        return preds
+    labels = [p.get('label') for p in preds if isinstance(p, dict)]
+    by_label = {d.label: d for d in Disease.objects.filter(label__in=labels)}
+    enriched = []
+    for p in preds:
+        if not isinstance(p, dict):
+            enriched.append(p)
+            continue
+        item = dict(p)
+        d = by_label.get(p.get('label'))
+        if d:
+            item['name'] = d.name
+            imgs = d.image_urls or []
+            item['image'] = imgs[0] if imgs else (d.image_url or None)
+        enriched.append(item)
+    return enriched
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def scan(request):
@@ -417,7 +443,8 @@ def scan(request):
 
     return Response({
         'scan_id': scan_result.id,
-        'top3': top3_predictions,
+        'image': request.build_absolute_uri(scan_result.image.url) if scan_result.image else None,
+        'top3': _enrich_predictions(top3_predictions),
         'predicted_label': top_label,
         'confidence': top_confidence,
         **xp,
@@ -444,9 +471,14 @@ def scan_confirm(request, pk):
 
     return Response({
         'scan_id': scan_result.id,
+        'image': request.build_absolute_uri(scan_result.image.url) if scan_result.image else None,
+        'top3': scan_result.top3_predictions,
+        'disease': disease.label,
+        'disease_name': disease.name,
         'confirmed_label': disease.label,
         'treatment': disease.treatment,
         'care_tips': disease.care_tips,
+        'created_at': scan_result.created_at,
     })
     
     
@@ -483,10 +515,13 @@ def scan_detail(request, pk):
         return Response({
             'scan_id': scan.id,
             'plant': scan.plant.name,
-            'top3': scan.top3_predictions,
+            'plant_id': scan.plant_id,
+            'image': request.build_absolute_uri(scan.image.url) if scan.image else None,
+            'top3': _enrich_predictions(scan.top3_predictions),
             'predicted_label': scan.top3_predictions[0]['label'] if scan.top3_predictions else None,
             'confidence': scan.confidence_score,
             'disease': scan.disease.label if scan.disease else None,
+            'disease_name': scan.disease.name if scan.disease else None,
             'treatment': scan.disease.treatment if scan.disease else None,
             'care_tips': scan.disease.care_tips if scan.disease else None,
             'created_at': scan.created_at,
@@ -512,6 +547,20 @@ def all_scans(request):
         for s in scans
     ]
     return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def disease_detail(request, label):
+    """Full knowledge-base entry for a disease, keyed by its model label.
+
+    Powers the in-app disease detail ("read more") page.
+    """
+    try:
+        disease = Disease.objects.get(label=label)
+    except Disease.DoesNotExist:
+        return Response({'error': 'Disease not found.'}, status=404)
+    return Response(DiseaseSerializer(disease).data)
 
 
 # ─── Gamification: profile + achievements ───────────────────────

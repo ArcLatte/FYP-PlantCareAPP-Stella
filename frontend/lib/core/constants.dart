@@ -23,6 +23,9 @@ class AppConstants {
   static const String scansUrl = '$baseUrl/scans/';
   static const String scanHistoryUrl = '$baseUrl/scans/history/';
 
+  // Disease knowledge base
+  static const String diseasesUrl = '$baseUrl/diseases/';
+
   // Shared preferences keys
   static const String tokenKey = 'auth_token';
   static const String usernameKey = 'username';

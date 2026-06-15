@@ -156,12 +156,137 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     return label.replaceAll('_', ' ').replaceAll('Tomato ', '');
   }
 
-  /// "Today" / "in 3d" / "Overdue 2d" / "—" from days-until-water.
-  String _nextWateringLabel(int? days) {
-    if (days == null) return '—';
-    if (days == 0) return 'Today';
-    if (days < 0) return 'Overdue ${-days}d';
-    return 'in ${days}d';
+  /// Plant-health section: shows the latest *confirmed* diagnosis with care
+  /// actions and a "Read more" link, a healthy state, or a prompt to scan.
+  Widget _buildHealthCard(BuildContext context) {
+    final disease = _plant!.latestDisease;
+
+    // No confirmed diagnosis yet → gentle prompt.
+    if (disease == null) {
+      final hasScans = _scans.isNotEmpty;
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBorder),
+          boxShadow: const [
+            BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 12,
+                offset: Offset(0, 2)),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.health_and_safety_outlined,
+                color: AppColors.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                hasScans
+                    ? 'Confirm a diagnosis on a scan below to see care tips.'
+                    : 'Scan this plant to check its health.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final healthy = disease.isHealthy;
+    final accent = healthy ? AppColors.success : AppColors.amber;
+    final careText = healthy
+        ? (disease.careTips.isNotEmpty
+            ? disease.careTips
+            : 'No issues detected. Keep up your regular care routine.')
+        : (disease.treatment.isNotEmpty
+            ? disease.treatment
+            : disease.careTips);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  healthy
+                      ? Icons.favorite_rounded
+                      : Icons.warning_amber_rounded,
+                  color: accent,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      healthy ? 'Looks healthy' : 'Needs attention',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      disease.name.isNotEmpty
+                          ? disease.name
+                          : _formatDisease(disease.label),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (careText.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              careText,
+              style: Theme.of(context).textTheme.bodyMedium,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                foregroundColor: accent,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => context.push(
+                  '/disease/${Uri.encodeComponent(disease.label)}'),
+              icon: const Icon(Icons.menu_book_rounded, size: 18),
+              label: const Text('Read more'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// "Due today" / "Due in 3d" / "Overdue 2d" for the care action rows.
@@ -248,11 +373,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Body extends behind the floating action bar so it appears to hover.
+      extendBody: true,
       appBar: AppBar(
         title: Text(_plant?.name ?? 'Plant Detail'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          // May be reached via `context.go` from the scan result (which clears
+          // the stack), so guard against an empty navigation stack.
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/home'),
         ),
         actions: [
           PopupMenuButton<String>(
@@ -327,15 +457,18 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                           padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                           child: _PlantDetailsCard(
                             plant: _plant!,
-                            nextWatering:
-                                _nextWateringLabel(_plant!.daysUntilWater),
                             age: _ageLabel(_plant!.createdAt),
-                            lastWatered: _plant!.lastWatered == null
-                                ? 'Never'
-                                : _formatDate(
-                                    _plant!.lastWatered!.toIso8601String()),
                             added: _formatDate(_plant!.createdAt),
                           ),
+                        ),
+                      ),
+
+                      // 2a. Plant health — latest confirmed diagnosis + care
+                      // actions + a "Read more" link to the disease page.
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                          child: _buildHealthCard(context),
                         ),
                       ),
 
@@ -553,16 +686,25 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           ? null
           : SafeArea(
               top: false,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                decoration: const BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border(
-                    top: BorderSide(color: AppColors.cardBorder),
+              minimum: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: AppColors.cardBorder),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.cardShadow,
+                        blurRadius: 18,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
                   ),
-                ),
-                child: Row(
-                  children: [
+                  child: Row(
+                    children: [
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => context.push('/scan/${widget.plantId}'),
@@ -616,7 +758,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                         ),
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -625,22 +768,32 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 }
 
 /// Status card sitting under the hero photo. Shows identity (name + species),
-/// a health chip, and a 2×2 grid of per-plant stats: next watering, last
-/// watered, location, age.
+/// a health chip, a care row per applicable activity (water always; fertilize
+/// and mist when the species schedules them) that combines next + last into one
+/// slot, then a compact Location + Planted pair.
 class _PlantDetailsCard extends StatelessWidget {
   final Plant plant;
-  final String nextWatering;
   final String age;
-  final String lastWatered;
   final String added;
 
   const _PlantDetailsCard({
     required this.plant,
-    required this.nextWatering,
     required this.age,
-    required this.lastWatered,
     required this.added,
   });
+
+  /// "Today" / "in 3d" / "Overdue 2d" / "—" from days-until.
+  static String _nextLabel(int? days) {
+    if (days == null) return '—';
+    if (days == 0) return 'Today';
+    if (days < 0) return 'Overdue ${-days}d';
+    return 'in ${days}d';
+  }
+
+  static String _lastLabel(DateTime? d) {
+    if (d == null) return 'Never';
+    return '${d.day}/${d.month}/${d.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -690,27 +843,40 @@ class _PlantDetailsCard extends StatelessWidget {
           const SizedBox(height: 16),
           const Divider(color: AppColors.divider, height: 1),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.water_drop_rounded,
-                  color: _kWaterColor,
-                  label: 'NEXT WATERING',
-                  value: nextWatering,
-                ),
-              ),
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.event_rounded,
-                  color: _kWaterColor,
-                  label: 'LAST WATERED',
-                  value: lastWatered,
-                ),
-              ),
-            ],
+          // One row per applicable care activity, combining next + last.
+          _CareStatRow(
+            icon: Icons.water_drop_rounded,
+            color: _kWaterColor,
+            label: 'Watering',
+            next: _nextLabel(plant.daysUntilWater),
+            last: _lastLabel(plant.lastWatered),
+            overdue: (plant.daysUntilWater ?? 1) <= 0,
           ),
-          const SizedBox(height: 14),
+          if (plant.daysUntilFertilizer != null) ...[
+            const SizedBox(height: 12),
+            _CareStatRow(
+              icon: Icons.compost_rounded,
+              color: AppColors.amber,
+              label: 'Fertilizing',
+              next: _nextLabel(plant.daysUntilFertilizer),
+              last: _lastLabel(plant.lastFertilized),
+              overdue: (plant.daysUntilFertilizer ?? 1) <= 0,
+            ),
+          ],
+          if (plant.daysUntilMisting != null) ...[
+            const SizedBox(height: 12),
+            _CareStatRow(
+              icon: Icons.cloud_rounded,
+              color: _kMistColor,
+              label: 'Misting',
+              next: _nextLabel(plant.daysUntilMisting),
+              last: _lastLabel(plant.lastMisted),
+              overdue: (plant.daysUntilMisting ?? 1) <= 0,
+            ),
+          ],
+          const SizedBox(height: 16),
+          const Divider(color: AppColors.divider, height: 1),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -897,7 +1063,102 @@ class _CareActionRow extends StatelessWidget {
   }
 }
 
-/// One cell in the 2×2 status grid. Tinted icon tile + label/value column.
+/// A combined care status: tinted icon, activity name, and the next-due +
+/// last-done dates side by side so each activity takes a single slot.
+class _CareStatRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String next;
+  final String last;
+  final bool overdue;
+
+  const _CareStatRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.next,
+    required this.last,
+    required this.overdue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        _MiniStat(
+          caption: 'NEXT',
+          value: next,
+          valueColor: overdue ? AppColors.amber : AppColors.textPrimary,
+        ),
+        const SizedBox(width: 18),
+        _MiniStat(caption: 'LAST', value: last),
+      ],
+    );
+  }
+}
+
+/// A small caption-over-value pair used inside [_CareStatRow].
+class _MiniStat extends StatelessWidget {
+  final String caption;
+  final String value;
+  final Color? valueColor;
+
+  const _MiniStat({
+    required this.caption,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          caption,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? AppColors.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One cell in the status grid. Tinted icon tile + label/value column.
 class _StatTile extends StatelessWidget {
   final IconData icon;
   final Color color;

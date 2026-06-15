@@ -1,6 +1,6 @@
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Plant, PlantSpecies, Location
+from .models import Plant, PlantSpecies, Location, Disease
 
 
 class PlantSpeciesSerializer(serializers.ModelSerializer):
@@ -14,6 +14,19 @@ class PlantSpeciesSerializer(serializers.ModelSerializer):
             'default_fertilizer_freq_days',
             'default_misting_freq_days',
             'days_to_harvest',
+        ]
+
+
+class DiseaseSerializer(serializers.ModelSerializer):
+    species_name = serializers.CharField(source='species.name', read_only=True)
+
+    class Meta:
+        model = Disease
+        fields = [
+            'id', 'label', 'name', 'species_name',
+            'description', 'symptoms', 'cause',
+            'treatment', 'care_tips', 'prevention',
+            'severity', 'source_name', 'source_url', 'image_url', 'image_urls',
         ]
 
 
@@ -33,6 +46,7 @@ class PlantSerializer(serializers.ModelSerializer):
     days_until_fertilizer = serializers.SerializerMethodField()
     days_until_misting = serializers.SerializerMethodField()
     latest_health = serializers.SerializerMethodField()
+    latest_disease = serializers.SerializerMethodField()
 
     class Meta:
         model = Plant
@@ -43,13 +57,13 @@ class PlantSerializer(serializers.ModelSerializer):
             'watering_freq_days',
             'needs_water', 'needs_fertilizer', 'needs_misting',
             'days_until_water', 'days_until_fertilizer', 'days_until_misting',
-            'latest_health', 'created_at',
+            'latest_health', 'latest_disease', 'created_at',
         ]
         read_only_fields = [
             'created_at', 'species_name', 'species_detail',
             'needs_water', 'needs_fertilizer', 'needs_misting',
             'days_until_water', 'days_until_fertilizer', 'days_until_misting',
-            'latest_health',
+            'latest_health', 'latest_disease',
         ]
 
     # ─── Create ──────────────────────────────────────────────
@@ -137,3 +151,20 @@ class PlantSerializer(serializers.ModelSerializer):
         if not label:
             return None
         return 'healthy' if 'healthy' in label.lower() else 'diseased'
+
+    def get_latest_disease(self, obj):
+        """Lightweight summary of the most recent *confirmed* diagnosis, so the
+        plant profile can show care actions + a 'read more' link without an
+        extra request. Returns None until a scan has been confirmed."""
+        latest = obj.scans.order_by('-created_at').first()
+        if latest is None or not latest.disease_id:
+            return None
+        d = latest.disease
+        return {
+            'scan_id': latest.id,
+            'label': d.label,
+            'name': d.name,
+            'severity': d.severity,
+            'treatment': d.treatment,
+            'care_tips': d.care_tips,
+        }

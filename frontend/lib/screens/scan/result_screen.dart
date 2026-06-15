@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../models/scan.dart';
 import '../../services/api_service.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/xp_toast.dart';
 
+/// Scan result review screen.
+///
+/// Layout (top → bottom): the scanned photo, a card of the top-3 predictions
+/// the user selects between, and a pinned Confirm button. Confirming records
+/// the diagnosis and reveals care info inline with a "Read more" link to the
+/// disease page.
 class ResultScreen extends StatefulWidget {
   final int scanId;
 
@@ -17,6 +24,7 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   ScanResult? _scan;
+  String? _selectedLabel;
   bool _isLoading = true;
   bool _isConfirming = false;
   String? _errorMessage;
@@ -38,6 +46,9 @@ class _ResultScreenState extends State<ResultScreen> {
       final scan = await ApiService.getScan(widget.scanId);
       setState(() {
         _scan = scan;
+        // Default selection: the already-confirmed label, else the top pick.
+        _selectedLabel = scan.confirmedDisease ??
+            (scan.predictions.isNotEmpty ? scan.predictions.first.label : null);
         _isLoading = false;
       });
     } catch (e) {
@@ -53,7 +64,21 @@ class _ResultScreenState extends State<ResultScreen> {
     try {
       final updated = await ApiService.confirmDisease(widget.scanId, label);
       setState(() {
-        _scan = updated;
+        // The confirm endpoint doesn't echo predictions/image, so keep the
+        // ones we already loaded and merge in the confirmed diagnosis + care.
+        _scan = ScanResult(
+          id: updated.id,
+          plantId: updated.plantId ?? _scan?.plantId,
+          plantName: _scan?.plantName,
+          imageUrl: updated.imageUrl ?? _scan?.imageUrl,
+          predictions: _scan?.predictions ?? const [],
+          confirmedDisease: updated.confirmedDisease ?? label,
+          diseaseName: updated.diseaseName,
+          treatment: updated.treatment,
+          careTips: updated.careTips,
+          createdAt: _scan?.createdAt ?? updated.createdAt,
+        );
+        _selectedLabel = updated.confirmedDisease ?? label;
         _isConfirming = false;
       });
     } catch (e) {
@@ -61,6 +86,15 @@ class _ResultScreenState extends State<ResultScreen> {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
         _isConfirming = false;
       });
+    }
+  }
+
+  void _goBack() {
+    final plantId = _scan?.plantId;
+    if (plantId != null) {
+      context.go('/plants/$plantId');
+    } else {
+      context.go('/home');
     }
   }
 
@@ -81,156 +115,55 @@ class _ResultScreenState extends State<ResultScreen> {
   bool get _isHealthy =>
       _scan?.confirmedDisease?.toLowerCase().contains('healthy') == true;
 
+  bool get _isConfirmed => _scan?.confirmedDisease != null;
+
   @override
   Widget build(BuildContext context) {
+    final scan = _scan;
     return Scaffold(
+      extendBody: true,
       appBar: AppBar(
         title: const Text('Scan Result'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/home'),
+          onPressed: _goBack,
         ),
       ),
       body: _isLoading
           ? const _ResultSkeleton()
-          : _scan == null
+          : scan == null
               ? const Center(
                   child: Text('Result not found',
                       style: TextStyle(color: AppColors.textSecondary)))
               : SafeArea(
+                  bottom: false,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 110),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Confirmed result banner
-                        if (_scan!.confirmedDisease != null) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: _isHealthy
-                                  ? AppColors.success.withValues(alpha: 0.1)
-                                  : AppColors.amber.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: _isHealthy
-                                    ? AppColors.success.withValues(alpha: 0.3)
-                                    : AppColors.amber.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  _isHealthy
-                                      ? Icons.favorite_rounded
-                                      : Icons.warning_amber_rounded,
-                                  color: _isHealthy
-                                      ? AppColors.success
-                                      : AppColors.amber,
-                                  size: 48,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _isHealthy ? 'Healthy Plant!' : 'Disease Detected',
-                                  style: TextStyle(
-                                    color: _isHealthy
-                                        ? AppColors.success
-                                        : AppColors.amber,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _formatLabel(_scan!.confirmedDisease!),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
+                        // 1. Scanned image, centered.
+                        _ScanImage(imageUrl: scan.imageUrl),
+                        const SizedBox(height: 24),
+
+                        // 2. Confirmed diagnosis + care info (after confirming).
+                        if (_isConfirmed) ...[
+                          _buildConfirmedSection(scan),
                           const SizedBox(height: 24),
                         ],
 
-                        // Treatment & Care Tips
-                        if (_scan!.treatment != null) ...[
-                          Text(
-                            'Treatment',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border:
-                                  Border.all(color: AppColors.cardBorder),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: AppColors.cardShadow,
-                                  blurRadius: 12,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Text(
-                              _scan!.treatment!,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-
-                        if (_scan!.careTips != null) ...[
-                          Text(
-                            'Care Tips',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border:
-                                  Border.all(color: AppColors.cardBorder),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: AppColors.cardShadow,
-                                  blurRadius: 12,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Text(
-                              _scan!.careTips!,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-
-                        // Predictions
+                        // 3. Top predictions — selectable.
                         Text(
-                          _scan!.confirmedDisease != null
-                              ? 'All Predictions'
-                              : 'Top Predictions',
+                          'Top Predictions',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          _scan!.confirmedDisease != null
-                              ? 'Confirm the correct diagnosis below'
-                              : 'Select the correct diagnosis to confirm',
+                          'Select the correct diagnosis, then confirm below.',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         const SizedBox(height: 16),
 
-                        // Error
                         if (_errorMessage != null) ...[
                           Container(
                             padding: const EdgeInsets.all(12),
@@ -238,7 +171,8 @@ class _ResultScreenState extends State<ResultScreen> {
                               color: AppColors.error.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: AppColors.error.withValues(alpha: 0.3)),
+                                  color:
+                                      AppColors.error.withValues(alpha: 0.3)),
                             ),
                             child: Text(
                               _errorMessage!,
@@ -249,134 +183,407 @@ class _ResultScreenState extends State<ResultScreen> {
                           const SizedBox(height: 16),
                         ],
 
-                        // Prediction cards
-                        ..._scan!.predictions.asMap().entries.map((entry) {
+                        ...scan.predictions.asMap().entries.map((entry) {
                           final index = entry.key;
                           final prediction = entry.value;
-                          final isConfirmed = _scan!.confirmedDisease ==
-                              prediction.label;
-                          final isTop = index == 0;
-
-                          return GestureDetector(
+                          return _PredictionTile(
+                            rank: index + 1,
+                            name: prediction.name ??
+                                _formatLabel(prediction.label),
+                            imageUrl: prediction.imageUrl,
+                            confidence: prediction.confidence,
+                            color: _confidenceColor(prediction.confidence),
+                            selected: _selectedLabel == prediction.label,
                             onTap: _isConfirming
                                 ? null
-                                : () => _confirmDisease(prediction.label),
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isConfirmed
-                                    ? AppColors.primary.withValues(alpha: 0.1)
-                                    : AppColors.surface,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isConfirmed
-                                      ? AppColors.primary
-                                      : AppColors.cardBorder,
-                                  width: isConfirmed ? 2 : 1,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  // Rank badge
-                                  Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      color: isTop
-                                          ? AppColors.primary.withValues(alpha: 0.2)
-                                          : AppColors.surfaceLight,
-                                      borderRadius:
-                                          BorderRadius.circular(8),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '#${index + 1}',
-                                        style: TextStyle(
-                                          color: isTop
-                                              ? AppColors.primary
-                                              : AppColors.textSecondary,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  // Label
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _formatLabel(prediction.label),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        // Confidence bar
-                                        ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: prediction.confidence,
-                                            backgroundColor:
-                                                AppColors.surfaceLight,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                              _confidenceColor(
-                                                  prediction.confidence),
-                                            ),
-                                            minHeight: 6,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  // Confidence %
-                                  Text(
-                                    '${(prediction.confidence * 100).toStringAsFixed(1)}%',
-                                    style: TextStyle(
-                                      color: _confidenceColor(
-                                          prediction.confidence),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  if (isConfirmed) ...[
-                                    const SizedBox(width: 8),
-                                    const Icon(
-                                      Icons.check_circle_rounded,
-                                      color: AppColors.primary,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ],
-                              ),
+                                : () => setState(
+                                    () => _selectedLabel = prediction.label),
+                            onReadMore: () => context.push(
+                              '/disease/${Uri.encodeComponent(prediction.label)}'
+                              '?scanId=${widget.scanId}',
                             ),
                           );
                         }),
-
-                        const SizedBox(height: 24),
-
-                        // Done button
-                        ElevatedButton(
-                          onPressed: () => context.go('/home'),
-                          child: const Text('Back to Home'),
-                        ),
                       ],
                     ),
                   ),
                 ),
+      // Pinned Confirm / Done action.
+      bottomNavigationBar: (_isLoading || scan == null)
+          ? null
+          : _buildBottomBar(),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    // Once the selected label is the confirmed one, the work is done.
+    final isDone = _isConfirmed && _selectedLabel == _scan!.confirmedDisease;
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: AppColors.cardBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 18,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: _isConfirming
+            ? const SizedBox(
+                height: 52,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : isDone
+                ? ElevatedButton.icon(
+                    onPressed: _goBack,
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Done'),
+                  )
+                : ElevatedButton(
+                    onPressed: _selectedLabel == null
+                        ? null
+                        : () => _confirmDisease(_selectedLabel!),
+                    child: Text(
+                      _isConfirmed
+                          ? 'Update diagnosis'
+                          : 'Confirm diagnosis',
+                    ),
+                  ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConfirmedSection(ScanResult scan) {
+    final label = scan.confirmedDisease!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Banner
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _isHealthy
+                ? AppColors.success.withValues(alpha: 0.1)
+                : AppColors.amber.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _isHealthy
+                  ? AppColors.success.withValues(alpha: 0.3)
+                  : AppColors.amber.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                _isHealthy
+                    ? Icons.favorite_rounded
+                    : Icons.warning_amber_rounded,
+                color: _isHealthy ? AppColors.success : AppColors.amber,
+                size: 48,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _isHealthy ? 'Healthy Plant!' : 'Disease Detected',
+                style: TextStyle(
+                  color: _isHealthy ? AppColors.success : AppColors.amber,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                scan.diseaseName ?? _formatLabel(label),
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+
+        if (scan.treatment != null && scan.treatment!.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _careCard('Treatment', scan.treatment!),
+        ],
+        if (scan.careTips != null && scan.careTips!.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _careCard('Care actions', scan.careTips!),
+        ],
+
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () => context.push(
+            '/disease/${Uri.encodeComponent(label)}?scanId=${widget.scanId}',
+          ),
+          icon: const Icon(Icons.menu_book_rounded, size: 18),
+          label: const Text('Read more about this'),
+        ),
+      ],
+    );
+  }
+
+  Widget _careCard(String title, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cardBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 12,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(body, style: Theme.of(context).textTheme.bodyLarge),
+        ),
+      ],
+    );
+  }
+}
+
+/// The scanned photo, centered with rounded corners. Falls back to a neutral
+/// placeholder when no image URL is available.
+class _ScanImage extends StatelessWidget {
+  final String? imageUrl;
+
+  const _ScanImage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: imageUrl == null || imageUrl!.isEmpty
+              ? Container(
+                  color: AppColors.surfaceLight,
+                  child: const Icon(Icons.local_florist_rounded,
+                      size: 64, color: AppColors.textMuted),
+                )
+              : CachedNetworkImage(
+                  imageUrl: imageUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (c, _) =>
+                      Container(color: AppColors.surfaceLight),
+                  errorWidget: (c, _, _) => Container(
+                    color: AppColors.surfaceLight,
+                    child: const Icon(Icons.broken_image_rounded,
+                        size: 48, color: AppColors.textMuted),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A single selectable prediction card: an example reference photo (to compare
+/// against the scan), the disease name with rank + confidence bar + %, a radio
+/// selection indicator, and a per-card "Read more" link.
+class _PredictionTile extends StatelessWidget {
+  final int rank;
+  final String name;
+  final String? imageUrl;
+  final double confidence;
+  final Color color;
+  final bool selected;
+  final VoidCallback? onTap;
+  final VoidCallback onReadMore;
+
+  const _PredictionTile({
+    required this.rank,
+    required this.name,
+    required this.imageUrl,
+    required this.confidence,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+    required this.onReadMore,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isTop = rank == 1;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.cardBorder,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Example reference photo with a rank badge.
+            _Thumb(imageUrl: imageUrl, rank: rank, isTop: isTop),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${(confidence * 100).toStringAsFixed(1)}%',
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        selected
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color:
+                            selected ? AppColors.primary : AppColors.textMuted,
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: confidence,
+                      backgroundColor: AppColors.surfaceLight,
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                      minHeight: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: onReadMore,
+                      icon: const Icon(Icons.menu_book_rounded, size: 16),
+                      label: const Text('Read more'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Square reference thumbnail with a rank badge in the corner. Falls back to a
+/// leaf glyph when no example image exists for the label.
+class _Thumb extends StatelessWidget {
+  final String? imageUrl;
+  final int rank;
+  final bool isTop;
+
+  const _Thumb({
+    required this.imageUrl,
+    required this.rank,
+    required this.isTop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: imageUrl == null || imageUrl!.isEmpty
+                  ? Container(
+                      color: AppColors.surfaceLight,
+                      child: const Icon(Icons.local_florist_rounded,
+                          color: AppColors.textMuted),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: imageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (c, _) =>
+                          Container(color: AppColors.surfaceLight),
+                      errorWidget: (c, _, _) => Container(
+                        color: AppColors.surfaceLight,
+                        child: const Icon(Icons.local_florist_rounded,
+                            color: AppColors.textMuted),
+                      ),
+                    ),
+            ),
+          ),
+          Positioned(
+            top: 4,
+            left: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: (isTop ? AppColors.primary : Colors.black)
+                    .withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '#$rank',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 /// Skeleton scaffold for the scan-result screen. Mirrors the real layout:
-/// a banner card on top, the hero image, then a couple of prediction rows.
+/// the hero image, a heading, then a couple of prediction rows.
 class _ResultSkeleton extends StatelessWidget {
   const _ResultSkeleton();
 
@@ -389,17 +596,15 @@ class _ResultSkeleton extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
-            SkeletonBox(height: 88, radius: 16),
-            SizedBox(height: 20),
-            SkeletonBox(height: 220, radius: 16),
+            SkeletonBox(height: 280, radius: 20),
             SizedBox(height: 24),
             SkeletonBox(width: 180, height: 18, radius: 6),
             SizedBox(height: 16),
-            SkeletonBox(height: 56, radius: 12),
+            SkeletonBox(height: 64, radius: 16),
             SizedBox(height: 12),
-            SkeletonBox(height: 56, radius: 12),
+            SkeletonBox(height: 64, radius: 16),
             SizedBox(height: 12),
-            SkeletonBox(height: 56, radius: 12),
+            SkeletonBox(height: 64, radius: 16),
           ],
         ),
       ),

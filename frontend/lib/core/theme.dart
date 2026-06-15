@@ -11,6 +11,11 @@ class AppColors {
   static const Color primaryDark = Color(0xFF3D9466);
   static const Color amber = Color(0xFFF59E0B);
 
+  // Soft, homey hero gradient (light mint → brand green). Use for header
+  // surfaces instead of the darker primary→primaryDark pairing.
+  static const Color gradientSoftStart = Color(0xFF8FD9B6);
+  static const Color gradientSoftEnd = Color(0xFF52B385);
+
   // Text
   static const Color textPrimary = Color(0xFF1C2B20);
   static const Color textSecondary = Color(0xFF6B8F71);

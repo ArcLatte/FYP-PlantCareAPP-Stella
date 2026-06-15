@@ -11,6 +11,8 @@ class Plant {
   final String? photoUrl;
   final String location;
   final DateTime? lastWatered;
+  final DateTime? lastFertilized;
+  final DateTime? lastMisted;
   final int wateringFreqDays;
   final bool needsWater;
   final bool needsFertilizer;
@@ -19,6 +21,7 @@ class Plant {
   final int? daysUntilFertilizer;
   final int? daysUntilMisting;
   final String? latestHealth; // 'healthy' | 'diseased' | null
+  final LatestDisease? latestDisease; // most recent *confirmed* diagnosis
   final SpeciesDetail? speciesDetail;
 
   Plant({
@@ -31,6 +34,8 @@ class Plant {
     this.photoUrl,
     this.location = '',
     this.lastWatered,
+    this.lastFertilized,
+    this.lastMisted,
     this.wateringFreqDays = 7,
     this.needsWater = false,
     this.needsFertilizer = false,
@@ -39,6 +44,7 @@ class Plant {
     this.daysUntilFertilizer,
     this.daysUntilMisting,
     this.latestHealth,
+    this.latestDisease,
     this.speciesDetail,
   });
 
@@ -55,6 +61,8 @@ class Plant {
       photoUrl: _absolutePhotoUrl(json['photo']),
       location: json['location']?.toString() ?? '',
       lastWatered: _parseDate(json['last_watered']),
+      lastFertilized: _parseDate(json['last_fertilized']),
+      lastMisted: _parseDate(json['last_misted']),
       wateringFreqDays:
           (json['watering_freq_days'] as num?)?.toInt() ?? 7,
       needsWater: json['needs_water'] == true,
@@ -64,9 +72,45 @@ class Plant {
       daysUntilFertilizer: (json['days_until_fertilizer'] as num?)?.toInt(),
       daysUntilMisting: (json['days_until_misting'] as num?)?.toInt(),
       latestHealth: json['latest_health']?.toString(),
+      latestDisease: json['latest_disease'] is Map<String, dynamic>
+          ? LatestDisease.fromJson(json['latest_disease'])
+          : null,
       speciesDetail: detail is Map<String, dynamic>
           ? SpeciesDetail.fromJson(detail)
           : null,
+    );
+  }
+}
+
+/// Lightweight summary of the most recent confirmed diagnosis, embedded in the
+/// plant payload so the profile can show care actions + a 'read more' link.
+class LatestDisease {
+  final int scanId;
+  final String label;
+  final String name;
+  final String severity;
+  final String treatment;
+  final String careTips;
+
+  LatestDisease({
+    required this.scanId,
+    required this.label,
+    required this.name,
+    this.severity = '',
+    this.treatment = '',
+    this.careTips = '',
+  });
+
+  bool get isHealthy => label.toLowerCase().contains('healthy');
+
+  factory LatestDisease.fromJson(Map<String, dynamic> json) {
+    return LatestDisease(
+      scanId: (json['scan_id'] as num).toInt(),
+      label: json['label']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      severity: json['severity']?.toString() ?? '',
+      treatment: json['treatment']?.toString() ?? '',
+      careTips: json['care_tips']?.toString() ?? '',
     );
   }
 }

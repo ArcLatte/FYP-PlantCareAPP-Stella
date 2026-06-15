@@ -140,15 +140,37 @@ class PlantSpecies(models.Model):
 
 
 class Disease(models.Model):
+    class Severity(models.TextChoices):
+        LOW = 'low', 'Low'
+        MEDIUM = 'medium', 'Medium'
+        HIGH = 'high', 'High'
+
     species = models.ForeignKey(
         PlantSpecies,
         on_delete=models.CASCADE,
         related_name='diseases'
     )
-    name = models.CharField(max_length=100)     
+    name = models.CharField(max_length=100)
     label = models.CharField(max_length=100, unique=True)
     treatment = models.TextField()
     care_tips = models.TextField()
+
+    # Knowledge-base content for the in-app disease detail page. Seeded once
+    # via `seed_diseases` (curated from horticulture sources), not fetched at
+    # runtime.
+    description = models.TextField(blank=True)   # what the disease is
+    symptoms = models.TextField(blank=True)      # what to look for
+    cause = models.TextField(blank=True)         # pathogen / conditions
+    prevention = models.TextField(blank=True)    # how to avoid it
+    severity = models.CharField(
+        max_length=8, choices=Severity.choices, blank=True
+    )
+    source_name = models.CharField(max_length=120, blank=True)
+    source_url = models.URLField(blank=True)
+    image_url = models.URLField(blank=True)      # illustrative reference photo
+    # Multiple reference photos for the detail-page carousel + scan-card
+    # thumbnails. List of absolute image URLs.
+    image_urls = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return self.label
