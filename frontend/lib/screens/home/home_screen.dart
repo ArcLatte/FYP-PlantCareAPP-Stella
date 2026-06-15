@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants.dart';
+import '../../core/pixel.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
@@ -429,14 +430,15 @@ class _HomeScreenState extends State<HomeScreen> {
             : Brightness.dark,
       ),
       child: Scaffold(
+        backgroundColor: Pixel.paper,
         extendBody: true,
         floatingActionButton: Padding(
           padding: const EdgeInsets.only(bottom: 76),
-          child: FloatingActionButton(
-            onPressed: _openAddPlant,
-            backgroundColor: AppColors.primary,
-            elevation: 4,
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+          child: PixelBox(
+            color: AppColors.primary,
+            onTap: _openAddPlant,
+            padding: const EdgeInsets.all(14),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -459,15 +461,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _buildWeatherCard(),
                     Transform.translate(
-                      offset: const Offset(0, -28),
+                      offset: const Offset(0, -12),
                       child: Container(
                         decoration: const BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(28),
+                          color: Pixel.paper,
+                          border: Border(
+                            top: BorderSide(color: Pixel.ink, width: 4),
                           ),
                         ),
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.only(top: 12),
                         child: Column(
                           children: [_buildGardenHeader(), _buildFilterChips()],
                         ),
@@ -562,12 +564,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: gradientColors,
-              stops: const [0.0, 1.0],
-            ),
+            gradient: WeatherBackdrop.skyGradient(_weather?.iconCode ?? '01d'),
           ),
           child: Stack(
             children: [
@@ -590,20 +587,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${_greeting()},',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 13,
-                                ),
+                                '${_greeting()},'.toUpperCase(),
+                                style: Pixel.text(9, color: Colors.white70),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 6),
                               Text(
-                                _username.isEmpty ? 'Plant lover' : _username,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                                _username.isEmpty ? 'Plant Lover' : _username,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Pixel.display(15, color: Colors.white),
                               ),
                             ],
                           ),
@@ -626,43 +618,33 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(width: 10),
                             // Notification bell → today's care sheet. Dot
                             // appears when anything is due.
-                            GestureDetector(
+                            PixelBox(
                               onTap: _openCareSheet,
-                              child: Container(
-                                width: 40,
-                                height: 40,
-                                alignment: Alignment.center,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white24,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    const Icon(
-                                      Icons.notifications_outlined,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                    if (_dueToday.isNotEmpty)
-                                      Positioned(
-                                        right: -1,
-                                        top: -1,
-                                        child: Container(
-                                          width: 9,
-                                          height: 9,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.amber,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 1.2,
-                                            ),
-                                          ),
-                                        ),
+                              color: Colors.white.withValues(alpha: 0.22),
+                              border: Colors.white,
+                              shadow: Pixel.ink,
+                              borderWidth: 2,
+                              shadowOffset: const Offset(3, 3),
+                              padding: const EdgeInsets.all(9),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  const Icon(
+                                    Icons.notifications_outlined,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  if (_dueToday.isNotEmpty)
+                                    Positioned(
+                                      right: -4,
+                                      top: -4,
+                                      child: Container(
+                                        width: 9,
+                                        height: 9,
+                                        color: AppColors.amber,
                                       ),
-                                  ],
-                                ),
+                                    ),
+                                ],
                               ),
                             ),
                           ],
@@ -679,30 +661,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          _weather?.cityName ?? 'Locating…',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                          ),
+                          (_weather?.cityName ?? 'Locating…').toUpperCase(),
+                          style: Pixel.text(9, color: Colors.white70),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 10),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
                           _weather?.tempDisplay ?? '—°C',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 56,
-                            fontWeight: FontWeight.w700,
-                            height: 1.0,
-                          ),
+                          style: Pixel.display(40, color: Colors.white, height: 1.0),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 14),
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -710,31 +684,27 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Icon(
                                   _weather!.icon,
                                   color: Colors.white,
-                                  size: 26,
+                                  size: 22,
                                 ),
                               const SizedBox(width: 6),
                               Text(
-                                _weather?.condition ?? '',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                (_weather?.condition ?? '').toUpperCase(),
+                                style: Pixel.text(10, color: Colors.white),
                               ),
                             ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Container(
+                    const SizedBox(height: 16),
+                    PixelBox(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      border: Colors.white,
+                      shadow: Pixel.ink,
+                      borderWidth: 2,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
                         children: [
@@ -801,7 +771,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Your Garden', style: Theme.of(context).textTheme.titleLarge),
+          Text('YOUR GARDEN', style: Pixel.display(13)),
           _FilterButton(
             active: _statusFilter != _StatusFilter.all,
             label: _statusFilter == _StatusFilter.all
@@ -817,35 +787,31 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildFilterChips() {
     final filters = _availableFilters;
     return SizedBox(
-      height: 44,
+      height: 52,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
         itemCount: filters.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final f = filters[i];
           final selected = f == _filter;
-          return GestureDetector(
-            onTap: () => setState(() => _filter = f),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: selected ? AppColors.textPrimary : AppColors.surface,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: selected
-                      ? AppColors.textPrimary
-                      : AppColors.cardBorder,
-                ),
-              ),
-              alignment: Alignment.center,
+          return Center(
+            child: PixelBox(
+              onTap: () => setState(() => _filter = f),
+              color: selected ? AppColors.primary : Pixel.panel,
+              borderWidth: 2,
+              shadowOffset: selected
+                  ? const Offset(3, 3)
+                  : const Offset(2, 2),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               child: Text(
-                _filterLabel(f),
-                style: TextStyle(
-                  color: selected ? Colors.white : AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+                _filterLabel(f).toUpperCase(),
+                style: Pixel.text(
+                  9,
+                  color: selected ? Colors.white : Pixel.ink,
+                  bold: selected,
                 ),
               ),
             ),
@@ -864,25 +830,32 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.eco_outlined, size: 64, color: AppColors.textMuted),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
-            _plants.isEmpty ? 'No plants yet' : 'No matches',
-            style: Theme.of(context).textTheme.titleMedium,
+            _plants.isEmpty ? 'NO PLANTS YET' : 'NO MATCHES',
+            style: Pixel.display(13),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           Text(
             _plants.isEmpty
                 ? 'Tap the + button in the bottom right to add your first plant.'
                 : 'No plants match this filter. Try a different one.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium,
+            style: Pixel.text(10, color: AppColors.textSecondary, height: 1.6),
           ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _openAddPlant,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Plant'),
-            style: ElevatedButton.styleFrom(minimumSize: const Size(160, 48)),
+          const SizedBox(height: 26),
+          PixelBox(
+            onTap: _openAddPlant,
+            color: AppColors.primary,
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Text('ADD PLANT', style: Pixel.text(11, color: Colors.white, bold: true)),
+              ],
+            ),
           ),
         ],
       ),
@@ -905,34 +878,28 @@ class _FilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PixelBox(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: active
-              ? AppColors.primary
-              : AppColors.primary.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.tune_rounded,
-              color: active ? Colors.white : AppColors.primary,
-              size: 16,
+      color: active ? AppColors.primary : Pixel.panel,
+      borderWidth: 2,
+      shadowOffset: const Offset(3, 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.tune_rounded,
+            color: active ? Colors.white : AppColors.primary,
+            size: 14,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label.toUpperCase(),
+            style: Pixel.text(
+              9,
+              color: active ? Colors.white : Pixel.ink,
             ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? Colors.white : AppColors.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1033,20 +1000,12 @@ class _WeatherStat extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                ),
+                style: Pixel.text(7, color: Colors.white70),
               ),
+              const SizedBox(height: 3),
               Text(
                 value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Pixel.text(11, color: Colors.white, bold: true),
               ),
             ],
           ),
@@ -1075,29 +1034,21 @@ class _PlantGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PixelBox(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 14,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Image area
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
+      padding: const EdgeInsets.all(6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Image area — framed with a hard ink border like a pixel portrait.
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(
+                border: Border.fromBorderSide(
+                  BorderSide(color: Pixel.ink, width: 2),
                 ),
+              ),
+              child: ClipRect(
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -1130,8 +1081,8 @@ class _PlantGridCard extends StatelessWidget {
                             ),
                           ),
                     Positioned(
-                      top: 8,
-                      right: 8,
+                      top: 6,
+                      right: 6,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -1159,67 +1110,62 @@ class _PlantGridCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Text area
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    plant.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
+          ),
+          // Text area
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  plant.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Pixel.text(11, bold: true),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _statusLine().toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Pixel.text(
+                    7,
+                    color: plant.needsWater
+                        ? const Color(0xFF3F86C4)
+                        : (plant.latestHealth == 'diseased'
+                              ? AppColors.amber
+                              : AppColors.textSecondary),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _statusLine(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _ActionIcon(
+                      icon: Icons.water_drop_outlined,
                       color: plant.needsWater
-                          ? const Color(0xFF4F9FD9)
-                          : (plant.latestHealth == 'diseased'
-                                ? AppColors.amber
-                                : AppColors.textSecondary),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                          ? const Color(0xFF3F86C4)
+                          : AppColors.textMuted,
+                      onTap: onWater,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _ActionIcon(
-                        icon: Icons.water_drop_outlined,
-                        color: plant.needsWater
-                            ? const Color(0xFF4F9FD9)
-                            : AppColors.textMuted,
-                        onTap: onWater,
-                      ),
-                      const SizedBox(width: 8),
-                      const _ActionIcon(
-                        icon: Icons.wb_sunny_outlined,
-                        color: AppColors.amber,
-                        onTap: null,
-                      ),
-                      const Spacer(),
-                      _ActionIcon(
-                        icon: Icons.add_rounded,
-                        color: AppColors.primary,
-                        onTap: onTap,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 6),
+                    const _ActionIcon(
+                      icon: Icons.wb_sunny_outlined,
+                      color: AppColors.amber,
+                      onTap: null,
+                    ),
+                    const Spacer(),
+                    _ActionIcon(
+                      icon: Icons.add_rounded,
+                      color: AppColors.primary,
+                      onTap: onTap,
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1233,32 +1179,24 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(10),
-      ),
+    return PixelBox(
+      color: Colors.white.withValues(alpha: 0.95),
+      borderWidth: 2,
+      notch: 2,
+      shadowOffset: const Offset(2, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
+          Container(width: 6, height: 6, color: color),
           const SizedBox(width: 4),
           if (icon != null) ...[
-            Icon(icon, color: color, size: 11),
+            Icon(icon, color: color, size: 10),
             const SizedBox(width: 2),
           ],
           Text(
-            text,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 10,
-            ),
+            text.toUpperCase(),
+            style: Pixel.text(7, color: color, bold: true),
           ),
         ],
       ),
@@ -1279,17 +1217,15 @@ class _ActionIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PixelBox(
       onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: color, size: 16),
-      ),
+      color: color.withValues(alpha: 0.14),
+      border: color,
+      shadow: null,
+      borderWidth: 2,
+      notch: 2,
+      padding: const EdgeInsets.all(5),
+      child: Icon(icon, color: color, size: 15),
     );
   }
 }

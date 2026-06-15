@@ -1,14 +1,14 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// Animated, code-drawn weather scene for the home header. No asset files:
-/// everything (sun rays, drifting clouds, rain, snow, lightning, stars,
-/// fog) is painted by [_ScenePainter] off a single repeating controller.
+/// Animated, code-drawn **pixel-art** weather scene for the home header. No
+/// asset files: everything (sun, moon, drifting clouds, rain, snow, stars,
+/// lightning, fog) is painted by [_ScenePainter] as chunky squares snapped to
+/// a fixed pixel grid, off a single repeating controller.
 ///
 /// The scene is picked from the OpenWeather icon code ("10d", "01n", …) and
 /// the background gradient from the local hour (dawn / day / sunset /
-/// night), with the icon's d/n suffix taking priority so the scene always
-/// matches what the weather API says the sky is doing.
+/// night), with the icon's d/n suffix taking priority.
 class WeatherBackdrop extends StatefulWidget {
   final String iconCode;
 
@@ -23,8 +23,8 @@ class WeatherBackdrop extends StatefulWidget {
     this.paused = false,
   });
 
-  /// Header gradient for the current time of day. The home screen also uses
-  /// the first color for its overscroll slab so pull-to-refresh blends in.
+  /// Header gradient endpoints for the current time of day. The home screen
+  /// uses the first color for its overscroll slab so pull-to-refresh blends in.
   static List<Color> gradientColors(String iconCode, [DateTime? when]) {
     final now = when ?? DateTime.now();
     final isNight = iconCode.endsWith('n');
@@ -43,6 +43,26 @@ class WeatherBackdrop extends StatefulWidget {
     }
     // Sunset (17–21) — amber into dusk violet.
     return const [Color(0xFFF2A65A), Color(0xFF6C5B9C)];
+  }
+
+  /// The sky as discrete horizontal colour bands (no smooth blend), for a
+  /// stepped 8-bit look. Built off [gradientColors].
+  static LinearGradient skyGradient(String iconCode, [DateTime? when]) {
+    final ends = gradientColors(iconCode, when);
+    const bands = 7;
+    final colors = <Color>[];
+    final stops = <double>[];
+    for (int i = 0; i < bands; i++) {
+      final c = Color.lerp(ends.first, ends.last, i / (bands - 1))!;
+      colors..add(c)..add(c);
+      stops..add(i / bands)..add((i + 1) / bands);
+    }
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: colors,
+      stops: stops,
+    );
   }
 
   @override
@@ -107,26 +127,58 @@ class _ScenePainter extends CustomPainter {
 
   _ScenePainter({required this.iconCode, required this.t});
 
-  String get _group =>
-      iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
+  /// Size of one painted "pixel". Everything snaps to this grid.
+  static const double px = 6;
+
+  String get _group => iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
   bool get _isNight => iconCode.endsWith('n');
 
-  // Fixed seed so particles don't jump between frames.
+  // Fixed seeds so particles don't jump between frames.
   static final _rng = math.Random(7);
-  static final List<Offset> _starSeeds = List.generate(
-      26, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
+  static final List<Offset> _starSeeds =
+      List.generate(26, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
   static final List<double> _starPhases =
       List.generate(26, (_) => _rng.nextDouble());
-  static final List<Offset> _dropSeeds = List.generate(
-      42, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
-  static final List<Offset> _flakeSeeds = List.generate(
-      30, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
+  static final List<Offset> _dropSeeds =
+      List.generate(40, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
+  static final List<Offset> _flakeSeeds =
+      List.generate(28, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
   static final List<double> _cloudYs =
-      List.generate(4, (_) => 0.08 + _rng.nextDouble() * 0.35);
+      List.generate(4, (_) => 0.10 + _rng.nextDouble() * 0.32);
   static final List<double> _cloudOffsets =
       List.generate(4, (_) => _rng.nextDouble());
   static final List<double> _cloudScales =
-      List.generate(4, (_) => 0.7 + _rng.nextDouble() * 0.6);
+      List.generate(4, (_) => 0.8 + _rng.nextDouble() * 0.6);
+
+  // ── Grid helpers ──────────────────────────────────────────────────────
+  double _snap(double v) => (v / px).floorToDouble() * px;
+
+  /// Draw one grid-aligned square at (x, y) in pixel coordinates.
+  void _cell(Canvas c, double x, double y, Paint p, [double span = 1]) {
+    c.drawRect(Rect.fromLTWH(_snap(x), _snap(y), px * span, px * span), p);
+  }
+
+  /// Fill a disc with grid cells. Optionally cut a [biteCenter]/[biteR]
+  /// crescent out (for the moon).
+  void _pixelDisc(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Paint paint, {
+    Offset? biteCenter,
+    double biteR = 0,
+  }) {
+    for (double y = center.dy - radius; y <= center.dy + radius; y += px) {
+      for (double x = center.dx - radius; x <= center.dx + radius; x += px) {
+        final cc = Offset(x + px / 2, y + px / 2);
+        if ((cc - center).distance > radius) continue;
+        if (biteCenter != null && (cc - biteCenter).distance <= biteR) {
+          continue;
+        }
+        _cell(canvas, x, y, paint);
+      }
+    }
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -134,200 +186,183 @@ class _ScenePainter extends CustomPainter {
       case '01': // clear
         _isNight ? _paintNightSky(canvas, size) : _paintSun(canvas, size);
       case '02': // few clouds
-        if (_isNight) {
-          _paintNightSky(canvas, size);
-        } else {
-          _paintSun(canvas, size);
-        }
-        _paintClouds(canvas, size, count: 2, alpha: 0.5);
+        _isNight ? _paintNightSky(canvas, size) : _paintSun(canvas, size);
+        _paintClouds(canvas, size, count: 2, alpha: 0.85);
       case '03':
       case '04': // clouds
         if (_isNight) _paintNightSky(canvas, size, starsOnly: true);
-        _paintClouds(canvas, size, count: 4, alpha: 0.6);
+        _paintClouds(canvas, size, count: 4, alpha: 0.92);
       case '09':
       case '10': // rain
-        _paintClouds(canvas, size, count: 3, alpha: 0.55);
+        _paintClouds(canvas, size, count: 3, alpha: 0.9);
         _paintRain(canvas, size);
       case '11': // thunder
-        _paintClouds(canvas, size, count: 4, alpha: 0.65);
+        _paintClouds(canvas, size, count: 4, alpha: 0.95);
         _paintRain(canvas, size);
         _paintLightning(canvas, size);
       case '13': // snow
         if (_isNight) _paintNightSky(canvas, size, starsOnly: true);
-        _paintClouds(canvas, size, count: 2, alpha: 0.45);
+        _paintClouds(canvas, size, count: 2, alpha: 0.85);
         _paintSnow(canvas, size);
       case '50': // fog
         _paintFog(canvas, size);
       default:
-        _paintClouds(canvas, size, count: 3, alpha: 0.5);
+        _paintClouds(canvas, size, count: 3, alpha: 0.85);
     }
   }
 
-  // ── Sun: glowing disc + slowly rotating rays, top-right. ──
+  // ── Sun: blocky disc + flashing pixel rays, top-right. ──
   void _paintSun(Canvas canvas, Size size) {
-    final center = Offset(size.width * 0.82, size.height * 0.24);
-    final r = size.width * 0.085;
+    final center = Offset(_snap(size.width * 0.82), _snap(size.height * 0.26));
+    final r = _snap(size.width * 0.075);
 
-    final glow = Paint()
-      ..color = const Color(0xFFFFE082).withValues(alpha: 0.55)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.9);
-    canvas.drawCircle(center, r * 1.7, glow);
-
-    final rayPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.5)
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round;
-    final angle0 = t * 2 * math.pi * 0.5; // half a turn per loop
+    // Rays: short pixel stubs in 8 directions, the diagonals blinking on the
+    // alternate beat for a twinkly arcade sun.
+    final rayPaint = Paint()..color = const Color(0xFFFFE082);
+    final blink = (t * 4).floor().isEven;
     for (int i = 0; i < 8; i++) {
-      final a = angle0 + i * math.pi / 4;
-      final from = center + Offset(math.cos(a), math.sin(a)) * (r * 1.45);
-      final to = center + Offset(math.cos(a), math.sin(a)) * (r * 1.95);
-      canvas.drawLine(from, to, rayPaint);
+      final diagonal = i.isOdd;
+      if (diagonal && !blink) continue;
+      if (!diagonal && blink) continue;
+      final a = i * math.pi / 4;
+      for (int s = 0; s < 2; s++) {
+        final dist = r + px * (2 + s);
+        final p = center + Offset(math.cos(a), math.sin(a)) * dist;
+        _cell(canvas, p.dx - px / 2, p.dy - px / 2, rayPaint);
+      }
     }
 
-    final body = Paint()..color = const Color(0xFFFFF3C4);
-    canvas.drawCircle(center, r, body);
+    _pixelDisc(canvas, center, r * 1.18,
+        Paint()..color = const Color(0xFFFFD54F));
+    _pixelDisc(canvas, center, r, Paint()..color = const Color(0xFFFFF3C4));
   }
 
-  // ── Moon + twinkling stars. ──
+  // ── Moon + twinkling pixel stars. ──
   void _paintNightSky(Canvas canvas, Size size, {bool starsOnly = false}) {
     final starPaint = Paint();
     for (int i = 0; i < _starSeeds.length; i++) {
       final s = _starSeeds[i];
-      // Stars stay in the top ~55% of the header.
+      // Twinkle = on/off, not a fade, so stars stay crisp pixels.
+      final on = math.sin((t * 6 + _starPhases[i]) * 2 * math.pi) > -0.3;
+      if (!on) continue;
       final pos = Offset(s.dx * size.width, s.dy * size.height * 0.55);
-      final twinkle =
-          0.35 + 0.65 * (0.5 + 0.5 * math.sin((t * 6 + _starPhases[i]) * 2 * math.pi));
-      starPaint.color = Colors.white.withValues(alpha: 0.75 * twinkle);
-      canvas.drawCircle(pos, i % 5 == 0 ? 1.8 : 1.1, starPaint);
+      starPaint.color = Colors.white.withValues(alpha: 0.9);
+      _cell(canvas, pos.dx, pos.dy, starPaint, i % 6 == 0 ? 2 : 1);
     }
     if (starsOnly) return;
 
-    final center = Offset(size.width * 0.82, size.height * 0.24);
-    final r = size.width * 0.07;
-    final glow = Paint()
-      ..color = Colors.white.withValues(alpha: 0.35)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.8);
-    canvas.drawCircle(center, r * 1.5, glow);
-
-    // Crescent: full disc minus an offset shadow disc.
-    final moon = Path()..addOval(Rect.fromCircle(center: center, radius: r));
-    final bite = Path()
-      ..addOval(Rect.fromCircle(
-          center: center + Offset(r * 0.42, -r * 0.18), radius: r * 0.88));
-    final crescent = Path.combine(PathOperation.difference, moon, bite);
-    canvas.drawPath(crescent, Paint()..color = const Color(0xFFF6F1DE));
+    final center = Offset(_snap(size.width * 0.82), _snap(size.height * 0.26));
+    final r = _snap(size.width * 0.075);
+    _pixelDisc(
+      canvas,
+      center,
+      r,
+      Paint()..color = const Color(0xFFF6F1DE),
+      biteCenter: center + Offset(r * 0.55, -r * 0.2),
+      biteR: r * 0.95,
+    );
   }
 
-  // ── Drifting stylized clouds. Each cloud is ONE path (pill base + two
-  // bumps) filled in a single pass, so the translucent white stays uniform
-  // with no darker overlap seams — clean flat-design look.
+  // ── Drifting pixel clouds, each from a small bitmap pattern. ──
+  static const List<String> _cloudBitmap = [
+    '..####..',
+    '.######.',
+    '########',
+    '.######.',
+  ];
+
   void _paintClouds(Canvas canvas, Size size,
       {required int count, required double alpha}) {
-    final paint = Paint()..color = Colors.white.withValues(alpha: alpha);
+    final fill = Paint()..color = Colors.white.withValues(alpha: alpha);
+    final edge = Paint()
+      ..color = const Color(0xFFB8C6D9).withValues(alpha: alpha);
     for (int i = 0; i < count && i < _cloudYs.length; i++) {
       final scale = _cloudScales[i];
-      final w = size.width * 0.32 * scale;
-      final h = w * 0.30;
-      // Each cloud loops at its own speed; widest drift slowest.
+      final cell = px * (1.8 * scale).clamp(1.2, 2.4);
+      final w = cell * _cloudBitmap.first.length;
       final speed = 0.5 + 0.4 * (1 - scale);
-      final x = ((t * speed + _cloudOffsets[i]) % 1.3) * (size.width + w) - w;
-      final y = size.height * _cloudYs[i];
-      final cloud = Path()
-        ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromCenter(
-              center: Offset(x, y + h * 0.30), width: w, height: h),
-          Radius.circular(h / 2),
-        ))
-        ..addOval(Rect.fromCircle(
-            center: Offset(x - w * 0.16, y - h * 0.02), radius: h * 0.52))
-        ..addOval(Rect.fromCircle(
-            center: Offset(x + w * 0.14, y - h * 0.22), radius: h * 0.70));
-      canvas.drawPath(cloud, paint);
+      final baseX = ((t * speed + _cloudOffsets[i]) % 1.3) * (size.width + w) - w;
+      final baseY = size.height * _cloudYs[i];
+      for (int row = 0; row < _cloudBitmap.length; row++) {
+        final line = _cloudBitmap[row];
+        for (int col = 0; col < line.length; col++) {
+          if (line[col] != '#') continue;
+          final x = _snap(baseX + col * cell);
+          final y = _snap(baseY + row * cell);
+          // Bottom row drawn a touch darker to fake a shaded underside.
+          canvas.drawRect(
+            Rect.fromLTWH(x, y, cell, cell),
+            row == _cloudBitmap.length - 1 ? edge : fill,
+          );
+        }
+      }
     }
   }
 
-  // ── Falling rain streaks. ──
+  // ── Falling pixel rain: 1-wide, 2-tall dashes. ──
   void _paintRain(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.45)
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round;
-    const slant = 0.18; // slight wind
+    final paint = Paint()..color = const Color(0xFFBFE2FF).withValues(alpha: 0.8);
     for (final seed in _dropSeeds) {
-      // Drops cycle fast: 6 falls per loop, staggered by seed.dy.
-      final fall = ((t * 6 + seed.dy) % 1.0);
-      final x = seed.dx * size.width + fall * size.height * slant;
-      final y = fall * (size.height + 20) - 10;
-      canvas.drawLine(
-        Offset(x, y),
-        Offset(x + 2.4, y + 11),
-        paint,
-      );
+      final fall = (t * 6 + seed.dy) % 1.0;
+      final x = seed.dx * size.width;
+      final y = fall * (size.height + 24) - 12;
+      canvas.drawRect(Rect.fromLTWH(_snap(x), _snap(y), px, px * 2), paint);
     }
   }
 
-  // ── Snowflakes with sideways sway. ──
+  // ── Snow: single pixels with a gentle sway. ──
   void _paintSnow(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.85);
+    final paint = Paint()..color = Colors.white.withValues(alpha: 0.95);
     for (int i = 0; i < _flakeSeeds.length; i++) {
       final seed = _flakeSeeds[i];
-      final fall = ((t * 2.5 + seed.dy) % 1.0);
-      final sway = math.sin((t * 4 + seed.dx) * 2 * math.pi) * 10;
+      final fall = (t * 2.5 + seed.dy) % 1.0;
+      final sway = math.sin((t * 4 + seed.dx) * 2 * math.pi) * px * 2;
       final x = seed.dx * size.width + sway;
       final y = fall * (size.height + 12) - 6;
-      canvas.drawCircle(Offset(x, y), i % 4 == 0 ? 2.6 : 1.7, paint);
+      _cell(canvas, x, y, paint, i % 4 == 0 ? 2 : 1);
     }
   }
 
-  // ── Occasional lightning flash + bolt. ──
+  // ── Blocky lightning bolt + flash. ──
   void _paintLightning(Canvas canvas, Size size) {
-    // Two flashes per loop, each lasting ~4% of the cycle.
     final phase = (t * 2) % 1.0;
-    if (phase > 0.08) return;
-    final intensity = 1 - (phase / 0.08);
+    if (phase > 0.1) return;
+    final intensity = 1 - (phase / 0.1);
 
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = Colors.white.withValues(alpha: 0.22 * intensity),
+      Paint()..color = Colors.white.withValues(alpha: 0.25 * intensity),
     );
 
-    final boltPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.9 * intensity)
-      ..strokeWidth = 2.6
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    final x0 = size.width * 0.32;
-    final y0 = size.height * 0.18;
-    final bolt = Path()
-      ..moveTo(x0, y0)
-      ..lineTo(x0 - size.width * 0.03, y0 + size.height * 0.16)
-      ..lineTo(x0 + size.width * 0.015, y0 + size.height * 0.17)
-      ..lineTo(x0 - size.width * 0.025, y0 + size.height * 0.34);
-    canvas.drawPath(bolt, boltPaint);
+    final bolt = Paint()..color = const Color(0xFFFFF59D);
+    // A staircase of cells zig-zagging down.
+    final x0 = _snap(size.width * 0.34);
+    final y0 = _snap(size.height * 0.16);
+    final steps = <Offset>[
+      Offset(x0, y0),
+      Offset(x0 - px, y0 + px * 2),
+      Offset(x0 - px * 2, y0 + px * 4),
+      Offset(x0, y0 + px * 4),
+      Offset(x0 - px, y0 + px * 6),
+      Offset(x0 - px * 2, y0 + px * 8),
+    ];
+    for (final p in steps) {
+      _cell(canvas, p.dx, p.dy, bolt);
+    }
   }
 
-  // ── Drifting fog bands. ──
+  // ── Drifting fog bands (rows of low-alpha cells). ──
   void _paintFog(Canvas canvas, Size size) {
     for (int i = 0; i < 4; i++) {
-      final y = size.height * (0.2 + i * 0.18);
-      final w = size.width * 1.1;
-      final drift =
-          math.sin((t + i * 0.25) * 2 * math.pi) * size.width * 0.06;
+      final y = size.height * (0.22 + i * 0.16);
+      final drift = math.sin((t + i * 0.25) * 2 * math.pi) * size.width * 0.08;
       final paint = Paint()
-        ..color = Colors.white.withValues(alpha: 0.16 + (i % 2) * 0.08)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(size.width / 2 + drift, y),
-            width: w,
-            height: size.height * 0.1,
-          ),
-          const Radius.circular(40),
-        ),
-        paint,
-      );
+        ..color = Colors.white.withValues(alpha: 0.18 + (i % 2) * 0.08);
+      for (double x = -px * 2; x < size.width + px * 2; x += px * 2) {
+        // Skip some cells for a dithered, see-through band.
+        if (((x / (px * 2)).floor() + i) % 3 == 0) continue;
+        _cell(canvas, x + drift, y, paint, 2);
+      }
     }
   }
 
