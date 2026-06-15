@@ -1,7 +1,12 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle, AssetManifest;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
+import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
@@ -67,11 +72,8 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).padding.top;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tasks'),
-        automaticallyImplyLeading: false,
-      ),
       body: _isLoading
           ? const _TasksSkeleton()
           : RefreshIndicator(
@@ -79,9 +81,10 @@ class _TasksScreenState extends State<TasksScreen> {
               color: AppColors.primary,
               backgroundColor: AppColors.surface,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                padding: EdgeInsets.fromLTRB(20, topInset + 16, 20, 96),
                 children: [
-                  _StreakHeader(streak: _streak),
+                  // Plant-growth streak card.
+                  _StreakCard(streak: _streak),
                   const SizedBox(height: 24),
                   Text(
                     "Today's tasks",
@@ -108,108 +111,365 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 }
 
-// ─── Streak header ─────────────────────────────────────────────
+// ─── Streak card (plant growth) ────────────────────────────────
 
-class _StreakHeader extends StatelessWidget {
+// Plant-growth palette: colored plant illustration + water-blue activity dots
+// on a soft mint card. The streak grows a plant (seed → bloom); each cared-for
+// day is a water drop.
+const Color _kWater = Color(0xFF4F9FD9); // water-blue for active days
+const Color _kCardBg = Color(0xFFEAF6EF); // soft mint card surface
+const Color _kCardBorder = Color(0xFFD7E8DD);
+const String _kStageSeenKey = 'tasks_last_plant_stage';
+
+/// Contained streak card: the plant for the current growth stage (with an idle
+/// sway and a grow-pop when it advances a stage), the stage name + day count, a
+/// "next stage" hint, then the current week's water-day strip.
+class _StreakCard extends StatefulWidget {
   final Streak? streak;
-  const _StreakHeader({required this.streak});
+  const _StreakCard({required this.streak});
 
   @override
-  Widget build(BuildContext context) {
-    final current = streak?.currentStreak ?? 0;
-    final longest = streak?.longestStreak ?? 0;
-    final activeToday = streak?.activeToday ?? false;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFBB040), AppColors.amber],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 16,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Icon(
-              current > 0
-                  ? Icons.local_fire_department_rounded
-                  : Icons.local_fire_department_outlined,
-              color: Colors.white,
-              size: 36,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '$current',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      current == 1 ? 'day streak' : 'days streak',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  activeToday
-                      ? "You've cared for a plant today ✓"
-                      : current > 0
-                          ? 'Care for a plant to keep it going'
-                          : 'Complete a task to start your streak',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+  State<_StreakCard> createState() => _StreakCardState();
+}
+
+class _StreakCardState extends State<_StreakCard>
+    with TickerProviderStateMixin {
+  late final AnimationController _sway;
+  late final AnimationController _grow;
+  SharedPreferences? _prefs;
+  int? _lastSeen; // last stage index the user has already seen
+  int? _fromIndex; // stage to cross-fade *from* during a grow-pop
+
+  int get _currentIndex =>
+      PlantStage.all.indexOf(PlantStage.forStreak(widget.streak?.currentStreak ?? 0));
+
+  @override
+  void initState() {
+    super.initState();
+    _sway = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2600))
+      ..repeat(reverse: true);
+    _grow = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900), value: 1);
+    _initPrefs();
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _lastSeen = _prefs!.getInt(_kStageSeenKey);
+    if (mounted) _evaluate();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StreakCard old) {
+    super.didUpdateWidget(old);
+    if (old.streak?.currentStreak != widget.streak?.currentStreak) {
+      _evaluate();
+    }
+  }
+
+  /// Celebrate with a grow-pop if the plant has advanced past the last seen
+  /// stage; otherwise just remember the current stage.
+  void _evaluate() {
+    if (_prefs == null || widget.streak == null) return;
+    final cur = _currentIndex;
+    if (_lastSeen != null && cur > _lastSeen!) {
+      setState(() => _fromIndex = _lastSeen);
+      _grow.forward(from: 0).whenComplete(() {
+        _prefs!.setInt(_kStageSeenKey, cur);
+        _lastSeen = cur;
+        if (mounted) setState(() => _fromIndex = null);
+      });
+    } else {
+      _prefs!.setInt(_kStageSeenKey, cur);
+      _lastSeen = cur;
+    }
+  }
+
+  @override
+  void dispose() {
+    _sway.dispose();
+    _grow.dispose();
+    super.dispose();
+  }
+
+  /// Which days of the current week (Mon→Sun) fall inside the current streak.
+  List<bool> _litDays() {
+    final lit = List<bool>.filled(7, false);
+    final s = widget.streak;
+    final current = s?.currentStreak ?? 0;
+    if (s == null || current <= 0) return lit;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTime? end;
+    if (s.activeToday) {
+      end = today;
+    } else if (s.lastCareDate != null) {
+      final l = s.lastCareDate!;
+      end = DateTime(l.year, l.month, l.day);
+    }
+    if (end == null) return lit;
+    final start = end.subtract(Duration(days: current - 1));
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+
+    for (int i = 0; i < 7; i++) {
+      final day = monday.add(Duration(days: i));
+      if (!day.isBefore(start) && !day.isAfter(end)) lit[i] = true;
+    }
+    return lit;
+  }
+
+  String _caption(int current) {
+    if (current == 0) return 'Care for a plant to start growing';
+    final stage = PlantStage.forStreak(current);
+    final next = PlantStage.next(stage);
+    if (next == null) return 'Fully grown — keep it going';
+    final d = next.minDays - current;
+    return 'Grows to ${next.name.toLowerCase()} in $d ${d == 1 ? 'day' : 'days'}';
+  }
+
+  Widget _plantArea(PlantStage stage) {
+    return SizedBox(
+      height: 104,
+      child: Center(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_sway, _grow]),
+          builder: (context, _) {
+            if (_fromIndex != null) {
+              final from = PlantStage.all[_fromIndex!];
+              final g = _grow.value.clamp(0.0, 1.0);
+              final eased = Curves.easeOutBack.transform(g);
+              return Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  Opacity(
+                    opacity: 1 - g,
+                    child: _StageImage(image: from.image, size: from.size),
                   ),
-                ),
-                if (longest > 0) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Longest: $longest ${longest == 1 ? 'day' : 'days'}',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 12,
+                  Opacity(
+                    opacity: g,
+                    child: Transform.scale(
+                      scale: 0.5 + 0.5 * eased,
+                      alignment: Alignment.bottomCenter,
+                      child: _StageImage(image: stage.image, size: stage.size),
                     ),
                   ),
                 ],
-              ],
+              );
+            }
+            final sway = math.sin(_sway.value * 2 * math.pi) * 0.05;
+            return Transform.rotate(
+              angle: sway,
+              alignment: Alignment.bottomCenter,
+              child: _StageImage(image: stage.image, size: stage.size),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.streak?.currentStreak ?? 0;
+    final lit = _litDays();
+    final stage = PlantStage.forStreak(current);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      decoration: BoxDecoration(
+        color: _kCardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _kCardBorder),
+      ),
+      child: Column(
+        children: [
+          _plantArea(stage),
+          const SizedBox(height: 8),
+          Text(
+            stage.name,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
             ),
           ),
+          const SizedBox(height: 2),
+          Text(
+            '$current ${current == 1 ? 'day' : 'days'} streak',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _caption(current),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 18),
+          _WeekStrip(lit: lit),
         ],
       ),
+    );
+  }
+}
+
+/// Renders a plant stage image, preferring a user-supplied `<image>.png` in
+/// `assets/plant_stages/` if present, otherwise the bundled `<image>.svg`. This
+/// is what makes AI-generated art drop-in: add `seedling.png` and it's used
+/// automatically (the folder is already declared in pubspec).
+class _StageImage extends StatelessWidget {
+  final String image;
+  final double size;
+  const _StageImage({required this.image, required this.size});
+
+  static Future<Set<String>>? _pngFuture;
+  static Future<Set<String>> _pngStages() async {
+    try {
+      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      return manifest
+          .listAssets()
+          .where((a) =>
+              a.startsWith('assets/plant_stages/') && a.endsWith('.png'))
+          .map((a) => a.split('/').last.replaceAll('.png', ''))
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _pngFuture ??= _pngStages();
+    return FutureBuilder<Set<String>>(
+      future: _pngFuture,
+      builder: (context, snap) {
+        final hasPng = snap.data?.contains(image) ?? false;
+        if (hasPng) {
+          return Image.asset(
+            'assets/plant_stages/$image.png',
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+          );
+        }
+        return SvgPicture.asset(
+          'assets/plant_stages/$image.svg',
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+        );
+      },
+    );
+  }
+}
+
+/// Current week (Mon→Sun): a day initial above a circle. Each cared-for day is
+/// a blue water drop; consecutive cared-for days are joined by a blue bar.
+class _WeekStrip extends StatelessWidget {
+  final List<bool> lit;
+  const _WeekStrip({required this.lit});
+
+  // Monday-first initials.
+  static const _initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    return Row(
+      children: List.generate(7, (i) {
+        final day = monday.add(Duration(days: i));
+        final isToday = day == today;
+        final litHere = lit[i];
+        final litLeft = i > 0 && litHere && lit[i - 1];
+        final litRight = i < 6 && litHere && lit[i + 1];
+        return Expanded(
+          child: _DayCell(
+            label: _initials[i],
+            lit: litHere,
+            isToday: isToday,
+            litLeft: litLeft,
+            litRight: litRight,
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _DayCell extends StatelessWidget {
+  final String label;
+  final bool lit;
+  final bool isToday;
+  final bool litLeft;
+  final bool litRight;
+
+  static const double _d = 28; // circle diameter
+  static const double _barH = 10; // connector thickness
+
+  const _DayCell({
+    required this.label,
+    required this.lit,
+    required this.isToday,
+    required this.litLeft,
+    required this.litRight,
+  });
+
+  // Blue connecting line, shown only between two adjacent cared-for days.
+  Widget _bar(bool on) => Expanded(
+        child: on
+            ? Container(height: _barH, color: _kWater)
+            : const SizedBox.shrink(),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: isToday ? AppColors.textPrimary : AppColors.textSecondary,
+            fontSize: 11,
+            fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: _d,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Row(children: [_bar(litLeft), _bar(litRight)]),
+              Container(
+                width: _d,
+                height: _d,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: lit ? _kWater : Colors.white,
+                  border: Border.all(
+                    color: lit
+                        ? _kWater
+                        : (isToday ? _kWater : AppColors.cardBorder),
+                    width: isToday && !lit ? 2 : 1,
+                  ),
+                ),
+                child: lit
+                    ? const Icon(Icons.water_drop_rounded,
+                        color: Colors.white, size: 15)
+                    : null,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -348,11 +608,12 @@ class _TasksSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).padding.top;
     return ListView(
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      padding: EdgeInsets.fromLTRB(20, topInset + 24, 20, 24),
       children: const [
-        SkeletonBox(height: 104, radius: 20),
+        SkeletonBox(height: 200, radius: 20),
         SizedBox(height: 24),
         SkeletonBox(width: 140, height: 20, radius: 6),
         SizedBox(height: 16),
