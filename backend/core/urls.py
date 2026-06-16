@@ -24,6 +24,7 @@ urlpatterns = [
     path('scans/', views.scan),
     path('scans/<int:pk>/confirm/', views.scan_confirm),
     path('plants/<int:pk>/scans/', views.plant_scan_history),
+    path('plants/<int:pk>/activity/', views.plant_activity),
     path('scans/<int:pk>/', views.scan_detail),
     path('scans/history/', views.all_scans),
     path('diseases/<str:label>/', views.disease_detail),

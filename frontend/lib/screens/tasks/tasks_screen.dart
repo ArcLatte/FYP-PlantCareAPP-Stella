@@ -1,7 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle, AssetManifest;
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
@@ -11,6 +9,7 @@ import '../../models/streak.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/stage_image.dart';
 import 'care_activity.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -263,14 +262,14 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                 children: [
                   Opacity(
                     opacity: 1 - g,
-                    child: _StageImage(image: from.image, size: from.size),
+                    child: StageImage(image: from.image, size: from.size),
                   ),
                   Opacity(
                     opacity: g,
                     child: Transform.scale(
                       scale: 0.5 + 0.5 * eased,
                       alignment: Alignment.bottomCenter,
-                      child: _StageImage(image: stage.image, size: stage.size),
+                      child: StageImage(image: stage.image, size: stage.size),
                     ),
                   ),
                 ],
@@ -280,7 +279,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
             return Transform.rotate(
               angle: sway,
               alignment: Alignment.bottomCenter,
-              child: _StageImage(image: stage.image, size: stage.size),
+              child: StageImage(image: stage.image, size: stage.size),
             );
           },
         ),
@@ -338,56 +337,6 @@ class _StreakBackdropState extends State<_StreakBackdrop>
           _WeekStrip(lit: lit),
         ],
       ),
-    );
-  }
-}
-
-/// Renders a plant stage image, preferring a user-supplied `<image>.png` in
-/// `assets/plant_stages/` if present, otherwise the bundled `<image>.svg`. This
-/// is what makes AI-generated art drop-in: add `seedling.png` and it's used
-/// automatically (the folder is already declared in pubspec).
-class _StageImage extends StatelessWidget {
-  final String image;
-  final double size;
-  const _StageImage({required this.image, required this.size});
-
-  static Future<Set<String>>? _pngFuture;
-  static Future<Set<String>> _pngStages() async {
-    try {
-      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-      return manifest
-          .listAssets()
-          .where((a) =>
-              a.startsWith('assets/plant_stages/') && a.endsWith('.png'))
-          .map((a) => a.split('/').last.replaceAll('.png', ''))
-          .toSet();
-    } catch (_) {
-      return <String>{};
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    _pngFuture ??= _pngStages();
-    return FutureBuilder<Set<String>>(
-      future: _pngFuture,
-      builder: (context, snap) {
-        final hasPng = snap.data?.contains(image) ?? false;
-        if (hasPng) {
-          return Image.asset(
-            'assets/plant_stages/$image.png',
-            width: size,
-            height: size,
-            fit: BoxFit.contain,
-          );
-        }
-        return SvgPicture.asset(
-          'assets/plant_stages/$image.svg',
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-        );
-      },
     );
   }
 }

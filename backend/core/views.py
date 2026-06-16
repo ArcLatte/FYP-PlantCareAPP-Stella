@@ -503,6 +503,51 @@ def plant_scan_history(request, pk):
     return Response(data)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def plant_activity(request, pk):
+    """Per-plant version of `activity`: a reverse-chronological feed of one
+    plant's care actions (water/fertilize/mist) merged with its disease scans.
+    Powers the History timeline on the plant profile. Same shape as `/activity/`."""
+    try:
+        plant = Plant.objects.get(pk=pk, user=request.user)
+    except Plant.DoesNotExist:
+        return Response({'error': 'Plant not found.'}, status=404)
+
+    events = []
+
+    care_logs = CareLog.objects.filter(plant=plant)[:100]
+    for log in care_logs:
+        events.append({
+            'type': 'care',
+            'activity': log.activity,
+            'plant_id': plant.id,
+            'plant_name': plant.name,
+            'created_at': log.created_at,
+        })
+
+    scans = (
+        ScanResult.objects
+        .filter(plant=plant)
+        .select_related('disease')
+        .order_by('-created_at')[:100]
+    )
+    for s in scans:
+        label, health = _scan_label_health(s)
+        events.append({
+            'type': 'scan',
+            'scan_id': s.id,
+            'plant_id': plant.id,
+            'plant_name': plant.name,
+            'label': label,
+            'health': health,
+            'created_at': s.created_at,
+        })
+
+    events.sort(key=lambda e: e['created_at'], reverse=True)
+    return Response(events[:100])
+
+
 @api_view(['GET', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def scan_detail(request, pk):

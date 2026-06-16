@@ -2,11 +2,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import '../../models/activity.dart';
 import '../../models/plant.dart';
-import '../../models/scan.dart';
+import '../../models/plant_stage.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/stage_image.dart';
 import '../../widgets/xp_toast.dart';
 
 // Per-topic colors — mirror the palette used on the Tasks screen so the
@@ -25,7 +27,7 @@ class PlantDetailScreen extends StatefulWidget {
 
 class _PlantDetailScreenState extends State<PlantDetailScreen> {
   Plant? _plant;
-  List<ScanResult> _scans = [];
+  List<ActivityEvent> _activity = [];
   bool _isLoading = true;
   bool _isWatering = false;
   bool _isFertilizing = false;
@@ -40,6 +42,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       setState(() => _plant = updated);
       AppSnackBar.success(context, '${updated.name} watered');
       XpToast.flush(context);
+      _refreshActivity();
     } catch (e) {
       if (mounted) {
         AppSnackBar.error(context, 'Failed to water: $e');
@@ -58,6 +61,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       setState(() => _plant = updated);
       AppSnackBar.success(context, '${updated.name} fertilized');
       XpToast.flush(context);
+      _refreshActivity();
     } catch (e) {
       if (mounted) AppSnackBar.error(context, 'Failed to fertilize: $e');
     } finally {
@@ -74,6 +78,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       setState(() => _plant = updated);
       AppSnackBar.success(context, '${updated.name} misted');
       XpToast.flush(context);
+      _refreshActivity();
     } catch (e) {
       if (mounted) AppSnackBar.error(context, 'Failed to mist: $e');
     } finally {
@@ -90,14 +95,25 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   Future<void> _loadData() async {
     try {
       final plant = await ApiService.getPlant(widget.plantId);
-      final scans = await ApiService.getPlantScans(widget.plantId);
+      final activity = await ApiService.getPlantActivity(widget.plantId);
       setState(() {
         _plant = plant;
-        _scans = scans;
+        _activity = activity;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// Pull just the history after a care action so the new event shows up at the
+  /// top without a full-screen reload.
+  Future<void> _refreshActivity() async {
+    try {
+      final activity = await ApiService.getPlantActivity(widget.plantId);
+      if (mounted) setState(() => _activity = activity);
+    } catch (_) {
+      // Non-fatal — the timeline just stays as-is until the next refresh.
     }
   }
 
@@ -147,23 +163,18 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     }
   }
 
-  String _formatDate(String dateStr) {
-    final date = DateTime.parse(dateStr);
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
   String _formatDisease(String label) {
     return label.replaceAll('_', ' ').replaceAll('Tomato ', '');
   }
 
   /// Plant-health section: shows the latest *confirmed* diagnosis with care
-  /// actions and a "Read more" link, a healthy state, or a prompt to scan.
+  /// tips and a "Read more" link, a healthy state, or a prompt to scan.
   Widget _buildHealthCard(BuildContext context) {
     final disease = _plant!.latestDisease;
 
     // No confirmed diagnosis yet → gentle prompt.
     if (disease == null) {
-      final hasScans = _scans.isNotEmpty;
+      final hasScans = _activity.any((e) => e.isScan);
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -289,12 +300,17 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     );
   }
 
-  /// "Due today" / "Due in 3d" / "Overdue 2d" for the care action rows.
-  String _careDueLabel(int? days) {
-    if (days == null) return '';
-    if (days == 0) return 'Due today';
+  /// "Today" / "in 3d" / "Overdue 2d" / "—" from days-until.
+  static String _nextLabel(int? days) {
+    if (days == null) return '—';
+    if (days == 0) return 'Today';
     if (days < 0) return 'Overdue ${-days}d';
-    return 'Due in ${days}d';
+    return 'in ${days}d';
+  }
+
+  static String _lastLabel(DateTime? d) {
+    if (d == null) return 'Never';
+    return '${d.day}/${d.month}/${d.year}';
   }
 
   /// "Planted today" / "12 days ago" / "—" from createdAt string.
@@ -307,18 +323,22 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     return '$days days ago';
   }
 
+  /// Whole days since the plant was planted (clamped to ≥0). Drives the growth
+  /// stage + harvest progress.
+  int _ageDays(String createdAt) {
+    final planted = DateTime.tryParse(createdAt);
+    if (planted == null) return 0;
+    final days = DateTime.now().difference(planted).inDays;
+    return days < 0 ? 0 : days;
+  }
+
   /// Per-topic colour for the species care strip. Mirrors the Tasks screen
-  /// palette so water/mist/sun read the same wherever they appear.
+  /// palette so sun/temp/etc. read the same wherever they appear.
   Color _careCardColor(String label) {
     switch (label) {
-      case 'WATER':
-        return _kWaterColor;
       case 'SUNLIGHT':
-      case 'FERTILIZE':
       case 'TEMP':
         return AppColors.amber;
-      case 'MIST':
-        return _kMistColor;
       case 'LOCATION':
       case 'HARVEST':
       default:
@@ -326,9 +346,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     }
   }
 
-  /// Build the horizontal list of species care cards. Only cards with data
-  /// are included, so plants whose species predates the knowledge base (or
-  /// activities that don't apply, like misting for a tomato) are skipped.
+  /// Build the horizontal list of *intrinsic* species cards (sunlight, temp,
+  /// location, harvest). Scheduling cadences (water/fertilize/mist) are omitted
+  /// here — the Care card above owns those, so this avoids duplicating them.
   List<Widget> _buildCareTips(Plant plant) {
     final s = plant.speciesDetail;
     if (s == null) return const [];
@@ -346,28 +366,58 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     if (s.sunlightLabel.isNotEmpty) {
       add(Icons.wb_sunny_outlined, s.sunlightLabel, 'SUNLIGHT');
     }
-    if (s.defaultWateringFreqDays != null) {
-      add(Icons.water_drop_outlined,
-          'Every ${s.defaultWateringFreqDays}d', 'WATER');
-    }
     if (s.locationLabel.isNotEmpty) {
       add(Icons.home_outlined, s.locationLabel, 'LOCATION');
     }
     if (s.temperatureRange != null) {
       add(Icons.thermostat_outlined, s.temperatureRange!, 'TEMP');
     }
-    if (s.defaultFertilizerFreqDays != null) {
-      add(Icons.compost_outlined,
-          'Every ${s.defaultFertilizerFreqDays}d', 'FERTILIZE');
-    }
-    if (s.defaultMistingFreqDays != null) {
-      add(Icons.cloud_outlined,
-          'Every ${s.defaultMistingFreqDays}d', 'MIST');
-    }
     if (s.daysToHarvest != null) {
       add(Icons.eco_outlined, '~${s.daysToHarvest}d', 'HARVEST');
     }
     return cards;
+  }
+
+  /// One Care card row per applicable activity. Water always applies; fertilize
+  /// and mist only when the species schedules them.
+  List<Widget> _buildCareRows(Plant plant) {
+    final rows = <Widget>[
+      _CareRow(
+        icon: Icons.water_drop_rounded,
+        color: _kWaterColor,
+        label: 'Water',
+        next: _nextLabel(plant.daysUntilWater),
+        last: _lastLabel(plant.lastWatered),
+        overdue: (plant.daysUntilWater ?? 1) <= 0,
+        busy: _isWatering,
+        onLog: _waterNow,
+      ),
+    ];
+    if (plant.daysUntilFertilizer != null) {
+      rows.add(_CareRow(
+        icon: Icons.compost_rounded,
+        color: AppColors.amber,
+        label: 'Fertilize',
+        next: _nextLabel(plant.daysUntilFertilizer),
+        last: _lastLabel(plant.lastFertilized),
+        overdue: (plant.daysUntilFertilizer ?? 1) <= 0,
+        busy: _isFertilizing,
+        onLog: _fertilizeNow,
+      ));
+    }
+    if (plant.daysUntilMisting != null) {
+      rows.add(_CareRow(
+        icon: Icons.cloud_rounded,
+        color: _kMistColor,
+        label: 'Mist',
+        next: _nextLabel(plant.daysUntilMisting),
+        last: _lastLabel(plant.lastMisted),
+        overdue: (plant.daysUntilMisting ?? 1) <= 0,
+        busy: _isMisting,
+        onLog: _mistNow,
+      ));
+    }
+    return rows;
   }
 
   @override
@@ -443,28 +493,59 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   backgroundColor: AppColors.surface,
                   child: CustomScrollView(
                     slivers: [
-                      // 1. Hero photo
+                      // 1. Hero photo with name + species + health overlay.
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                          child: _PlantPhoto(photoUrl: _plant!.photoUrl),
+                          child: _PlantHero(plant: _plant!),
                         ),
                       ),
 
-                      // 2. Plant details (status bar)
+                      // 2. Quick facts — planted / location.
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                          child: _PlantDetailsCard(
-                            plant: _plant!,
+                          child: _QuickFacts(
                             age: _ageLabel(_plant!.createdAt),
-                            added: _formatDate(_plant!.createdAt),
+                            location: _plant!.location,
                           ),
                         ),
                       ),
 
-                      // 2a. Plant health — latest confirmed diagnosis + care
-                      // actions + a "Read more" link to the disease page.
+                      // 3. Growth stage + harvest progress.
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                          child: _GrowthCard(
+                            ageDays: _ageDays(_plant!.createdAt),
+                            daysToHarvest:
+                                _plant!.speciesDetail?.daysToHarvest,
+                          ),
+                        ),
+                      ),
+
+                      // 4. Unified care card — one row per applicable activity,
+                      // each combining next-due + last-done + a log button.
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                          child: _SectionCard(
+                            title: 'Care',
+                            child: Column(
+                              children: [
+                                for (final (i, row)
+                                    in _buildCareRows(_plant!).indexed) ...[
+                                  if (i > 0) const SizedBox(height: 14),
+                                  row,
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 5. Plant health — latest confirmed diagnosis + a
+                      // "Read more" link to the disease page.
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -472,87 +553,49 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                         ),
                       ),
 
-                      // 2b. Fertilize / mist quick actions — only when the
-                      // species actually has those schedules. Watering stays
-                      // in the pinned bottom bar as the primary action.
-                      if (_plant!.daysUntilFertilizer != null ||
-                          _plant!.daysUntilMisting != null)
+                      // 5b. Notes — user's own free-text note for this plant.
+                      if (_plant!.notes != null &&
+                          _plant!.notes!.trim().isNotEmpty)
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                            child: Column(
-                              children: [
-                                if (_plant!.daysUntilFertilizer != null)
-                                  _CareActionRow(
-                                    icon: Icons.compost_rounded,
-                                    color: AppColors.amber,
-                                    label: 'Fertilize',
-                                    due: _careDueLabel(
-                                        _plant!.daysUntilFertilizer),
-                                    overdue:
-                                        (_plant!.daysUntilFertilizer ?? 1) <= 0,
-                                    busy: _isFertilizing,
-                                    onLog: _fertilizeNow,
-                                  ),
-                                if (_plant!.daysUntilFertilizer != null &&
-                                    _plant!.daysUntilMisting != null)
-                                  const SizedBox(height: 10),
-                                if (_plant!.daysUntilMisting != null)
-                                  _CareActionRow(
-                                    icon: Icons.cloud_rounded,
-                                    color: _kMistColor,
-                                    label: 'Mist',
-                                    due: _careDueLabel(_plant!.daysUntilMisting),
-                                    overdue: (_plant!.daysUntilMisting ?? 1) <= 0,
-                                    busy: _isMisting,
-                                    onLog: _mistNow,
-                                  ),
-                              ],
+                            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                            child: _SectionCard(
+                              title: 'Notes',
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _plant!.notes!,
+                                  style:
+                                      Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ),
                             ),
                           ),
                         ),
 
-                      // 3. Species care cards
-                      if (_buildCareTips(_plant!).isNotEmpty)
+                      // 6. About this species (collapsible).
+                      if (_plant!.speciesDetail != null)
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 20, 0, 0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 24),
-                                  child: Text('Plant care',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleLarge),
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  height: 96,
-                                  child: ListView(
-                                    scrollDirection: Axis.horizontal,
-                                    padding:
-                                        const EdgeInsets.only(right: 12),
-                                    children: _buildCareTips(_plant!),
-                                  ),
-                                ),
-                              ],
+                            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                            child: _SpeciesSection(
+                              plant: _plant!,
+                              cards: _buildCareTips(_plant!),
                             ),
                           ),
                         ),
 
-                      // 4. Scan History
+                      // 7. History timeline — care events + scans merged.
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
                           child: Text(
-                            'Scan History',
+                            'History',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ),
                       ),
-                      _scans.isEmpty
+                      _activity.isEmpty
                           ? SliverToBoxAdapter(
                               child: Padding(
                                 padding: const EdgeInsets.fromLTRB(
@@ -561,13 +604,13 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                                   child: Column(
                                     children: [
                                       const Icon(
-                                        Icons.document_scanner_outlined,
+                                        Icons.history_rounded,
                                         size: 48,
                                         color: AppColors.textMuted,
                                       ),
                                       const SizedBox(height: 12),
                                       Text(
-                                        'No scans yet',
+                                        'No history yet',
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium,
@@ -585,103 +628,25 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                               sliver: SliverList(
                                 delegate: SliverChildBuilderDelegate(
                                   (context, index) {
-                                    final scan = _scans[index];
-                                    return GestureDetector(
-                                      onTap: () =>
-                                          context.push('/result/${scan.id}'),
-                                      child: Container(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 12),
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.surface,
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          border: Border.all(
-                                              color: AppColors.cardBorder),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: AppColors.cardShadow,
-                                              blurRadius: 12,
-                                              offset: Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Container(
-                                              width: 44,
-                                              height: 44,
-                                              decoration: BoxDecoration(
-                                                color: scan.confirmedDisease
-                                                            ?.contains(
-                                                                'healthy') ==
-                                                        true
-                                                    ? AppColors.success
-                                                        .withValues(alpha: 0.15)
-                                                    : AppColors.amber
-                                                        .withValues(alpha: 0.15),
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: Icon(
-                                                scan.confirmedDisease?.contains(
-                                                            'healthy') ==
-                                                        true
-                                                    ? Icons.favorite_rounded
-                                                    : Icons.warning_amber_rounded,
-                                                color: scan.confirmedDisease
-                                                            ?.contains(
-                                                                'healthy') ==
-                                                        true
-                                                    ? AppColors.success
-                                                    : AppColors.amber,
-                                                size: 20,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    scan.confirmedDisease !=
-                                                            null
-                                                        ? _formatDisease(scan
-                                                            .confirmedDisease!)
-                                                        : 'Pending confirmation',
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .titleMedium,
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    _formatDate(scan.createdAt),
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .bodySmall,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const Icon(
-                                              Icons.chevron_right_rounded,
-                                              color: AppColors.textMuted,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                                    final event = _activity[index];
+                                    return _TimelineTile(
+                                      event: event,
+                                      formatDisease: _formatDisease,
+                                      onTapScan: event.scanId != null
+                                          ? () => context.push(
+                                              '/result/${event.scanId}')
+                                          : null,
                                     );
                                   },
-                                  childCount: _scans.length,
+                                  childCount: _activity.length,
                                 ),
                               ),
                             ),
                     ],
                   ),
                 ),
-      // 5. Persistent action bar — Scan on the left, Water on the right.
+      // 8. Persistent action bar — a single primary Scan CTA. Care actions
+      // now log inline in the Care card.
       bottomNavigationBar: _plant == null
           ? null
           : SafeArea(
@@ -703,62 +668,21 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => context.push('/scan/${widget.plantId}'),
-                        icon: const Icon(Icons.document_scanner_rounded,
-                            color: AppColors.primary),
-                        label: const Text(
-                          'Scan',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(50),
-                          side: const BorderSide(
-                              color: AppColors.primary, width: 1.4),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
+                  child: ElevatedButton.icon(
+                    onPressed: () => context.push('/scan/${widget.plantId}'),
+                    icon: const Icon(Icons.document_scanner_rounded),
+                    label: const Text('Scan plant'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _isWatering ? null : _waterNow,
-                        icon: _isWatering
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.water_drop_rounded),
-                        label: const Text('Water now'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _kWaterColor,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor:
-                              _kWaterColor.withValues(alpha: 0.6),
-                          disabledForegroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    ],
                   ),
                 ),
               ),
@@ -767,45 +691,209 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   }
 }
 
-/// Status card sitting under the hero photo. Shows identity (name + species),
-/// a health chip, a care row per applicable activity (water always; fertilize
-/// and mist when the species schedules them) that combines next + last into one
-/// slot, then a compact Location + Planted pair.
-class _PlantDetailsCard extends StatelessWidget {
+/// Hero photo with a bottom gradient scrim and the plant's identity overlaid:
+/// name, species, and a health badge. This is the single source of the plant's
+/// name/species/health on the page.
+class _PlantHero extends StatelessWidget {
   final Plant plant;
-  final String age;
-  final String added;
-
-  const _PlantDetailsCard({
-    required this.plant,
-    required this.age,
-    required this.added,
-  });
-
-  /// "Today" / "in 3d" / "Overdue 2d" / "—" from days-until.
-  static String _nextLabel(int? days) {
-    if (days == null) return '—';
-    if (days == 0) return 'Today';
-    if (days < 0) return 'Overdue ${-days}d';
-    return 'in ${days}d';
-  }
-
-  static String _lastLabel(DateTime? d) {
-    if (d == null) return 'Never';
-    return '${d.day}/${d.month}/${d.year}';
-  }
+  const _PlantHero({required this.plant});
 
   @override
   Widget build(BuildContext context) {
-    final health = plant.latestHealth;
-    final (healthLabel, healthColor) = switch (health) {
+    final (healthLabel, healthColor) = switch (plant.latestHealth) {
       'healthy' => ('Healthy', AppColors.success),
       'diseased' => ('Needs treatment', AppColors.amber),
       _ => ('Unknown', AppColors.textMuted),
     };
 
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: AspectRatio(
+        aspectRatio: 16 / 10,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            plant.photoUrl != null
+                ? CachedNetworkImage(
+                    imageUrl: plant.photoUrl!,
+                    fit: BoxFit.cover,
+                    // Hero spans the screen width; cap decode size well under
+                    // full camera resolution.
+                    memCacheWidth: 900,
+                    placeholder: (_, _) => const SkeletonBox(radius: 0),
+                    errorWidget: (_, _, _) => const _PhotoPlaceholder(),
+                  )
+                : const _PhotoPlaceholder(),
+            // Scrim so white text stays legible over any photo.
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.transparent,
+                    Color(0xCC000000),
+                  ],
+                  stops: [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 14,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          plant.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (plant.species.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            plant.species,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _HeroHealthBadge(label: healthLabel, color: healthColor),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Solid, high-contrast health pill for the hero overlay (the translucent
+/// in-card chip wouldn't read over a photo).
+class _HeroHealthBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _HeroHealthBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.circle, color: Colors.white, size: 8),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact planted/location pair under the hero.
+class _QuickFacts extends StatelessWidget {
+  final String age;
+  final String location;
+
+  const _QuickFacts({
+    required this.age,
+    required this.location,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 12,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatTile(
+              icon: Icons.eco_rounded,
+              color: AppColors.amber,
+              label: 'PLANTED',
+              value: age,
+            ),
+          ),
+          Expanded(
+            child: _StatTile(
+              icon: Icons.place_rounded,
+              color: AppColors.primary,
+              label: 'LOCATION',
+              value: location.isEmpty ? '—' : location,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Per-plant growth visualization: the staged illustration driven by the
+/// plant's age, plus a harvest progress bar for species that fruit/harvest.
+class _GrowthCard extends StatelessWidget {
+  final int ageDays;
+  final int? daysToHarvest;
+
+  const _GrowthCard({required this.ageDays, required this.daysToHarvest});
+
+  @override
+  Widget build(BuildContext context) {
+    final stage = PlantStage.forStreak(ageDays);
+    final next = PlantStage.next(stage);
+    final caption = next == null
+        ? 'Fully grown'
+        : '${next.name} in ${(next.minDays - ageDays).clamp(1, 999)}d';
+
+    final dh = daysToHarvest;
+    final harvestRemaining = dh == null ? null : dh - ageDays;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -822,264 +910,148 @@ class _PlantDetailsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: StageImage(image: stage.image, size: 56),
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(plant.name,
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 4),
-                    Text(plant.species,
-                        style: Theme.of(context).textTheme.bodyMedium),
+                    Text(
+                      'GROWTH STAGE',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(stage.name,
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(caption,
+                        style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              _HealthChip(label: healthLabel, color: healthColor),
             ],
           ),
-          const SizedBox(height: 16),
-          const Divider(color: AppColors.divider, height: 1),
-          const SizedBox(height: 16),
-          // One row per applicable care activity, combining next + last.
-          _CareStatRow(
-            icon: Icons.water_drop_rounded,
-            color: _kWaterColor,
-            label: 'Watering',
-            next: _nextLabel(plant.daysUntilWater),
-            last: _lastLabel(plant.lastWatered),
-            overdue: (plant.daysUntilWater ?? 1) <= 0,
-          ),
-          if (plant.daysUntilFertilizer != null) ...[
-            const SizedBox(height: 12),
-            _CareStatRow(
-              icon: Icons.compost_rounded,
-              color: AppColors.amber,
-              label: 'Fertilizing',
-              next: _nextLabel(plant.daysUntilFertilizer),
-              last: _lastLabel(plant.lastFertilized),
-              overdue: (plant.daysUntilFertilizer ?? 1) <= 0,
-            ),
-          ],
-          if (plant.daysUntilMisting != null) ...[
-            const SizedBox(height: 12),
-            _CareStatRow(
-              icon: Icons.cloud_rounded,
-              color: _kMistColor,
-              label: 'Misting',
-              next: _nextLabel(plant.daysUntilMisting),
-              last: _lastLabel(plant.lastMisted),
-              overdue: (plant.daysUntilMisting ?? 1) <= 0,
-            ),
-          ],
-          const SizedBox(height: 16),
-          const Divider(color: AppColors.divider, height: 1),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.place_rounded,
-                  color: AppColors.primary,
-                  label: 'LOCATION',
-                  value: plant.location.isEmpty ? '—' : plant.location,
-                ),
-              ),
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.eco_rounded,
-                  color: AppColors.amber,
-                  label: 'PLANTED',
-                  value: age,
-                ),
-              ),
-            ],
-          ),
-          if (plant.notes != null && plant.notes!.isNotEmpty) ...[
+          if (dh != null) ...[
             const SizedBox(height: 16),
-            const Divider(color: AppColors.divider, height: 1),
-            const SizedBox(height: 12),
-            Text(
-              'NOTES',
-              style: TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(plant.notes!,
-                style: Theme.of(context).textTheme.bodyMedium),
-          ],
-          const SizedBox(height: 14),
-          Text('Added $added',
-              style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    );
-  }
-}
-
-class _HealthChip extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _HealthChip({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Quick-log row for fertilize/mist: tinted icon, due status, "Log" button.
-class _CareActionRow extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String due;
-  final bool overdue;
-  final bool busy;
-  final VoidCallback onLog;
-  const _CareActionRow({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.due,
-    required this.overdue,
-    required this.busy,
-    required this.onLog,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Row(
               children: [
+                const Icon(Icons.agriculture_rounded,
+                    color: AppColors.primary, size: 18),
+                const SizedBox(width: 8),
                 Text(
-                  label,
+                  'Harvest',
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const Spacer(),
                 Text(
-                  due,
+                  (harvestRemaining ?? 0) <= 0
+                      ? 'Ready to harvest'
+                      : '~${harvestRemaining}d to go',
                   style: TextStyle(
-                    color: overdue ? AppColors.amber : AppColors.textSecondary,
+                    color: (harvestRemaining ?? 0) <= 0
+                        ? AppColors.success
+                        : AppColors.textSecondary,
                     fontSize: 12,
-                    fontWeight:
-                        overdue ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-          ),
-          SizedBox(
-            height: 36,
-            child: ElevatedButton(
-              onPressed: busy ? null : onLog,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: color.withValues(alpha: 0.6),
-                // The app theme's ElevatedButton minimumSize is
-                // (infinity, 52); inside a Row that forces an infinite
-                // width and kills layout for the whole screen. Override.
-                minimumSize: const Size(64, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: (ageDays / dh).clamp(0.0, 1.0),
+                minHeight: 8,
+                backgroundColor: AppColors.divider,
+                valueColor: AlwaysStoppedAnimation(
+                  (harvestRemaining ?? 0) <= 0
+                      ? AppColors.success
+                      : AppColors.primary,
                 ),
               ),
-              child: busy
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Log'),
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// A combined care status: tinted icon, activity name, and the next-due +
-/// last-done dates side by side so each activity takes a single slot.
-class _CareStatRow extends StatelessWidget {
+/// A titled white card used to group a section (e.g. Care).
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const _SectionCard({required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 12,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+/// A single care activity: tinted icon, name, next-due + last-done, and an
+/// inline Log button. Combines what used to be three separate widgets.
+class _CareRow extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String label;
   final String next;
   final String last;
   final bool overdue;
+  final bool busy;
+  final VoidCallback onLog;
 
-  const _CareStatRow({
+  const _CareRow({
     required this.icon,
     required this.color,
     required this.label,
     required this.next,
     required this.last,
     required this.overdue,
+    required this.busy,
+    required this.onLog,
   });
 
   @override
@@ -1097,68 +1069,307 @@ class _CareStatRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Next ',
+                      style: TextStyle(
+                          color: AppColors.textMuted, fontSize: 12),
+                    ),
+                    TextSpan(
+                      text: next,
+                      style: TextStyle(
+                        color: overdue
+                            ? AppColors.amber
+                            : AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight:
+                            overdue ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                    ),
+                    TextSpan(
+                      text: '  ·  Last $last',
+                      style: const TextStyle(
+                          color: AppColors.textMuted, fontSize: 12),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
-        _MiniStat(
-          caption: 'NEXT',
-          value: next,
-          valueColor: overdue ? AppColors.amber : AppColors.textPrimary,
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 36,
+          child: ElevatedButton(
+            onPressed: busy ? null : onLog,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: color.withValues(alpha: 0.6),
+              // The app theme's ElevatedButton minimumSize is (infinity, 52);
+              // inside a Row that forces an infinite width and kills layout.
+              minimumSize: const Size(60, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            child: busy
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Log'),
+          ),
         ),
-        const SizedBox(width: 18),
-        _MiniStat(caption: 'LAST', value: last),
       ],
     );
   }
 }
 
-/// A small caption-over-value pair used inside [_CareStatRow].
-class _MiniStat extends StatelessWidget {
-  final String caption;
-  final String value;
-  final Color? valueColor;
-
-  const _MiniStat({
-    required this.caption,
-    required this.value,
-    this.valueColor,
-  });
+/// Collapsible "About this species" section: scientific name, description,
+/// growing tips, plus the intrinsic species care cards.
+class _SpeciesSection extends StatelessWidget {
+  final Plant plant;
+  final List<Widget> cards;
+  const _SpeciesSection({required this.plant, required this.cards});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          caption,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
+    final s = plant.speciesDetail!;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 12,
+            offset: Offset(0, 2),
           ),
+        ],
+      ),
+      child: Theme(
+        // Strip ExpansionTile's default dividers so it blends into the card.
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 0, 16),
+          iconColor: AppColors.textSecondary,
+          collapsedIconColor: AppColors.textSecondary,
+          title: Text('About this species',
+              style: Theme.of(context).textTheme.titleMedium),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (s.scientificName.isNotEmpty)
+                      Text(
+                        s.scientificName,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    if (s.description.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(s.description,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ],
+                    if (s.growingTips.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'GROWING TIPS',
+                        style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(s.growingTips,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (cards.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 96,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: cards,
+                ),
+              ),
+            ],
+          ],
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor ?? AppColors.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-/// One cell in the status grid. Tinted icon tile + label/value column.
+/// One row in the History timeline: a care event or a scan. Scan rows are
+/// tappable and open the result page.
+class _TimelineTile extends StatelessWidget {
+  final ActivityEvent event;
+  final String Function(String) formatDisease;
+  final VoidCallback? onTapScan;
+
+  const _TimelineTile({
+    required this.event,
+    required this.formatDisease,
+    required this.onTapScan,
+  });
+
+  static String _relative(DateTime d) {
+    final now = DateTime.now();
+    final days = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(d.year, d.month, d.day))
+        .inDays;
+    if (days <= 0) return 'Today';
+    if (days == 1) return 'Yesterday';
+    if (days < 7) return '$days days ago';
+    return '${d.day}/${d.month}/${d.year}';
+  }
+
+  ({IconData icon, Color color, String title}) _visuals() {
+    if (event.isScan) {
+      final healthy = event.health == 'healthy';
+      return (
+        icon: healthy ? Icons.favorite_rounded : Icons.warning_amber_rounded,
+        color: healthy ? AppColors.success : AppColors.amber,
+        title: event.label != null && event.label!.isNotEmpty
+            ? formatDisease(event.label!)
+            : 'Health scan',
+      );
+    }
+    switch (event.activity) {
+      case 'water':
+        return (icon: Icons.water_drop_rounded, color: _kWaterColor, title: 'Watered');
+      case 'fertilize':
+        return (icon: Icons.compost_rounded, color: AppColors.amber, title: 'Fertilized');
+      case 'mist':
+        return (icon: Icons.cloud_rounded, color: _kMistColor, title: 'Misted');
+      default:
+        return (icon: Icons.eco_rounded, color: AppColors.primary, title: 'Care');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = _visuals();
+    final tappable = event.isScan && onTapScan != null;
+
+    final card = Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 12,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: v.color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(v.icon, color: v.color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(v.title,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(_relative(event.createdAt),
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          if (tappable)
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textMuted),
+        ],
+      ),
+    );
+
+    if (!tappable) return card;
+    return GestureDetector(onTap: onTapScan, child: card);
+  }
+}
+
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary.withValues(alpha: 0.18),
+            AppColors.primary.withValues(alpha: 0.06),
+          ],
+        ),
+      ),
+      child: const Center(
+        child: Icon(Icons.eco_rounded, color: AppColors.primary, size: 56),
+      ),
+    );
+  }
+}
+
+/// One cell in the quick-facts row. Tinted icon tile + label/value column.
 class _StatTile extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -1220,59 +1431,8 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// Hero photo for the plant. Falls back to a soft gradient + leaf glyph when
-/// the plant has no uploaded photo.
-class _PlantPhoto extends StatelessWidget {
-  final String? photoUrl;
-  const _PlantPhoto({required this.photoUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: AspectRatio(
-        aspectRatio: 16 / 10,
-        child: photoUrl != null
-            ? CachedNetworkImage(
-                imageUrl: photoUrl!,
-                fit: BoxFit.cover,
-                // Hero spans the screen width; cap decode size well under
-                // full camera resolution.
-                memCacheWidth: 900,
-                placeholder: (_, _) => const SkeletonBox(radius: 0),
-                errorWidget: (_, _, _) => const _PhotoPlaceholder(),
-              )
-            : const _PhotoPlaceholder(),
-      ),
-    );
-  }
-}
-
-class _PhotoPlaceholder extends StatelessWidget {
-  const _PhotoPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary.withValues(alpha: 0.18),
-            AppColors.primary.withValues(alpha: 0.06),
-          ],
-        ),
-      ),
-      child: const Center(
-        child: Icon(Icons.eco_rounded, color: AppColors.primary, size: 56),
-      ),
-    );
-  }
-}
-
 /// Small square card summarizing one species care recommendation
-/// (sunlight, watering cadence, ideal temperature, etc.).
+/// (sunlight, ideal temperature, location, harvest window).
 class _CareCard extends StatelessWidget {
   final IconData icon;
   final String value;
@@ -1292,16 +1452,9 @@ class _CareCard extends StatelessWidget {
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1341,8 +1494,8 @@ class _CareCard extends StatelessWidget {
   }
 }
 
-/// Skeleton scaffold rendered while the plant + scan history are being
-/// fetched. Mirrors the new layout: photo → details card → care strip → list.
+/// Skeleton scaffold rendered while the plant + history are being fetched.
+/// Mirrors the new layout: hero → quick facts → growth → care → list.
 class _PlantDetailSkeleton extends StatelessWidget {
   const _PlantDetailSkeleton();
 
@@ -1359,35 +1512,16 @@ class _PlantDetailSkeleton extends StatelessWidget {
             child: SkeletonBox(radius: 20),
           ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.cardBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                SkeletonBox(width: 180, height: 22, radius: 8),
-                SizedBox(height: 12),
-                SkeletonBox(width: 120, height: 14, radius: 6),
-                SizedBox(height: 20),
-                SkeletonBox(height: 44, radius: 10),
-                SizedBox(height: 12),
-                SkeletonBox(height: 44, radius: 10),
-              ],
-            ),
-          ),
+          const SkeletonBox(height: 70, radius: 16),
+          const SizedBox(height: 16),
+          const SkeletonBox(height: 108, radius: 16),
+          const SizedBox(height: 20),
+          const SkeletonBox(height: 132, radius: 16),
           const SizedBox(height: 24),
           const SkeletonBox(width: 120, height: 20, radius: 6),
           const SizedBox(height: 12),
-          const SkeletonBox(height: 96, radius: 16),
-          const SizedBox(height: 24),
-          const SkeletonBox(width: 160, height: 20, radius: 6),
-          const SizedBox(height: 12),
           for (int i = 0; i < 2; i++) ...[
-            const SkeletonBox(height: 72, radius: 14),
+            const SkeletonBox(height: 72, radius: 16),
             const SizedBox(height: 12),
           ],
         ],

@@ -423,6 +423,19 @@ class ApiService {
     throw Exception('Failed to load scans');
   }
 
+  /// Per-plant unified history: care events (water/fertilize/mist) merged with
+  /// scans, reverse-chronological. Same payload shape as [getActivity].
+  static Future<List<ActivityEvent>> getPlantActivity(int plantId) async {
+    final response =
+        await _authGet('${AppConstants.plantsUrl}$plantId/activity/');
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List)
+          .map((e) => ActivityEvent.fromJson(e))
+          .toList();
+    }
+    throw Exception('Failed to load plant activity');
+  }
+
   static Future<List<ScanResult>> getAllScans() async {
     final response = await _authGet(AppConstants.scanHistoryUrl);
     if (response.statusCode == 200) {
