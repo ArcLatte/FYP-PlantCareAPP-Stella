@@ -72,7 +72,6 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final topInset = MediaQuery.of(context).padding.top;
     return Scaffold(
       body: _isLoading
           ? const _TasksSkeleton()
@@ -81,29 +80,47 @@ class _TasksScreenState extends State<TasksScreen> {
               color: AppColors.primary,
               backgroundColor: AppColors.surface,
               child: ListView(
-                padding: EdgeInsets.fromLTRB(20, topInset + 16, 20, 96),
+                padding: EdgeInsets.zero,
                 children: [
-                  // Plant-growth streak card.
-                  _StreakCard(streak: _streak),
-                  const SizedBox(height: 24),
-                  Text(
-                    "Today's tasks",
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 12),
-                  if (_allCaughtUp)
-                    const _AllCaughtUp()
-                  else
-                    for (final a in _visibleActivities)
-                      if (_dueCount(a) > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _TaskCard(
-                            activity: a,
-                            count: _dueCount(a),
-                            onTap: () => _openActivity(a),
+                  // Full-bleed plant-growth backdrop (like the home weather
+                  // header — fills the top, sits behind the status bar).
+                  _StreakBackdrop(streak: _streak),
+                  // Tasks panel sits on top of the backdrop, overlapping upward
+                  // with rounded top corners.
+                  Transform.translate(
+                    offset: const Offset(0, -24),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(28)),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Today's tasks",
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
-                        ),
+                          const SizedBox(height: 12),
+                          if (_allCaughtUp)
+                            const _AllCaughtUp()
+                          else
+                            for (final a in _visibleActivities)
+                              if (_dueCount(a) > 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _TaskCard(
+                                    activity: a,
+                                    count: _dueCount(a),
+                                    onTap: () => _openActivity(a),
+                                  ),
+                                ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -114,25 +131,26 @@ class _TasksScreenState extends State<TasksScreen> {
 // ─── Streak card (plant growth) ────────────────────────────────
 
 // Plant-growth palette: colored plant illustration + water-blue activity dots
-// on a soft mint card. The streak grows a plant (seed → bloom); each cared-for
-// day is a water drop.
+// on a soft green backdrop. The streak grows a plant (seed → bloom); each
+// cared-for day is a water drop.
 const Color _kWater = Color(0xFF4F9FD9); // water-blue for active days
-const Color _kCardBg = Color(0xFFEAF6EF); // soft mint card surface
-const Color _kCardBorder = Color(0xFFD7E8DD);
+const Color _kBackdropTop = Color(0xFFEAF6EF); // soft mint (top)
+const Color _kBackdropBottom = Color(0xFFCFE8DA); // deeper mint (bottom)
 const String _kStageSeenKey = 'tasks_last_plant_stage';
 
-/// Contained streak card: the plant for the current growth stage (with an idle
-/// sway and a grow-pop when it advances a stage), the stage name + day count, a
-/// "next stage" hint, then the current week's water-day strip.
-class _StreakCard extends StatefulWidget {
+/// Full-bleed streak backdrop (home-weather style): the plant for the current
+/// growth stage (with an idle sway and a grow-pop when it advances a stage),
+/// the stage name + day count, a "next stage" hint, then the current week's
+/// water-day strip. The tasks panel overlaps it from above.
+class _StreakBackdrop extends StatefulWidget {
   final Streak? streak;
-  const _StreakCard({required this.streak});
+  const _StreakBackdrop({required this.streak});
 
   @override
-  State<_StreakCard> createState() => _StreakCardState();
+  State<_StreakBackdrop> createState() => _StreakBackdropState();
 }
 
-class _StreakCardState extends State<_StreakCard>
+class _StreakBackdropState extends State<_StreakBackdrop>
     with TickerProviderStateMixin {
   late final AnimationController _sway;
   late final AnimationController _grow;
@@ -161,7 +179,7 @@ class _StreakCardState extends State<_StreakCard>
   }
 
   @override
-  void didUpdateWidget(covariant _StreakCard old) {
+  void didUpdateWidget(covariant _StreakBackdrop old) {
     super.didUpdateWidget(old);
     if (old.streak?.currentStreak != widget.streak?.currentStreak) {
       _evaluate();
@@ -231,7 +249,7 @@ class _StreakCardState extends State<_StreakCard>
 
   Widget _plantArea(PlantStage stage) {
     return SizedBox(
-      height: 104,
+      height: 148,
       child: Center(
         child: AnimatedBuilder(
           animation: Listenable.merge([_sway, _grow]),
@@ -275,14 +293,19 @@ class _StreakCardState extends State<_StreakCard>
     final current = widget.streak?.currentStreak ?? 0;
     final lit = _litDays();
     final stage = PlantStage.forStreak(current);
+    final topInset = MediaQuery.of(context).padding.top;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-      decoration: BoxDecoration(
-        color: _kCardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _kCardBorder),
+      // Sits behind the status bar (no app bar); pad content clear of it.
+      // Extra bottom padding so the overlapping tasks panel doesn't clip it.
+      padding: EdgeInsets.fromLTRB(20, topInset + 20, 20, 44),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_kBackdropTop, _kBackdropBottom],
+        ),
       ),
       child: Column(
         children: [

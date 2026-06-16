@@ -1,4 +1,4 @@
-/// A single entry in the History timeline — either a care action
+/// A single entry in the History timeline
 /// (water/fertilize/mist) or a disease scan. Mirrors `GET /api/activity/`.
 class ActivityEvent {
   final String type; // 'care' | 'scan'

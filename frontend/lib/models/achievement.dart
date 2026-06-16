@@ -75,11 +75,6 @@ class Achievement {
     return tier[0].toUpperCase() + tier.substring(1);
   }
 
-  // ─── Gacha rarity mapping ──────────────────────────────────
-  // bronze → ★★ Rare, silver → ★★★ Epic, gold → ★★★★ Legendary.
-  // Used by the medal-book achievements screen; tierColor stays in use for
-  // toasts and pinned tiles.
-
   int get rarityStars {
     switch (tier) {
       case 'gold':
