@@ -31,6 +31,15 @@ To tweak the day thresholds or display sizes, edit `PlantStage.all` in
 
 ## Current bundled art
 
-The bundled `.svg` files are from **OpenMoji** (https://openmoji.org),
-licensed **CC BY-SA 4.0**. If you ship the app with these, include OpenMoji
-attribution. Replacing them with your own art removes that requirement.
+The bundled `.svg` files are **original art** for this project ("Sprouty", a cute
+sprout creature) — no third-party attribution required. They use the app palette
+and follow two conventions the code relies on:
+
+- **Canvas + baseline:** each is authored on `viewBox="0 0 100 100"`, horizontally
+  centred at `x=50`, with the creature's base (soil mound) at `y≈91`. Keeping the
+  baseline + centre consistent is what makes the stages appear to grow in place.
+- **Eyes for the blink:** the dot-eyed stages (`sprout`, `seedling`, `young`,
+  `leafy`) have eyes symmetric about `x=50`. Their positions are mirrored in
+  `_eyeGeometry` in `lib/screens/tasks/tasks_screen.dart`, which overlays an
+  animated eyelid to blink. If you move the eyes, update those fractions to match.
+  `seed` (sleeping) and `bloom` (`^^` eyes) intentionally don't blink.
