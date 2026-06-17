@@ -12,6 +12,8 @@ import '../screens/scan/result_screen.dart';
 import '../screens/disease/disease_detail_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/history/history_detail_screen.dart';
+import '../screens/library/library_screen.dart';
+import '../screens/library/species_detail_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
 import '../screens/tasks/task_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -150,6 +152,23 @@ final GoRouter appRouter = GoRouter(
                 GoRoute(
                   path: 'settings',
                   builder: (context, state) => const SettingsScreen(),
+                ),
+              ],
+            ),
+          ],
+        ),
+        // Branch 4: Library — browse species + disease reference content.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/library',
+              builder: (context, state) => const LibraryScreen(),
+              routes: [
+                GoRoute(
+                  path: 'species/:id',
+                  builder: (context, state) => SpeciesDetailScreen(
+                    speciesId: int.parse(state.pathParameters['id']!),
+                  ),
                 ),
               ],
             ),

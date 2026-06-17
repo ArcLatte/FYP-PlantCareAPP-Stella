@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../models/user.dart';
 import '../models/plant.dart';
 import '../models/scan.dart';
+import '../models/species.dart';
 import '../models/disease.dart';
 import '../models/streak.dart';
 import '../models/activity.dart';
@@ -129,6 +130,15 @@ class ApiService {
     final response = await _authGet(AppConstants.speciesUrl);
     if (response.statusCode == 200) {
       return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load species');
+  }
+
+  /// Full reference entry for one species (Library species page).
+  static Future<SpeciesDetail> getSpeciesDetail(int id) async {
+    final response = await _authGet('${AppConstants.speciesUrl}$id/');
+    if (response.statusCode == 200) {
+      return SpeciesDetail.fromJson(jsonDecode(response.body));
     }
     throw Exception('Failed to load species');
   }
@@ -472,5 +482,18 @@ class ApiService {
       return Disease.fromJson(jsonDecode(response.body));
     }
     throw Exception('Failed to load disease');
+  }
+
+  /// All diseases for the Library browse list (backend already drops the
+  /// "Healthy" pseudo-entries).
+  static Future<List<Disease>> getDiseases() async {
+    final response = await _authGet(AppConstants.diseasesUrl);
+    if (response.statusCode == 200) {
+      final list = jsonDecode(response.body) as List;
+      return list
+          .map((e) => Disease.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    throw Exception('Failed to load diseases');
   }
 }

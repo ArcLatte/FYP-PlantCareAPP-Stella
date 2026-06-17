@@ -13,6 +13,7 @@ urlpatterns = [
     path('plants/<int:pk>/fertilize/', views.fertilize_plant),
     path('plants/<int:pk>/mist/', views.mist_plant),
     path('species/', views.species_list),
+    path('species/<int:pk>/', views.species_detail),
     path('streak/', views.streak),
     path('activity/', views.activity),
     path('profile/', views.profile),
@@ -27,5 +28,6 @@ urlpatterns = [
     path('plants/<int:pk>/activity/', views.plant_activity),
     path('scans/<int:pk>/', views.scan_detail),
     path('scans/history/', views.all_scans),
+    path('diseases/', views.diseases_list),
     path('diseases/<str:label>/', views.disease_detail),
 ]

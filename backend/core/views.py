@@ -377,6 +377,17 @@ def species_list(request):
     return Response(serializer.data)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def species_detail(request, pk):
+    """Full reference entry for one species. Powers the Library species page."""
+    try:
+        species = PlantSpecies.objects.get(pk=pk)
+    except PlantSpecies.DoesNotExist:
+        return Response({'error': 'Species not found.'}, status=404)
+    return Response(PlantSpeciesSerializer(species).data)
+
+
 def _enrich_predictions(preds):
     """Attach the disease display `name` + first reference `image` to each
     top-N prediction so the scan result cards can show an example photo and a
@@ -592,6 +603,20 @@ def all_scans(request):
         for s in scans
     ]
     return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def diseases_list(request):
+    """All diseases for the Library, excluding the "Healthy" pseudo-entries
+    (they describe a healthy plant, not a disease to read about)."""
+    diseases = (
+        Disease.objects
+        .exclude(label__icontains='healthy')
+        .select_related('species')
+        .order_by('name')
+    )
+    return Response(DiseaseSerializer(diseases, many=True).data)
 
 
 @api_view(['GET'])

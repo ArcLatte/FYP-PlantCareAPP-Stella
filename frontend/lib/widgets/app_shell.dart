@@ -4,7 +4,7 @@ import '../core/theme.dart';
 
 /// Scaffold wrapper rendered by `StatefulShellRoute.indexedStack` in
 /// `core/router.dart`. Hosts the persistent **floating pill bar** for the
-/// four main tabs (Home, Tasks, History, Profile) plus a Scan cell that
+/// main tabs (Home, Tasks, History, Library, Profile) plus a Scan cell that
 /// pushes a modal route over the shell.
 ///
 /// Visual: a rounded surface bar floats above the bottom safe-area with
@@ -15,8 +15,9 @@ class AppShellScaffold extends StatelessWidget {
 
   const AppShellScaffold({super.key, required this.navigationShell});
 
-  // The four cells that correspond to shell branches. Indexes here MUST line
-  // up with the branch order declared in `appRouter`.
+  // The cells that correspond to shell branches. Each spec's `branchIndex`
+  // MUST line up with the branch order declared in `appRouter` (the list
+  // position here is independent of the on-screen order in the Row below).
   static const _tabs = <_TabSpec>[
     _TabSpec(
       branchIndex: 0,
@@ -43,6 +44,12 @@ class AppShellScaffold extends StatelessWidget {
       label: 'Profile',
       inactiveIcon: Icons.person_outline_rounded,
       activeIcon: Icons.person_rounded,
+    ),
+    _TabSpec(
+      branchIndex: 4,
+      label: 'Library',
+      inactiveIcon: Icons.menu_book_outlined,
+      activeIcon: Icons.menu_book_rounded,
     ),
   ];
 
@@ -100,6 +107,11 @@ class AppShellScaffold extends StatelessWidget {
                   spec: _tabs[2],
                   selected: navigationShell.currentIndex == 2,
                   onTap: () => _goBranch(2),
+                ),
+                _NavCell(
+                  spec: _tabs[4],
+                  selected: navigationShell.currentIndex == 4,
+                  onTap: () => _goBranch(4),
                 ),
                 _NavCell(
                   spec: _tabs[3],
