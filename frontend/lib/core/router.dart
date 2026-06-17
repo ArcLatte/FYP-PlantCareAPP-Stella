@@ -91,7 +91,24 @@ final GoRouter appRouter = GoRouter(
         return DiseaseDetailScreen(label: label, scanId: scanId);
       },
     ),
-    // Persistent shell: Home / Tasks / History / Profile each keep their
+    // History is a "look back" view, reached from the Tasks page header rather
+    // than its own nav tab — so it pushes over the shell (no bottom nav), like
+    // a detail screen.
+    GoRoute(
+      path: '/history',
+      builder: (context, state) => const HistoryScreen(),
+      routes: [
+        GoRoute(
+          // /history/water/2026-06-08 — per-day, per-activity timeline.
+          path: ':activity/:date',
+          builder: (context, state) => HistoryDetailScreen(
+            activity: state.pathParameters['activity']!,
+            date: DateTime.parse(state.pathParameters['date']!),
+          ),
+        ),
+      ],
+    ),
+    // Persistent shell: Home / Tasks / Library / Profile each keep their
     // own Navigator + state. Bottom nav lives in AppShellScaffold.
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
@@ -124,24 +141,6 @@ final GoRouter appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/history',
-              builder: (context, state) => const HistoryScreen(),
-              routes: [
-                GoRoute(
-                  // /history/water/2026-06-08 — per-day, per-activity timeline.
-                  path: ':activity/:date',
-                  builder: (context, state) => HistoryDetailScreen(
-                    activity: state.pathParameters['activity']!,
-                    date: DateTime.parse(state.pathParameters['date']!),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
               routes: [
@@ -157,7 +156,7 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
-        // Branch 4: Library — browse species + disease reference content.
+        // Branch 3: Library — browse species + disease reference content.
         StatefulShellBranch(
           routes: [
             GoRoute(

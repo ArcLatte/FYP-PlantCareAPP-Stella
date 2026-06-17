@@ -69,6 +69,11 @@ class _TasksScreenState extends State<TasksScreen> {
     _load(); // refresh counts + streak on return
   }
 
+  Future<void> _openHistory() async {
+    await context.push('/history');
+    if (mounted) _load(); // a logged action there may change counts/streak
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -98,9 +103,15 @@ class _TasksScreenState extends State<TasksScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            "Today's tasks",
-                            style: Theme.of(context).textTheme.titleLarge,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Today's tasks",
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              _HistoryButton(onTap: _openHistory),
+                            ],
                           ),
                           const SizedBox(height: 12),
                           if (_allCaughtUp)
@@ -536,6 +547,43 @@ class _DayCell extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── History header button ─────────────────────────────────────
+
+/// Tinted pill in the "Today's tasks" header that opens the care history.
+/// Mirrors the "Filter" pill on the home garden header for consistency.
+class _HistoryButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _HistoryButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.history_rounded, color: AppColors.primary, size: 16),
+            SizedBox(width: 4),
+            Text(
+              'History',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

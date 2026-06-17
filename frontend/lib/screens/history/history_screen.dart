@@ -131,7 +131,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('History'),
-        automaticallyImplyLeading: false,
       ),
       body: _isLoading
           ? const _LandingSkeleton()

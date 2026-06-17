@@ -4,8 +4,9 @@ import '../core/theme.dart';
 
 /// Scaffold wrapper rendered by `StatefulShellRoute.indexedStack` in
 /// `core/router.dart`. Hosts the persistent **floating pill bar** for the
-/// main tabs (Home, Tasks, History, Library, Profile) plus a Scan cell that
-/// pushes a modal route over the shell.
+/// main tabs (Home, Tasks, Library, Profile) plus a Scan cell that pushes a
+/// modal route over the shell. (History isn't a tab — it's reached from the
+/// Tasks page header and pushed over the shell.)
 ///
 /// Visual: a rounded surface bar floats above the bottom safe-area with
 /// horizontal margin. Each cell shows icon-above-label; the active cell
@@ -31,22 +32,16 @@ class AppShellScaffold extends StatelessWidget {
       inactiveIcon: Icons.checklist_rtl_outlined,
       activeIcon: Icons.checklist_rtl_rounded,
     ),
-    // Scan is inserted between Tasks and History in the rendered row, but
+    // Scan is inserted between Tasks and Library in the rendered row, but
     // it's not a branch — it pushes /scan as a modal over the shell.
     _TabSpec(
       branchIndex: 2,
-      label: 'History',
-      inactiveIcon: Icons.history_outlined,
-      activeIcon: Icons.history_rounded,
-    ),
-    _TabSpec(
-      branchIndex: 3,
       label: 'Profile',
       inactiveIcon: Icons.person_outline_rounded,
       activeIcon: Icons.person_rounded,
     ),
     _TabSpec(
-      branchIndex: 4,
+      branchIndex: 3,
       label: 'Library',
       inactiveIcon: Icons.menu_book_outlined,
       activeIcon: Icons.menu_book_rounded,
@@ -104,19 +99,14 @@ class AppShellScaffold extends StatelessWidget {
                   onTap: () => context.push('/scan'),
                 ),
                 _NavCell(
-                  spec: _tabs[2],
-                  selected: navigationShell.currentIndex == 2,
-                  onTap: () => _goBranch(2),
-                ),
-                _NavCell(
-                  spec: _tabs[4],
-                  selected: navigationShell.currentIndex == 4,
-                  onTap: () => _goBranch(4),
-                ),
-                _NavCell(
-                  spec: _tabs[3],
+                  spec: _tabs[3], // Library
                   selected: navigationShell.currentIndex == 3,
                   onTap: () => _goBranch(3),
+                ),
+                _NavCell(
+                  spec: _tabs[2], // Profile
+                  selected: navigationShell.currentIndex == 2,
+                  onTap: () => _goBranch(2),
                 ),
               ],
             ),
