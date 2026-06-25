@@ -16,11 +16,15 @@ import '../screens/library/library_screen.dart';
 import '../screens/library/species_detail_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
 import '../screens/tasks/task_detail_screen.dart';
+import '../screens/social/feed_screen.dart';
+import '../screens/social/create_post_screen.dart';
+import '../screens/social/post_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/profile/achievements_screen.dart';
 import '../screens/profile/settings_screen.dart';
 import '../widgets/app_shell.dart';
 import '../core/constants.dart';
+import '../core/theme.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/login',
@@ -35,6 +39,43 @@ final GoRouter appRouter = GoRouter(
     if (isLoggedIn && isAuthRoute) return '/home';
     return null;
   },
+  // Graceful fallback for any unmatched location, so a bad link never leaves
+  // the user stranded on go_router's bare default page with no way home.
+  errorBuilder: (context, state) => Scaffold(
+    appBar: AppBar(title: const Text('Page not found')),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded,
+                size: 56, color: AppColors.textMuted),
+            const SizedBox(height: 16),
+            const Text(
+              "This page couldn't be opened.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.uri.toString(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => context.go('/home'),
+              icon: const Icon(Icons.home_rounded),
+              label: const Text('Back to Home'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  ),
   routes: [
     // Top-level routes (no shell, no bottom nav).
     GoRoute(
@@ -89,6 +130,29 @@ final GoRouter appRouter = GoRouter(
         final scanIdRaw = state.uri.queryParameters['scanId'];
         final scanId = scanIdRaw == null ? null : int.tryParse(scanIdRaw);
         return DiseaseDetailScreen(label: label, scanId: scanId);
+      },
+    ),
+    // Top-level species reference page, pushable from anywhere (e.g. the plant
+    // profile's "Read more"). The Library tab reaches the same screen via its
+    // nested `/library/species/:id`, but that route lives inside the shell and
+    // can't be pushed from outside it.
+    GoRoute(
+      path: '/species/:id',
+      builder: (context, state) => SpeciesDetailScreen(
+        speciesId: int.parse(state.pathParameters['id']!),
+      ),
+    ),
+    // Compose + post detail push over the shell (no bottom nav), like the
+    // plant detail / scan flows.
+    GoRoute(
+      path: '/feed/compose',
+      builder: (context, state) => const CreatePostScreen(),
+    ),
+    GoRoute(
+      path: '/posts/:id',
+      builder: (context, state) {
+        final postId = int.parse(state.pathParameters['id']!);
+        return PostDetailScreen(postId: postId);
       },
     ),
     // History is a "look back" view, reached from the Tasks page header rather
@@ -170,6 +234,15 @@ final GoRouter appRouter = GoRouter(
                   ),
                 ),
               ],
+            ),
+          ],
+        ),
+        // Branch 4: Community — the social feed.
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/feed',
+              builder: (context, state) => const FeedScreen(),
             ),
           ],
         ),

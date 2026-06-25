@@ -264,6 +264,42 @@ def mist_plant(request, pk):
     return Response({**serializer.data, **xp})
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_note(request, pk):
+    """Append a free-text journal note to a plant. Unlike water/fertilize/mist
+    this records only a timestamped note: it does not touch Plant.last_*, does
+    not advance the care streak, and grants no XP (notes are unlimited free
+    text). The note rides the same CareLog table so it merges into the History
+    timeline. Returns the new entry in the activity-event shape so the client
+    can prepend it without a full refresh."""
+    try:
+        plant = Plant.objects.get(pk=pk, user=request.user)
+    except Plant.DoesNotExist:
+        return Response({'error': 'Plant not found.'}, status=404)
+
+    text = (request.data.get('note') or '').strip()
+    photo = request.FILES.get('photo')
+    if not text and not photo:
+        return Response({'error': 'Add a note or a photo.'}, status=400)
+
+    log = CareLog.objects.create(
+        user=request.user, plant=plant, activity='note', note=text,
+    )
+    if photo:
+        log.photo = photo
+        log.save(update_fields=['photo'])
+    return Response({
+        'type': 'care',
+        'activity': 'note',
+        'note': log.note,
+        'note_photo': log.photo.url if log.photo else None,
+        'plant_id': plant.id,
+        'plant_name': plant.name,
+        'created_at': log.created_at,
+    }, status=201)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def streak(request):
@@ -309,6 +345,8 @@ def activity(request):
         events.append({
             'type': 'care',
             'activity': log.activity,
+            'note': log.note,
+            'note_photo': log.photo.url if log.photo else None,
             'plant_id': log.plant_id,
             'plant_name': log.plant.name,
             'created_at': log.created_at,
@@ -532,6 +570,8 @@ def plant_activity(request, pk):
         events.append({
             'type': 'care',
             'activity': log.activity,
+            'note': log.note,
+            'note_photo': log.photo.url if log.photo else None,
             'plant_id': plant.id,
             'plant_name': plant.name,
             'created_at': log.created_at,

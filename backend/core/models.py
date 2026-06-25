@@ -255,6 +255,7 @@ class CareLog(models.Model):
         WATER = 'water', 'Watered'
         FERTILIZE = 'fertilize', 'Fertilized'
         MIST = 'mist', 'Misted'
+        NOTE = 'note', 'Note'
 
     user = models.ForeignKey(
         CustomUser,
@@ -267,6 +268,12 @@ class CareLog(models.Model):
         related_name='care_logs',
     )
     activity = models.CharField(max_length=12, choices=Activity.choices)
+    # Free-text body for `note` entries (a user journal note). Empty for the
+    # water/fertilize/mist actions, which carry no text.
+    note = models.TextField(blank=True)
+    # Optional progress photo attached to a `note` entry, so the journal can
+    # build a visual timeline of the plant over time. Empty for everything else.
+    photo = models.ImageField(upload_to='notes/', null=True, blank=True)
     # Plain default (not auto_now_add) so the backfill migration can stamp
     # historical timestamps from existing Plant.last_* fields.
     created_at = models.DateTimeField(default=timezone.now)
@@ -327,3 +334,18 @@ class UserAchievement(models.Model):
 
     def __str__(self):
         return f"{self.user.username} ✓ {self.achievement.code}"
+
+
+# ─── Social layer ────────────────────────────────────────────────
+# Defined in social_models.py (FKs reference the models above by name) and
+# imported here so Django registers them under the `core` app. Keep at the
+# bottom: the social models' string FK refs resolve against the models defined
+# above.
+from .social_models import (  # noqa: E402,F401
+    Community,
+    CommunityMembership,
+    Post,
+    Follow,
+    PostLike,
+    Comment,
+)

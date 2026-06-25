@@ -26,6 +26,9 @@ class AppConstants {
   // Disease knowledge base
   static const String diseasesUrl = '$baseUrl/diseases/';
 
+  // Social
+  static const String postsUrl = '$baseUrl/posts/';
+
   // Shared preferences keys
   static const String tokenKey = 'auth_token';
   static const String usernameKey = 'username';

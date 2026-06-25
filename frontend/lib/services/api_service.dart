@@ -13,6 +13,7 @@ import '../models/activity.dart';
 import '../models/user_profile.dart';
 import '../models/achievement.dart';
 import '../models/xp_result.dart';
+import '../models/post.dart';
 
 class ApiService {
   /// Side-channel for XP awards. Care/scan/plant-create/login endpoints
@@ -40,6 +41,13 @@ class ApiService {
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(AppConstants.tokenKey);
+  }
+
+  /// The logged-in user's username (stored at login). Used by the feed to tell
+  /// which posts are the viewer's own (e.g. to show a delete action).
+  static Future<String?> currentUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(AppConstants.usernameKey);
   }
 
   static Future<Map<String, String>> _authHeaders() async {
@@ -216,10 +224,13 @@ class ApiService {
         'species': speciesId,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (location != null && location.isNotEmpty) 'location': location,
-        'watering_freq_days': ?wateringFreqDays,
-        'last_watered': ?lastWatered?.toIso8601String(),
-        'last_fertilized': ?lastFertilized?.toIso8601String(),
-        'last_misted': ?lastMisted?.toIso8601String(),
+        if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
+        if (lastWatered != null)
+          'last_watered': lastWatered.toIso8601String(),
+        if (lastFertilized != null)
+          'last_fertilized': lastFertilized.toIso8601String(),
+        if (lastMisted != null)
+          'last_misted': lastMisted.toIso8601String(),
       }),
     );
     if (response.statusCode == 201) {
@@ -240,6 +251,42 @@ class ApiService {
 
   static Future<Plant> mistPlant(int id) async {
     return _careAction(id, 'mist');
+  }
+
+  /// Append a free-text journal note to a plant. Returns the created entry in
+  /// the [ActivityEvent] shape so the caller can prepend it to the timeline.
+  /// Unlike the care actions this awards no XP and doesn't change the plant.
+  static Future<ActivityEvent> addPlantNote(
+    int id,
+    String text, {
+    File? photo,
+  }) async {
+    final url = Uri.parse('${AppConstants.plantsUrl}$id/note/');
+    final http.Response response;
+    if (photo != null) {
+      final token = await _getToken();
+      final request = http.MultipartRequest('POST', url);
+      request.headers['Authorization'] = 'Token $token';
+      request.fields['note'] = text;
+      request.files
+          .add(await http.MultipartFile.fromPath('photo', photo.path));
+      response = await http.Response.fromStream(await request.send());
+    } else {
+      response = await http.post(
+        url,
+        headers: await _authHeaders(),
+        body: jsonEncode({'note': text}),
+      );
+    }
+    if (response.statusCode == 201) {
+      return ActivityEvent.fromJson(jsonDecode(response.body));
+    }
+    final decoded = jsonDecode(response.body);
+    throw Exception(
+      (decoded is Map && decoded['error'] is String)
+          ? decoded['error'] as String
+          : 'Failed to add note',
+    );
   }
 
   /// Shared POST for the three daily care actions (water/fertilize/mist).
@@ -361,11 +408,11 @@ class ApiService {
       url,
       headers: headers,
       body: jsonEncode({
-        'name': ?name,
-        'notes': ?notes,
-        'location': ?location,
-        'watering_freq_days': ?wateringFreqDays,
-        'species': ?speciesId,
+        if (name != null) 'name': name,
+        if (notes != null) 'notes': notes,
+        if (location != null) 'location': location,
+        if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
+        if (speciesId != null) 'species': speciesId,
       }),
     );
     if (response.statusCode == 200) {
@@ -495,5 +542,74 @@ class ApiService {
           .toList();
     }
     throw Exception('Failed to load diseases');
+  }
+
+  // ─── Social ─────────────────────────────────────────────────
+
+  /// One page of the global feed. Pass the previous page's [FeedPage.nextCursor]
+  /// to load the next page; omit it for the first page.
+  static Future<FeedPage> getFeed({String? cursor}) async {
+    final url = cursor == null
+        ? AppConstants.postsUrl
+        : '${AppConstants.postsUrl}?cursor=${Uri.encodeQueryComponent(cursor)}';
+    final response = await _authGet(url);
+    if (response.statusCode == 200) {
+      return FeedPage.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load feed');
+  }
+
+  /// Create a post. Requires [body] text or an [image] (at least one). Sent as
+  /// multipart so the optional photo rides along (mirrors [scanPlant]).
+  static Future<Post> createPost({
+    String? body,
+    File? image,
+    int? plantId,
+    int? communityId,
+  }) async {
+    final token = await _getToken();
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(AppConstants.postsUrl),
+    );
+    request.headers['Authorization'] = 'Token $token';
+    if (body != null && body.isNotEmpty) request.fields['body'] = body;
+    if (plantId != null) request.fields['plant_id'] = plantId.toString();
+    if (communityId != null) {
+      request.fields['community_id'] = communityId.toString();
+    }
+    if (image != null) {
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    }
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode == 201) {
+      return Post.fromJson(jsonDecode(response.body));
+    }
+    final decoded = jsonDecode(response.body);
+    throw Exception(
+      (decoded is Map && decoded['error'] is String)
+          ? decoded['error'] as String
+          : 'Failed to create post',
+    );
+  }
+
+  static Future<Post> getPost(int id) async {
+    final response = await _authGet('${AppConstants.postsUrl}$id/');
+    if (response.statusCode == 200) {
+      return Post.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load post');
+  }
+
+  static Future<void> deletePost(int id) async {
+    final headers = await _authHeaders();
+    final response = await http.delete(
+      Uri.parse('${AppConstants.postsUrl}$id/'),
+      headers: headers,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to delete post (status ${response.statusCode})');
+    }
   }
 }

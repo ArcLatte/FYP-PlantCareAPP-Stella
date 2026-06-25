@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import social_views
 
 urlpatterns = [
     path('auth/register/', views.register),
@@ -12,6 +13,7 @@ urlpatterns = [
     path('plants/<int:pk>/water/', views.water_plant),
     path('plants/<int:pk>/fertilize/', views.fertilize_plant),
     path('plants/<int:pk>/mist/', views.mist_plant),
+    path('plants/<int:pk>/note/', views.add_note),
     path('species/', views.species_list),
     path('species/<int:pk>/', views.species_detail),
     path('streak/', views.streak),
@@ -30,4 +32,8 @@ urlpatterns = [
     path('scans/history/', views.all_scans),
     path('diseases/', views.diseases_list),
     path('diseases/<str:label>/', views.disease_detail),
+
+    # ─── Social ───
+    path('posts/', social_views.post_list),
+    path('posts/<int:pk>/', social_views.post_detail),
 ]
