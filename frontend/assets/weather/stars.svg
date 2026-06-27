@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200">
+  <defs>
+    <filter id="starGlow" x="-200%" y="-200%" width="500%" height="500%">
+      <feGaussianBlur stdDeviation="0.8"/>
+    </filter>
+  </defs>
+  <g fill="#FBF8EC" filter="url(#starGlow)">
+    <circle cx="30" cy="28" r="1.6"/><circle cx="78" cy="60" r="1.1"/>
+    <circle cx="120" cy="22" r="1.8"/><circle cx="156" cy="74" r="1.0"/>
+    <circle cx="198" cy="34" r="1.3"/><circle cx="232" cy="66" r="1.7"/>
+    <circle cx="270" cy="26" r="1.1"/><circle cx="306" cy="58" r="1.5"/>
+    <circle cx="338" cy="30" r="1.2"/><circle cx="54" cy="96" r="1.3"/>
+    <circle cx="100" cy="108" r="1.0"/><circle cx="148" cy="118" r="1.6"/>
+    <circle cx="210" cy="104" r="1.1"/><circle cx="262" cy="120" r="1.4"/>
+    <circle cx="320" cy="100" r="1.2"/><circle cx="16" cy="70" r="1.1"/>
+    <circle cx="180" cy="50" r="1.0"/><circle cx="290" cy="86" r="1.0"/>
+  </g>
+  <!-- a couple of four-point sparkles -->
+  <g fill="#FFFFFF" opacity="0.9">
+    <path d="M120,14 l1.4,6.6 l6.6,1.4 l-6.6,1.4 l-1.4,6.6 l-1.4,-6.6 l-6.6,-1.4 l6.6,-1.4 Z"/>
+    <path d="M232,58 l1.2,5.6 l5.6,1.2 l-5.6,1.2 l-1.2,5.6 l-1.2,-5.6 l-5.6,-1.2 l5.6,-1.2 Z"/>
+  </g>
+</svg>

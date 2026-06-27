@@ -268,6 +268,9 @@ class CareLog(models.Model):
         related_name='care_logs',
     )
     activity = models.CharField(max_length=12, choices=Activity.choices)
+    # Optional short title/subject for `note` entries, shown as the heading on
+    # the journal preview card. Empty for the water/fertilize/mist actions.
+    title = models.CharField(max_length=120, blank=True)
     # Free-text body for `note` entries (a user journal note). Empty for the
     # water/fertilize/mist actions, which carry no text.
     note = models.TextField(blank=True)

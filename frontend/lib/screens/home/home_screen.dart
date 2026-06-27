@@ -14,6 +14,7 @@ import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tier_frame.dart';
 import '../../widgets/weather_backdrop.dart';
+import '../../widgets/weather_scene_art.dart';
 import '../../widgets/xp_toast.dart';
 
 const _kAllFilter = '__all__';
@@ -531,13 +532,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ───────── Weather card ─────────
 
-  /// Full-section animated weather backdrop, drawn in code by
-  /// [WeatherBackdrop] (sun rays, clouds, rain, stars… per condition).
+  /// Full-section watercolor weather scene, composited from the SVGs in
+  /// `assets/weather/` by [WeatherSceneArt] (sky wash, sun/moon, drifting
+  /// clouds, rain/snow… per condition).
   Widget _weatherBackground() {
     final w = _weather;
     if (w == null) return const SizedBox.shrink();
     // Freeze the animation once the header has scrolled out of view.
-    return WeatherBackdrop(iconCode: w.iconCode, paused: _headerCollapsed);
+    return WeatherSceneArt(iconCode: w.iconCode, paused: _headerCollapsed);
   }
 
   Widget _buildWeatherCard() {

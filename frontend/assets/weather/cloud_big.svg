@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 140">
+  <defs>
+    <filter id="cloudBigB" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+  <g filter="url(#cloudBigB)">
+    <path d="M48,100 C28,100 14,85 20,68 C24,55 38,49 52,53 C56,33 80,22 100,30 C112,12 144,12 158,28
+             C178,20 206,30 210,54 C232,54 250,70 244,90 C241,102 226,108 212,106 L60,106 C55,105 51,103 48,100 Z"
+          fill="#FFFFFF" opacity="0.6"/>
+    <path d="M64,96 C48,96 38,84 42,71 C46,60 60,55 71,59 C77,42 98,35 114,43 C128,30 154,33 164,48
+             C186,46 204,60 202,78 C201,90 188,96 176,96 Z"
+          fill="#F2F7FB" opacity="0.5"/>
+    <path d="M70,92 C108,82 152,84 186,92 C150,100 104,100 70,92 Z" fill="#C9DBEA" opacity="0.45"/>
+  </g>
+</svg>

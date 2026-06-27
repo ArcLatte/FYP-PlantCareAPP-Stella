@@ -14,6 +14,7 @@ urlpatterns = [
     path('plants/<int:pk>/fertilize/', views.fertilize_plant),
     path('plants/<int:pk>/mist/', views.mist_plant),
     path('plants/<int:pk>/note/', views.add_note),
+    path('plants/<int:pk>/note/<int:log_id>/', views.note_detail),
     path('species/', views.species_list),
     path('species/<int:pk>/', views.species_detail),
     path('streak/', views.streak),

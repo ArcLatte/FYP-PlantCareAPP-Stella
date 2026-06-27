@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 260" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="nightWash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B3A67"/>
+      <stop offset="0.6" stop-color="#223057"/>
+      <stop offset="1" stop-color="#1B2845"/>
+    </linearGradient>
+    <filter id="nightBleed" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="13"/>
+    </filter>
+  </defs>
+  <rect width="360" height="260" fill="url(#nightWash)"/>
+  <!-- deep indigo pooling + faint nebula wash -->
+  <g filter="url(#nightBleed)">
+    <ellipse cx="270" cy="60" rx="120" ry="70" fill="#3C4E86" opacity="0.55"/>
+    <ellipse cx="90" cy="170" rx="110" ry="60" fill="#2E3E72" opacity="0.5"/>
+    <ellipse cx="180" cy="110" rx="90" ry="50" fill="#4A3E78" opacity="0.3"/>
+  </g>
+</svg>

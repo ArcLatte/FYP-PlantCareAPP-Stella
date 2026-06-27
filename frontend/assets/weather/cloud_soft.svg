@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 120">
+  <defs>
+    <filter id="cloudSoftB" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+  <g filter="url(#cloudSoftB)">
+    <!-- layered translucent washes give the soft watercolor edge -->
+    <path d="M40,82 C24,82 14,70 18,57 C20,46 32,40 44,43 C48,28 64,20 80,26 C90,12 114,12 126,24
+             C142,18 162,26 165,44 C182,44 196,56 192,72 C190,82 178,88 166,86 L48,86 C45,85 42,84 40,82 Z"
+          fill="#FFFFFF" opacity="0.55"/>
+    <path d="M52,80 C40,80 32,71 35,61 C38,52 48,48 57,51 C62,38 78,33 90,40 C100,28 120,30 128,42
+             C144,40 158,50 158,64 C158,74 148,80 138,80 Z"
+          fill="#FFFFFF" opacity="0.45"/>
+    <path d="M64,76 C92,68 118,70 140,76 C120,82 86,82 64,76 Z" fill="#D9E6F0" opacity="0.4"/>
+  </g>
+</svg>

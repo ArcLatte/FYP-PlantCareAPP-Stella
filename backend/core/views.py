@@ -278,26 +278,74 @@ def add_note(request, pk):
     except Plant.DoesNotExist:
         return Response({'error': 'Plant not found.'}, status=404)
 
+    title = (request.data.get('title') or '').strip()[:120]
     text = (request.data.get('note') or '').strip()
     photo = request.FILES.get('photo')
-    if not text and not photo:
+    if not text and not photo and not title:
         return Response({'error': 'Add a note or a photo.'}, status=400)
 
     log = CareLog.objects.create(
-        user=request.user, plant=plant, activity='note', note=text,
+        user=request.user, plant=plant, activity='note', note=text, title=title,
     )
     if photo:
         log.photo = photo
         log.save(update_fields=['photo'])
-    return Response({
+    return Response(_note_event(log, plant), status=201)
+
+
+def _note_event(log, plant):
+    """Activity-event payload for a single journal note (shared by add/edit)."""
+    return {
         'type': 'care',
         'activity': 'note',
+        'id': log.id,
+        'title': log.title,
         'note': log.note,
         'note_photo': log.photo.url if log.photo else None,
         'plant_id': plant.id,
         'plant_name': plant.name,
         'created_at': log.created_at,
-    }, status=201)
+    }
+
+
+@api_view(['PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def note_detail(request, pk, log_id):
+    """Edit (PUT/PATCH) or delete (DELETE) a single journal note. Editing
+    updates the text and, optionally, the photo: send a new `photo` file to
+    replace it, or `remove_photo=true` to clear it."""
+    try:
+        plant = Plant.objects.get(pk=pk, user=request.user)
+    except Plant.DoesNotExist:
+        return Response({'error': 'Plant not found.'}, status=404)
+    try:
+        log = CareLog.objects.get(
+            pk=log_id, plant=plant, user=request.user, activity='note')
+    except CareLog.DoesNotExist:
+        return Response({'error': 'Note not found.'}, status=404)
+
+    if request.method == 'DELETE':
+        log.delete()
+        return Response(status=204)
+
+    title = (request.data.get('title') or '').strip()[:120]
+    text = (request.data.get('note') or '').strip()
+    photo = request.FILES.get('photo')
+    remove_photo = str(request.data.get('remove_photo', '')).lower() in (
+        '1', 'true', 'yes')
+
+    will_have_photo = bool(photo) or (bool(log.photo) and not remove_photo)
+    if not text and not will_have_photo and not title:
+        return Response({'error': 'Add a note or a photo.'}, status=400)
+
+    log.title = title
+    log.note = text
+    if photo:
+        log.photo = photo
+    elif remove_photo:
+        log.photo = None
+    log.save()
+    return Response(_note_event(log, plant), status=200)
 
 
 @api_view(['GET'])
@@ -345,6 +393,8 @@ def activity(request):
         events.append({
             'type': 'care',
             'activity': log.activity,
+            'id': log.id,
+            'title': log.title,
             'note': log.note,
             'note_photo': log.photo.url if log.photo else None,
             'plant_id': log.plant_id,
@@ -570,6 +620,8 @@ def plant_activity(request, pk):
         events.append({
             'type': 'care',
             'activity': log.activity,
+            'id': log.id,
+            'title': log.title,
             'note': log.note,
             'note_photo': log.photo.url if log.photo else None,
             'plant_id': plant.id,

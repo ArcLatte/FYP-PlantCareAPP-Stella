@@ -5,7 +5,9 @@ import '../core/constants.dart';
 /// Mirrors `GET /api/activity/`.
 class ActivityEvent {
   final String type; // 'care' | 'scan'
+  final int? careLogId; // care: the CareLog row id (for editing notes)
   final String? activity; // care: 'water' | 'fertilize' | 'mist' | 'note'
+  final String? noteTitle; // note: optional short subject/heading
   final String? note; // care/note: the user's journal text
   final String? notePhotoUrl; // note: optional attached progress photo
   final int? plantId;
@@ -17,7 +19,9 @@ class ActivityEvent {
 
   const ActivityEvent({
     required this.type,
+    this.careLogId,
     this.activity,
+    this.noteTitle,
     this.note,
     this.notePhotoUrl,
     this.plantId,
@@ -36,9 +40,12 @@ class ActivityEvent {
 
   factory ActivityEvent.fromJson(Map<String, dynamic> json) {
     final note = json['note']?.toString();
+    final title = json['title']?.toString();
     return ActivityEvent(
       type: json['type']?.toString() ?? 'care',
+      careLogId: (json['id'] as num?)?.toInt(),
       activity: json['activity']?.toString(),
+      noteTitle: (title != null && title.isNotEmpty) ? title : null,
       note: (note != null && note.isNotEmpty) ? note : null,
       notePhotoUrl: _absoluteUrl(json['note_photo']),
       plantId: (json['plant_id'] as num?)?.toInt(),

@@ -259,6 +259,7 @@ class ApiService {
   static Future<ActivityEvent> addPlantNote(
     int id,
     String text, {
+    String? title,
     File? photo,
   }) async {
     final url = Uri.parse('${AppConstants.plantsUrl}$id/note/');
@@ -268,6 +269,7 @@ class ApiService {
       final request = http.MultipartRequest('POST', url);
       request.headers['Authorization'] = 'Token $token';
       request.fields['note'] = text;
+      request.fields['title'] = title ?? '';
       request.files
           .add(await http.MultipartFile.fromPath('photo', photo.path));
       response = await http.Response.fromStream(await request.send());
@@ -275,7 +277,7 @@ class ApiService {
       response = await http.post(
         url,
         headers: await _authHeaders(),
-        body: jsonEncode({'note': text}),
+        body: jsonEncode({'note': text, 'title': title ?? ''}),
       );
     }
     if (response.statusCode == 201) {
@@ -287,6 +289,61 @@ class ApiService {
           ? decoded['error'] as String
           : 'Failed to add note',
     );
+  }
+
+  /// Edit an existing journal note: updates its text and, optionally, the
+  /// photo. Pass [photo] to replace it, or [removePhoto] to clear it.
+  static Future<ActivityEvent> updatePlantNote(
+    int plantId,
+    int logId,
+    String text, {
+    String? title,
+    File? photo,
+    bool removePhoto = false,
+  }) async {
+    final url =
+        Uri.parse('${AppConstants.plantsUrl}$plantId/note/$logId/');
+    final http.Response response;
+    if (photo != null) {
+      final token = await _getToken();
+      final request = http.MultipartRequest('PUT', url);
+      request.headers['Authorization'] = 'Token $token';
+      request.fields['note'] = text;
+      request.fields['title'] = title ?? '';
+      request.files
+          .add(await http.MultipartFile.fromPath('photo', photo.path));
+      response = await http.Response.fromStream(await request.send());
+    } else {
+      response = await http.put(
+        url,
+        headers: await _authHeaders(),
+        body: jsonEncode({
+          'note': text,
+          'title': title ?? '',
+          if (removePhoto) 'remove_photo': true,
+        }),
+      );
+    }
+    if (response.statusCode == 200) {
+      return ActivityEvent.fromJson(jsonDecode(response.body));
+    }
+    final decoded = jsonDecode(response.body);
+    throw Exception(
+      (decoded is Map && decoded['error'] is String)
+          ? decoded['error'] as String
+          : 'Failed to update note',
+    );
+  }
+
+  /// Delete a journal note.
+  static Future<void> deletePlantNote(int plantId, int logId) async {
+    final response = await http.delete(
+      Uri.parse('${AppConstants.plantsUrl}$plantId/note/$logId/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Failed to delete note (status ${response.statusCode})');
+    }
   }
 
   /// Shared POST for the three daily care actions (water/fertilize/mist).

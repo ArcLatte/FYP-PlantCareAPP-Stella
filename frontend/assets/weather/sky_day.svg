@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 260" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="dayWash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7FC1E8"/>
+      <stop offset="0.55" stop-color="#A9D7EE"/>
+      <stop offset="1" stop-color="#DCEFF6"/>
+    </linearGradient>
+    <filter id="dayBleed" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+  <rect width="360" height="260" fill="url(#dayWash)"/>
+  <!-- soft watercolor pooling, lighter near horizon -->
+  <g filter="url(#dayBleed)" opacity="0.55">
+    <path d="M-20,150 C60,120 120,165 200,150 C270,138 320,170 380,150 L380,260 L-20,260 Z" fill="#CFEAF4"/>
+    <ellipse cx="80" cy="70" rx="70" ry="34" fill="#BCE0F2" opacity="0.6"/>
+    <ellipse cx="290" cy="55" rx="60" ry="28" fill="#C7E7F4" opacity="0.5"/>
+  </g>
+  <!-- faint grain speckle -->
+  <g fill="#FFFFFF" opacity="0.05">
+    <circle cx="44" cy="40" r="1.4"/><circle cx="120" cy="22" r="1.1"/>
+    <circle cx="210" cy="60" r="1.3"/><circle cx="300" cy="110" r="1.2"/>
+    <circle cx="160" cy="130" r="1.1"/><circle cx="70" cy="180" r="1.3"/>
+    <circle cx="330" cy="200" r="1.2"/><circle cx="20" cy="120" r="1.1"/>
+  </g>
+</svg>

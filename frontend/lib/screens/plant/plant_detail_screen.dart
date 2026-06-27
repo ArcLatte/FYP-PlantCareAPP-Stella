@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -10,22 +8,14 @@ import '../../models/plant_stage.dart';
 import '../../models/species.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
-import '../../widgets/photo_picker_sheet.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/xp_toast.dart';
+import 'note_editor_screen.dart';
 
 // Per-topic colors — mirror the palette used on the Tasks screen so the
 // profile feels cohesive with the rest of the app.
 const _kWaterColor = Color(0xFF4F9FD9);
 const _kMistColor = Color(0xFF26A69A);
-const _kNoteColor = AppColors.textSecondary;
-
-/// A new journal note being composed: its text and an optional progress photo.
-class _NoteDraft {
-  final String text;
-  final File? photo;
-  const _NoteDraft(this.text, this.photo);
-}
 
 class PlantDetailScreen extends StatefulWidget {
   final int plantId;
@@ -147,143 +137,57 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
   List<ActivityEvent> get _logEvents =>
       _activity.where((e) => !e.isNote).toList();
 
-  /// Bottom-sheet composer for a new journal note: a text field plus an
-  /// optional progress photo. Returns the draft on save, null if dismissed.
-  Future<_NoteDraft?> _showNoteComposer() {
-    final controller = TextEditingController();
-    File? photo;
-    return showModalBottomSheet<_NoteDraft>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheet) {
-            Future<void> pickPhoto() async {
-              final res = await showPhotoPickerSheet(ctx);
-              if (res?.file != null) setSheet(() => photo = res!.file);
-            }
-
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20, 14, 20, 16 + MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.divider,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Add a note',
-                      style: Theme.of(ctx).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    minLines: 3,
-                    maxLines: 6,
-                    style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 16),
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText:
-                          "What's happening with ${_plant?.name ?? 'this plant'}?",
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (photo != null)
-                    Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.file(
-                            photo!,
-                            height: 160,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: GestureDetector(
-                            onTap: () => setSheet(() => photo = null),
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.close_rounded,
-                                  color: Colors.white, size: 18),
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: pickPhoto,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        minimumSize: const Size.fromHeight(48),
-                        side: const BorderSide(color: AppColors.cardBorder),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.add_a_photo_outlined, size: 20),
-                      label: const Text('Add a photo'),
-                    ),
-                  const SizedBox(height: 14),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(
-                        ctx, _NoteDraft(controller.text.trim(), photo)),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text('Add note'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Append a timestamped journal note (optionally with a photo) to the journal.
+  /// Open the editor to write a new journal note.
   Future<void> _addNote() async {
     if (_plant == null) return;
-    final draft = await _showNoteComposer();
-    if (draft == null) return;
-    if (draft.text.isEmpty && draft.photo == null) return;
-    try {
-      final event =
-          await ApiService.addPlantNote(_plant!.id, draft.text, photo: draft.photo);
-      if (!mounted) return;
-      setState(() => _activity = [event, ..._activity]);
-      AppSnackBar.success(context, 'Note added');
-    } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Failed to add note: $e');
+    final result = await Navigator.of(context).push<NoteEditResult>(
+      MaterialPageRoute(
+        builder: (_) =>
+            NoteEditorScreen(plantId: _plant!.id, plantName: _plant!.name),
+      ),
+    );
+    _applyNoteResult(result);
+  }
+
+  /// Open an existing note directly in the editor. Saving and deleting happen
+  /// there; the returned [NoteEditResult] tells us how to update the list.
+  Future<void> _openNote(ActivityEvent note) async {
+    if (_plant == null || note.careLogId == null) return;
+    final result = await Navigator.of(context).push<NoteEditResult>(
+      MaterialPageRoute(
+        builder: (_) => NoteEditorScreen(
+          plantId: _plant!.id,
+          plantName: _plant!.name,
+          existing: note,
+        ),
+      ),
+    );
+    _applyNoteResult(result, existing: note);
+  }
+
+  /// Reflects an editor result into [_activity] in place: replace an existing
+  /// note, prepend a new one, or remove a deleted one.
+  void _applyNoteResult(NoteEditResult? result, {ActivityEvent? existing}) {
+    if (result == null || !mounted) return;
+    if (result.deleted) {
+      if (existing == null) return;
+      setState(() => _activity = _activity
+          .where((e) => !(e.isNote && e.careLogId == existing.careLogId))
+          .toList());
+      return;
     }
+    final saved = result.saved;
+    if (saved == null) return;
+    setState(() {
+      final exists =
+          _activity.any((e) => e.isNote && e.careLogId == saved.careLogId);
+      _activity = exists
+          ? [
+              for (final e in _activity)
+                if (e.isNote && e.careLogId == saved.careLogId) saved else e
+            ]
+          : [saved, ..._activity];
+    });
   }
 
   Future<void> _deletePlant() async {
@@ -1009,7 +913,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
             ),
           )
         else
-          for (final note in notes) _NoteCard(note: note),
+          ..._groupByDate(
+            notes,
+            (note) => _NoteCard(note: note, onTap: () => _openNote(note)),
+          ),
       ],
     );
   }
@@ -1035,17 +942,39 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
             ),
           )
         else
-          for (final event in events)
-            _TimelineTile(
+          ..._groupByDate(
+            events,
+            (event) => _TimelineTile(
               event: event,
               formatDisease: _formatDisease,
               onTapScan: event.scanId != null
                   ? () => context.push('/result/${event.scanId}')
                   : null,
             ),
+          ),
       ],
     );
   }
+}
+
+/// Interleaves [_DateHeader]s into a reverse-chronological list of events,
+/// emitting a header each time the calendar day changes.
+List<Widget> _groupByDate(
+  List<ActivityEvent> events,
+  Widget Function(ActivityEvent) itemBuilder,
+) {
+  final widgets = <Widget>[];
+  DateTime? lastDay;
+  for (final e in events) {
+    final d = e.createdAt;
+    final day = DateTime(d.year, d.month, d.day);
+    if (lastDay == null || day != lastDay) {
+      widgets.add(_DateHeader(date: d));
+      lastDay = day;
+    }
+    widgets.add(itemBuilder(e));
+  }
+  return widgets;
 }
 
 /// A single tab's scrollable body inside the [NestedScrollView]. Injects the
@@ -1799,90 +1728,166 @@ List<String>? _bulletize(String raw) {
   return parts.length >= 2 ? parts : null;
 }
 
-/// A journal note card in the Notes tab: optional progress photo, the text,
-/// and a relative date.
+/// A compact journal preview in the Notes tab: optional photo, the note's
+/// title (falling back to the first line of the body), a one-line snippet, and
+/// the time of day. Tapping it opens the full reader.
 class _NoteCard extends StatelessWidget {
   final ActivityEvent note;
-  const _NoteCard({required this.note});
+  final VoidCallback? onTap;
+  const _NoteCard({required this.note, this.onTap});
 
-  static String _relative(DateTime d) {
+  static String _timeLabel(DateTime d) {
+    final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final m = d.minute.toString().padLeft(2, '0');
+    return '$h12:$m ${d.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  /// Strips a leading bullet marker ("• ", "- ", "* ") for clean preview text.
+  static String _stripBullet(String s) =>
+      s.replaceFirst(RegExp(r'^\s*(?:•|[-*])\s+'), '').trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final rawTitle = note.noteTitle?.trim() ?? '';
+    final body = note.note?.trim() ?? '';
+
+    String title;
+    String preview;
+    if (rawTitle.isNotEmpty) {
+      title = rawTitle;
+      preview = _stripBullet(body.replaceAll('\n', ' '));
+    } else if (body.isNotEmpty) {
+      final lines = body.split('\n');
+      final idx = lines.indexWhere((l) => l.trim().isNotEmpty);
+      title = _stripBullet(lines[idx]);
+      preview = _stripBullet(lines.skip(idx + 1).join(' '));
+    } else {
+      title = 'Photo';
+      preview = '';
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.cardShadow,
+              blurRadius: 12,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (note.notePhotoUrl != null)
+              ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+                child: CachedNetworkImage(
+                  imageUrl: note.notePhotoUrl!,
+                  width: double.infinity,
+                  height: 150,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 900,
+                  placeholder: (_, _) =>
+                      const SkeletonBox(height: 150, radius: 0),
+                  errorWidget: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                    ),
+                  ),
+                  if (preview.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 14,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.schedule_rounded,
+                          size: 14, color: AppColors.textMuted),
+                      const SizedBox(width: 5),
+                      Text(
+                        _timeLabel(note.createdAt),
+                        style: const TextStyle(
+                            color: AppColors.textMuted, fontSize: 12),
+                      ),
+                      const Spacer(),
+                      const Icon(Icons.chevron_right_rounded,
+                          size: 20, color: AppColors.textMuted),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A date divider shown between days in the Notes and History timelines.
+class _DateHeader extends StatelessWidget {
+  final DateTime date;
+  const _DateHeader({required this.date});
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  String get _label {
     final now = DateTime.now();
-    final days = DateTime(now.year, now.month, now.day)
-        .difference(DateTime(d.year, d.month, d.day))
-        .inDays;
-    if (days <= 0) return 'Today';
-    if (days == 1) return 'Yesterday';
-    if (days < 7) return '$days days ago';
-    return '${d.day}/${d.month}/${d.year}';
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(d).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    final year = date.year == now.year ? '' : ' ${date.year}';
+    return '${date.day} ${_months[date.month - 1]}$year';
   }
 
   @override
   Widget build(BuildContext context) {
-    final text = note.note?.trim() ?? '';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 12,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (note.notePhotoUrl != null)
-            ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
-              child: CachedNetworkImage(
-                imageUrl: note.notePhotoUrl!,
-                width: double.infinity,
-                height: 200,
-                fit: BoxFit.cover,
-                memCacheWidth: 900,
-                placeholder: (_, _) =>
-                    const SkeletonBox(height: 200, radius: 0),
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (text.isNotEmpty) ...[
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 15,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                Row(
-                  children: [
-                    const Icon(Icons.edit_note_rounded,
-                        size: 16, color: _kNoteColor),
-                    const SizedBox(width: 5),
-                    Text(
-                      _relative(note.createdAt),
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 10),
+      child: Text(
+        _label,
+        style: const TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }

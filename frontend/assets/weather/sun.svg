@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140">
+  <defs>
+    <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFE9A8" stop-opacity="0.85"/>
+      <stop offset="0.6" stop-color="#FFD66E" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFD66E" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sunSoft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+  </defs>
+  <!-- diffuse halo -->
+  <circle cx="70" cy="70" r="62" fill="url(#sunGlow)"/>
+  <!-- layered watercolor washes for the disc -->
+  <g filter="url(#sunSoft)">
+    <path d="M70,28 C92,28 112,46 112,70 C112,95 91,112 69,111 C46,110 29,92 29,69 C29,46 47,28 70,28 Z"
+          fill="#FFD25E" opacity="0.55"/>
+    <path d="M71,34 C90,35 106,50 105,71 C104,91 88,105 69,104 C50,103 36,87 37,67 C38,48 53,33 71,34 Z"
+          fill="#FFC24B" opacity="0.55"/>
+    <path d="M70,40 C86,40 99,53 99,69 C99,86 85,98 69,97 C54,96 42,83 43,67 C44,52 56,40 70,40 Z"
+          fill="#FBB23B" opacity="0.5"/>
+  </g>
+  <!-- bright core -->
+  <ellipse cx="68" cy="67" rx="22" ry="21" fill="#FFE08A" opacity="0.85"/>
+</svg>

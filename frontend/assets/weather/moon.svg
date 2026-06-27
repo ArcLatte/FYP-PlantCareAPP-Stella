@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140">
+  <defs>
+    <radialGradient id="moonGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F4F0DC" stop-opacity="0.6"/>
+      <stop offset="0.65" stop-color="#D9E2F0" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#D9E2F0" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="moonSoft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4"/>
+    </filter>
+  </defs>
+  <circle cx="70" cy="70" r="60" fill="url(#moonGlow)"/>
+  <g filter="url(#moonSoft)">
+    <!-- crescent: pale disc with a bitten shadow side -->
+    <path d="M70,32 C53,32 38,46 37,66 C36,88 52,105 73,106 C61,98 54,84 54,69 C54,53 61,40 73,33 C72,32 71,32 70,32 Z"
+          fill="#F6F1DE" opacity="0.92"/>
+    <path d="M70,38 C57,38 47,49 46,65 C45,83 58,97 75,99 C66,91 61,79 61,68 C61,56 66,45 76,39 C74,38 72,38 70,38 Z"
+          fill="#FBF7E8" opacity="0.7"/>
+  </g>
+  <!-- soft craters -->
+  <g fill="#DED7BE" opacity="0.5">
+    <ellipse cx="58" cy="58" rx="5" ry="4"/>
+    <ellipse cx="52" cy="80" rx="4" ry="3.4"/>
+    <ellipse cx="66" cy="92" rx="3" ry="2.6"/>
+  </g>
+</svg>
