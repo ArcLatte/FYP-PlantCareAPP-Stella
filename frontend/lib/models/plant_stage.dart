@@ -25,6 +25,7 @@ class PlantStage {
     PlantStage(name: 'Seedling', minDays: 3, image: 'seedling', size: 108),
     PlantStage(name: 'Young plant', minDays: 7, image: 'young', size: 118),
     PlantStage(name: 'Leafy plant', minDays: 14, image: 'leafy', size: 126),
+    PlantStage(name: 'Budding', minDays: 21, image: 'budding', size: 130),
     PlantStage(name: 'Blooming', minDays: 30, image: 'bloom', size: 132),
   ];
 

@@ -151,13 +151,13 @@ const String _kStageSeenKey = 'tasks_last_plant_stage';
 // Eye positions for the blink overlay, as fractions of the (square) stage box —
 // they mirror the dot-eyes baked into the corresponding `<stage>.svg` (drawn on
 // a 0..100 canvas). Eyes are symmetric about the centre, so only the half-spacing
-// `dx`, vertical `cy`, and radius `r` are stored. Stages absent here (seed is
-// asleep, bloom has `^^` eyes) don't blink.
+// `dx`, vertical `cy`, and radius `r` are stored. Only the open dot-eyed stages
+// blink; the others have closed/expressive eyes baked in (seed & sprout sleep,
+// leafy has happy `^^`, budding rests with closed eyes).
 const Map<String, ({double dx, double cy, double r})> _eyeGeometry = {
-  'sprout': (dx: 0.07, cy: 0.68, r: 0.032),
   'seedling': (dx: 0.075, cy: 0.62, r: 0.033),
   'young': (dx: 0.08, cy: 0.58, r: 0.034),
-  'leafy': (dx: 0.08, cy: 0.58, r: 0.035),
+  'bloom': (dx: 0.08, cy: 0.61, r: 0.034),
 };
 
 /// Paints two short rounded "closed eyelid" strokes over the baked-in dot-eyes
@@ -375,10 +375,18 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                   ],
                 );
               }
-              content = Transform.rotate(
-                angle: sway,
+              // Gentle "breathing" pulse, layered with the sway. Offset in
+              // phase from the bob so the two don't beat in sync.
+              final breathe =
+                  1 + math.sin((_bob.value + 0.25) * 2 * math.pi) * 0.025;
+              content = Transform.scale(
+                scale: breathe,
                 alignment: Alignment.bottomCenter,
-                child: creature,
+                child: Transform.rotate(
+                  angle: sway,
+                  alignment: Alignment.bottomCenter,
+                  child: creature,
+                ),
               );
             }
 

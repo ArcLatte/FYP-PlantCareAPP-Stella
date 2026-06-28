@@ -10,6 +10,7 @@ chosen by the current streak length (see `lib/models/plant_stage.dart`):
 | `seedling`  | Seedling     | 3 days     |
 | `young`     | Young plant  | 7 days     |
 | `leafy`     | Leafy plant  | 14 days    |
+| `budding`   | Budding      | 21 days    |
 | `bloom`     | Blooming     | 30 days    |
 
 ## Replacing with your own art (e.g. AI-generated)
@@ -21,7 +22,7 @@ hot-restart.
 
 For the stages to line up nicely, generate each with:
 - a **square** canvas and **transparent** background,
-- the **same art style** across all six,
+- the **same art style** across all seven,
 - the plant **centered** with a **consistent baseline + scale** (so it appears to
   grow between stages),
 - ~512–1024px.
@@ -31,15 +32,27 @@ To tweak the day thresholds or display sizes, edit `PlantStage.all` in
 
 ## Current bundled art
 
-The bundled `.svg` files are **original art** for this project ("Sprouty", a cute
-sprout creature) — no third-party attribution required. They use the app palette
-and follow two conventions the code relies on:
+The bundled `.svg` files are **original watercolor-style art** for this project (a
+cute sage-green sprout creature growing from a soil mound) — no third-party
+attribution required. They use the app palette and follow conventions the code
+relies on:
 
 - **Canvas + baseline:** each is authored on `viewBox="0 0 100 100"`, horizontally
-  centred at `x=50`, with the creature's base (soil mound) at `y≈91`. Keeping the
-  baseline + centre consistent is what makes the stages appear to grow in place.
-- **Eyes for the blink:** the dot-eyed stages (`sprout`, `seedling`, `young`,
-  `leafy`) have eyes symmetric about `x=50`. Their positions are mirrored in
-  `_eyeGeometry` in `lib/screens/tasks/tasks_screen.dart`, which overlays an
-  animated eyelid to blink. If you move the eyes, update those fractions to match.
-  `seed` (sleeping) and `bloom` (`^^` eyes) intentionally don't blink.
+  centred at `x=50`, with the creature's soil mound at the bottom (`y≈88–97`).
+  Keeping the baseline + centre consistent is what makes the stages appear to grow
+  in place.
+- **Build technique:** organic body path + clipped translucent washes + a soft
+  green outline; leaves are a reusable `<defs>`/`<use>` shape transformed into
+  place. No `feTurbulence` so they render reliably under `flutter_svg`.
+- **Eyes for the blink:** the open dot-eyed stages (`seedling`, `young`, `bloom`)
+  have eyes symmetric about `x=50`. Their positions are mirrored in `_eyeGeometry`
+  in `lib/screens/tasks/tasks_screen.dart`, which overlays an animated eyelid to
+  blink. If you move the eyes, update those fractions to match. The others have
+  expressive eyes baked in and don't blink: `seed` & `sprout` sleep, `leafy` has
+  happy `^^`, `budding` rests with closed eyes.
+- **Expressions per stage:** seed/sprout asleep, seedling/young calm & curious,
+  leafy excited (open grin), budding calm with a bud on its head, bloom joyful
+  with a tilted flower.
+
+The Tasks streak also animates these at the widget level (idle sway, vertical bob,
+a breathing pulse, periodic blink, and a grow-pop when advancing a stage).
