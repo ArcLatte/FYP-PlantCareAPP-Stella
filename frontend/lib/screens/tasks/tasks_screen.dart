@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
@@ -9,7 +11,7 @@ import '../../models/streak.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
-import '../../widgets/stage_image.dart';
+import '../../widgets/streak_plant.dart';
 import 'care_activity.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -61,8 +63,7 @@ class _TasksScreenState extends State<TasksScreen> {
     return list;
   }
 
-  bool get _allCaughtUp =>
-      _visibleActivities.every((a) => _dueCount(a) == 0);
+  bool get _allCaughtUp => _visibleActivities.every((a) => _dueCount(a) == 0);
 
   Future<void> _openActivity(CareActivity a) async {
     await context.push('/tasks/${a.key}');
@@ -96,8 +97,9 @@ class _TasksScreenState extends State<TasksScreen> {
                     child: Container(
                       decoration: const BoxDecoration(
                         color: AppColors.background,
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(28)),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(28),
+                        ),
                       ),
                       padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
                       child: Column(
@@ -146,50 +148,8 @@ class _TasksScreenState extends State<TasksScreen> {
 const Color _kWater = Color(0xFF4F9FD9); // water-blue for active days
 const Color _kBackdropTop = Color(0xFFEAF6EF); // soft mint (top)
 const Color _kBackdropBottom = Color(0xFFCFE8DA); // deeper mint (bottom)
+const String _kPlantStageAssets = 'assets/plant_stages';
 const String _kStageSeenKey = 'tasks_last_plant_stage';
-
-// Eye positions for the blink overlay, as fractions of the (square) stage box —
-// they mirror the dot-eyes baked into the corresponding `<stage>.svg` (drawn on
-// a 0..100 canvas). Eyes are symmetric about the centre, so only the half-spacing
-// `dx`, vertical `cy`, and radius `r` are stored. Only the open dot-eyed stages
-// blink; the others have closed/expressive eyes baked in (seed & sprout sleep,
-// leafy has happy `^^`, budding rests with closed eyes).
-const Map<String, ({double dx, double cy, double r})> _eyeGeometry = {
-  'seedling': (dx: 0.075, cy: 0.62, r: 0.033),
-  'young': (dx: 0.08, cy: 0.58, r: 0.034),
-  'bloom': (dx: 0.08, cy: 0.61, r: 0.034),
-};
-
-/// Paints two short rounded "closed eyelid" strokes over the baked-in dot-eyes
-/// during a blink. The stroke is the same dark tone as the eyes and thickens
-/// with [amount] (0 = open/invisible, 1 = fully closed), so it reads as the eye
-/// squeezing shut. At full close it covers the dot and its highlight.
-class _EyelidPainter extends CustomPainter {
-  final ({double dx, double cy, double r}) geo;
-  final double amount;
-  const _EyelidPainter(this.geo, this.amount);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (amount <= 0.01) return;
-    final r = geo.r * size.width;
-    final cy = geo.cy * size.height;
-    final cxL = size.width * (0.5 - geo.dx);
-    final cxR = size.width * (0.5 + geo.dx);
-    final half = 1.2 * r;
-    final paint = Paint()
-      ..color = const Color(0xFF2E3D30)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 2.2 * r * amount;
-    canvas.drawLine(Offset(cxL - half, cy), Offset(cxL + half, cy), paint);
-    canvas.drawLine(Offset(cxR - half, cy), Offset(cxR + half, cy), paint);
-  }
-
-  @override
-  bool shouldRepaint(_EyelidPainter old) =>
-      old.amount != amount || old.geo != geo;
-}
 
 /// Full-bleed streak backdrop (home-weather style): the plant for the current
 /// growth stage (with an idle sway and a grow-pop when it advances a stage),
@@ -205,34 +165,25 @@ class _StreakBackdrop extends StatefulWidget {
 
 class _StreakBackdropState extends State<_StreakBackdrop>
     with TickerProviderStateMixin {
-  late final AnimationController _sway;
+  // Grow-pop when the plant advances a stage. The per-part idle animation
+  // (sway, leaf flutter, breathe, blink) lives inside [StreakPlant].
   late final AnimationController _grow;
-  late final AnimationController _bob; // slow vertical bob, layered with sway
-  late final AnimationController _blink; // periodic eye blink
   SharedPreferences? _prefs;
   int? _lastSeen; // last stage index the user has already seen
   int? _fromIndex; // stage to cross-fade *from* during a grow-pop
 
-  int get _currentIndex =>
-      PlantStage.all.indexOf(PlantStage.forStreak(widget.streak?.currentStreak ?? 0));
+  int get _currentIndex => PlantStage.all.indexOf(
+    PlantStage.forStreak(widget.streak?.currentStreak ?? 0),
+  );
 
   @override
   void initState() {
     super.initState();
-    _sway = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2600))
-      ..repeat(reverse: true);
     _grow = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900), value: 1);
-    // Bob runs at a different period than sway so the two don't beat in sync —
-    // gives the idle a more organic, breathing feel.
-    _bob = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 3100))
-      ..repeat();
-    // One blink near the end of each cycle (see [_blinkAmount]).
-    _blink = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 4400))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+      value: 1,
+    );
     _initPrefs();
   }
 
@@ -270,21 +221,8 @@ class _StreakBackdropState extends State<_StreakBackdrop>
 
   @override
   void dispose() {
-    _sway.dispose();
     _grow.dispose();
-    _bob.dispose();
-    _blink.dispose();
     super.dispose();
-  }
-
-  /// Blink curve: 0 (eyes open) most of the cycle, ramping up to 1 (closed) and
-  /// back down in a brief window near the end. Derived from [_blink].value.
-  double _blinkAmount() {
-    const start = 0.94; // last ~6% of the cycle is the blink (~264ms)
-    final v = _blink.value;
-    if (v < start) return 0;
-    final t = (v - start) / (1 - start); // 0→1 across the window
-    return t < 0.5 ? t / 0.5 : (1 - t) / 0.5; // close then open
   }
 
   /// Which days of the current week (Mon→Sun) fall inside the current streak.
@@ -323,80 +261,107 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     return 'Grows to ${next.name.toLowerCase()} in $d ${d == 1 ? 'day' : 'days'}';
   }
 
-  Widget _plantArea(PlantStage stage) {
+  Widget _groundAsset(String name) =>
+      SvgPicture.asset('$_kPlantStageAssets/$name.svg', fit: BoxFit.fill);
+
+  Widget _frozenPlant(PlantStage stage, double size) {
     return SizedBox(
-      height: 148,
-      child: Center(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_sway, _grow, _bob, _blink]),
-          builder: (context, _) {
-            // Soft vertical bob applied to whichever state is showing.
-            final bob = math.sin(_bob.value * 2 * math.pi) * 3.0;
-
-            Widget content;
-            if (_fromIndex != null) {
-              final from = PlantStage.all[_fromIndex!];
-              final g = _grow.value.clamp(0.0, 1.0);
-              final eased = Curves.easeOutBack.transform(g);
-              content = Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  Opacity(
-                    opacity: 1 - g,
-                    child: StageImage(image: from.image, size: from.size),
-                  ),
-                  Opacity(
-                    opacity: g,
-                    child: Transform.scale(
-                      scale: 0.5 + 0.5 * eased,
-                      alignment: Alignment.bottomCenter,
-                      child: StageImage(image: stage.image, size: stage.size),
-                    ),
-                  ),
-                ],
-              );
-            } else {
-              final sway = math.sin(_sway.value * 2 * math.pi) * 0.05;
-              Widget creature = StageImage(image: stage.image, size: stage.size);
-              // Overlay blinking eyelids for stages that have dot-eyes.
-              final geo = _eyeGeometry[stage.image];
-              if (geo != null) {
-                creature = Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    creature,
-                    SizedBox(
-                      width: stage.size,
-                      height: stage.size,
-                      child: CustomPaint(
-                        painter: _EyelidPainter(geo, _blinkAmount()),
-                      ),
-                    ),
-                  ],
-                );
-              }
-              // Gentle "breathing" pulse, layered with the sway. Offset in
-              // phase from the bob so the two don't beat in sync.
-              final breathe =
-                  1 + math.sin((_bob.value + 0.25) * 2 * math.pi) * 0.025;
-              content = Transform.scale(
-                scale: breathe,
-                alignment: Alignment.bottomCenter,
-                child: Transform.rotate(
-                  angle: sway,
-                  alignment: Alignment.bottomCenter,
-                  child: creature,
-                ),
-              );
-            }
-
-            return Transform.translate(
-              offset: Offset(0, bob),
-              child: content,
-            );
-          },
-        ),
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(child: streakSoilBack(size)),
+          Positioned.fill(
+            child: streakCreatureLayers(
+              stage: stage,
+              size: size,
+              sway: 0,
+              leaf: 0,
+              breathe: 1,
+              blink: 0,
+            ),
+          ),
+          Positioned.fill(child: streakSoilFront(size)),
+        ],
       ),
+    );
+  }
+
+  Widget _plantForScene(PlantStage stage, double plantSize) {
+    // Idle: the self-animating layered plant (soil static, body sways with
+    // cooldown, side leaves flutter, eyes blink). On stage-up: a grow-pop
+    // crossfade between frozen poses, both scaled into this planted scene.
+    if (_fromIndex == null) {
+      return StreakPlant(
+        key: ValueKey('${stage.image}-$plantSize'),
+        stage: stage,
+        size: plantSize,
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: _grow,
+      builder: (context, _) {
+        final from = PlantStage.all[_fromIndex!];
+        final g = _grow.value.clamp(0.0, 1.0);
+        final eased = Curves.easeOutBack.transform(g);
+        final fromSize = plantSize * (from.size / stage.size);
+        return SizedBox(
+          width: plantSize,
+          height: plantSize,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            clipBehavior: Clip.none,
+            children: [
+              Opacity(opacity: 1 - g, child: _frozenPlant(from, fromSize)),
+              Opacity(
+                opacity: g,
+                child: Transform.scale(
+                  scale: 0.5 + 0.5 * eased,
+                  alignment: Alignment.bottomCenter,
+                  child: _frozenPlant(stage, plantSize),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _plantedScene(PlantStage stage) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxPlantSize = math.min(190.0, constraints.maxWidth * 0.5);
+        final plantSize = math.min(stage.size * 1.38, maxPlantSize);
+
+        return SizedBox(
+          height: 198,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: -20,
+                right: -20,
+                bottom: 18,
+                height: 132,
+                child: _groundAsset('streak_ground_back'),
+              ),
+              Positioned(
+                left: -20,
+                right: -20,
+                bottom: 0,
+                height: 110,
+                child: _groundAsset('streak_ground_front'),
+              ),
+              Positioned(bottom: 62, child: _plantForScene(stage, plantSize)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -407,48 +372,50 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final stage = PlantStage.forStreak(current);
     final topInset = MediaQuery.of(context).padding.top;
 
-    return Container(
-      width: double.infinity,
-      // Sits behind the status bar (no app bar); pad content clear of it.
-      // Extra bottom padding so the overlapping tasks panel doesn't clip it.
-      padding: EdgeInsets.fromLTRB(20, topInset + 20, 20, 44),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [_kBackdropTop, _kBackdropBottom],
+    return ClipRect(
+      child: Container(
+        width: double.infinity,
+        // Sits behind the status bar (no app bar); pad content clear of it.
+        // Extra bottom padding lets the task panel overlap the planted ground.
+        padding: EdgeInsets.fromLTRB(20, topInset + 18, 20, 34),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_kBackdropTop, _kBackdropBottom],
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          _plantArea(stage),
-          const SizedBox(height: 8),
-          Text(
-            stage.name,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+        child: Column(
+          children: [
+            Text(
+              stage.name,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '$current ${current == 1 ? 'day' : 'days'} streak',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+            const SizedBox(height: 2),
+            Text(
+              '$current ${current == 1 ? 'day' : 'days'} streak',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _caption(current),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-          ),
-          const SizedBox(height: 18),
-          _WeekStrip(lit: lit),
-        ],
+            const SizedBox(height: 3),
+            Text(
+              _caption(current),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            _WeekStrip(lit: lit),
+            const SizedBox(height: 8),
+            _plantedScene(stage),
+          ],
+        ),
       ),
     );
   }
@@ -509,10 +476,10 @@ class _DayCell extends StatelessWidget {
 
   // Blue connecting line, shown only between two adjacent cared-for days.
   Widget _bar(bool on) => Expanded(
-        child: on
-            ? Container(height: _barH, color: _kWater)
-            : const SizedBox.shrink(),
-      );
+    child: on
+        ? Container(height: _barH, color: _kWater)
+        : const SizedBox.shrink(),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -547,8 +514,11 @@ class _DayCell extends StatelessWidget {
                   ),
                 ),
                 child: lit
-                    ? const Icon(Icons.water_drop_rounded,
-                        color: Colors.white, size: 15)
+                    ? const Icon(
+                        Icons.water_drop_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      )
                     : null,
               ),
             ],
@@ -670,8 +640,7 @@ class _TaskCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textMuted),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -703,8 +672,11 @@ class _AllCaughtUp extends StatelessWidget {
               color: AppColors.primary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(Icons.check_circle_rounded,
-                color: AppColors.primary, size: 36),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.primary,
+              size: 36,
+            ),
           ),
           const SizedBox(height: 16),
           Text(

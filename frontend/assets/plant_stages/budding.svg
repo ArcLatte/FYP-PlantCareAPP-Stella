@@ -1,8 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100">
   <defs><g id="m6"><path d="M0,0 C-10,-7 -9.5,-20 -2,-25 C-.6,-26 .6,-26 2,-25 C9.5,-20 10,-7 0,0 Z" fill="#6fbf73" stroke="#4e9e5b" stroke-width=".9"/><path d="M0,-2 L0,-22" stroke="#3e8f50" stroke-width="1" opacity=".5" fill="none"/></g>
   <clipPath id="c6"><path d="M50,41 C64,41 77,50 78,63 C79,77 67,88 50,88 C33,88 21,77 22,63 C23,50 36,41 50,41 Z"/></clipPath></defs>
-  <ellipse cx="50" cy="90" rx="30" ry="5" fill="#5a3a22" opacity=".16"/>
-  <path d="M14,88 Q27,80 40,83 Q50,78 60,83 Q73,80 86,88 Q89,94 79,94 L21,94 Q11,94 14,88 Z" fill="#8a5734"/>
   <use xlink:href="#m6" transform="translate(49,46) rotate(-58) scale(1.32)"/>
   <use xlink:href="#m6" transform="translate(51,46) rotate(58) scale(1.32)"/>
   <path d="M50,22 C43,24 41,32 45,38 C47,41 53,41 55,38 C59,32 57,24 50,22 Z" fill="#ffd76b" stroke="#f3b13b" stroke-width=".9"/>
@@ -15,9 +13,4 @@
   <path d="M46,66 q4,2.4 8,0" fill="none" stroke="#34433a" stroke-width="1.5" stroke-linecap="round"/>
   <ellipse cx="35" cy="65" rx="3.9" ry="2.4" fill="#f4a9b0" opacity=".7"/>
   <ellipse cx="65" cy="65" rx="3.9" ry="2.4" fill="#f4a9b0" opacity=".7"/>
-  <use xlink:href="#m6" transform="translate(34,85) rotate(-56) scale(1.12)"/>
-  <use xlink:href="#m6" transform="translate(38,86) rotate(-34) scale(.84)"/>
-  <use xlink:href="#m6" transform="translate(66,85) rotate(56) scale(1.12)"/>
-  <use xlink:href="#m6" transform="translate(62,86) rotate(34) scale(.84)"/>
-  <path d="M11,90 Q32,84 50,88 Q68,84 89,90 Q91,97 80,97 L20,97 Q9,97 11,90 Z" fill="#6e4326"/>
 </svg>

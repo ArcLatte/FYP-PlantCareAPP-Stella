@@ -3,8 +3,6 @@
     <g id="m3"><path d="M0,0 C-10,-7 -9.5,-20 -2,-25 C-.6,-26 .6,-26 2,-25 C9.5,-20 10,-7 0,0 Z" fill="#6fbf73" stroke="#4e9e5b" stroke-width=".9"/><path d="M0,-2 L0,-22" stroke="#3e8f50" stroke-width="1" opacity=".5" fill="none"/></g>
     <clipPath id="c3"><path d="M50,47 C62,47 71,55 72,66 C73,78 64,86 50,86 C36,86 27,78 28,66 C29,55 38,47 50,47 Z"/></clipPath>
   </defs>
-  <ellipse cx="50" cy="88" rx="28" ry="5" fill="#5a3a22" opacity=".16"/>
-  <path d="M16,86 Q27,78 40,81 Q50,76 60,81 Q73,78 84,86 Q87,92 79,92 L21,92 Q13,92 16,86 Z" fill="#8a5734"/>
   <path d="M50,53 L50,45" stroke="#6fb36a" stroke-width="2.6" stroke-linecap="round"/>
   <use xlink:href="#m3" transform="translate(49,47) rotate(-30) scale(.92)"/>
   <use xlink:href="#m3" transform="translate(51,47) rotate(30) scale(.92)"/>
@@ -16,5 +14,4 @@
   <path d="M45,69 q5,3.5 10,0" fill="none" stroke="#34433a" stroke-width="1.6" stroke-linecap="round"/>
   <ellipse cx="36" cy="68" rx="3.6" ry="2.2" fill="#f4a9b0" opacity=".6"/>
   <ellipse cx="64" cy="68" rx="3.6" ry="2.2" fill="#f4a9b0" opacity=".6"/>
-  <path d="M13,88 Q32,82 50,86 Q68,82 87,88 Q89,95 80,95 L20,95 Q11,95 13,88 Z" fill="#6e4326"/>
 </svg>
