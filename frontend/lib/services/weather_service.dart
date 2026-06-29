@@ -22,22 +22,22 @@ class Weather {
   });
 
   Map<String, dynamic> toJson() => {
-        'tempC': tempC,
-        'humidity': humidity,
-        'uv': uv,
-        'condition': condition,
-        'iconCode': iconCode,
-        'cityName': cityName,
-      };
+    'tempC': tempC,
+    'humidity': humidity,
+    'uv': uv,
+    'condition': condition,
+    'iconCode': iconCode,
+    'cityName': cityName,
+  };
 
   factory Weather.fromJson(Map<String, dynamic> json) => Weather(
-        tempC: (json['tempC'] as num).toDouble(),
-        humidity: (json['humidity'] as num).toInt(),
-        uv: (json['uv'] as num?)?.toDouble(),
-        condition: json['condition'] as String,
-        iconCode: json['iconCode'] as String,
-        cityName: json['cityName'] as String?,
-      );
+    tempC: (json['tempC'] as num).toDouble(),
+    humidity: (json['humidity'] as num).toInt(),
+    uv: (json['uv'] as num?)?.toDouble(),
+    condition: json['condition'] as String,
+    iconCode: json['iconCode'] as String,
+    cityName: json['cityName'] as String?,
+  );
 
   String get tempDisplay => '${tempC.floor()}°C';
 
@@ -84,6 +84,11 @@ class Weather {
 
 class WeatherService {
   static const _cacheMaxAge = Duration(minutes: 30);
+
+  /// Reads the weather cached by Home/Tasks without requiring a location lookup.
+  static Future<Weather?> getCachedWeather({bool ignoreAge = false}) {
+    return _readCache(ignoreAge: ignoreAge);
+  }
 
   /// Returns weather for the given coords, hitting the cache when possible.
   /// Set [forceRefresh] for pull-to-refresh.
@@ -157,8 +162,8 @@ class WeatherService {
       final main = c['main'] as Map<String, dynamic>? ?? const {};
       final weatherList = (c['weather'] as List?) ?? const [];
       final firstWeather = (weatherList.isNotEmpty
-              ? weatherList.first as Map<String, dynamic>
-              : const <String, dynamic>{});
+          ? weatherList.first as Map<String, dynamic>
+          : const <String, dynamic>{});
 
       final weather = Weather(
         tempC: (main['temp'] as num?)?.toDouble() ?? 0,
@@ -193,10 +198,7 @@ class WeatherService {
 
   static Future<void> _writeCache(Weather w) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      AppConstants.weatherCacheKey,
-      jsonEncode(w.toJson()),
-    );
+    await prefs.setString(AppConstants.weatherCacheKey, jsonEncode(w.toJson()));
     await prefs.setInt(
       AppConstants.weatherCacheTimeKey,
       DateTime.now().millisecondsSinceEpoch,

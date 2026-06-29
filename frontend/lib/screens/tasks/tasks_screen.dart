@@ -9,9 +9,13 @@ import '../../models/plant.dart';
 import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
 import '../../services/api_service.dart';
+import '../../services/location_service.dart';
+import '../../services/weather_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/streak_plant.dart';
+import '../../widgets/weather_backdrop.dart';
+import '../../widgets/weather_scene_art.dart';
 import 'care_activity.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -24,12 +28,14 @@ class TasksScreen extends StatefulWidget {
 class _TasksScreenState extends State<TasksScreen> {
   List<Plant> _plants = [];
   Streak? _streak;
+  Weather? _weather;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadWeather();
   }
 
   Future<void> _load() async {
@@ -49,6 +55,34 @@ class _TasksScreenState extends State<TasksScreen> {
       setState(() => _isLoading = false);
       AppSnackBar.error(context, 'Failed to load tasks: $e');
     }
+  }
+
+  Future<void> _loadWeather({bool forceRefresh = false}) async {
+    final cachedWeather = await WeatherService.getCachedWeather(
+      ignoreAge: !forceRefresh,
+    );
+    if (mounted && cachedWeather != null) {
+      setState(() => _weather = cachedWeather);
+    }
+
+    final cached = await LocationService.getCached();
+    if (cached != null) {
+      final w = await WeatherService.getWeather(cached.lat, cached.lon);
+      if (mounted && w != null) setState(() => _weather = w);
+    }
+
+    final loc = await LocationService.getCurrent(forceRefresh: forceRefresh);
+    if (loc == null) return;
+    final fresh = await WeatherService.getWeather(
+      loc.lat,
+      loc.lon,
+      forceRefresh: forceRefresh,
+    );
+    if (mounted && fresh != null) setState(() => _weather = fresh);
+  }
+
+  Future<void> _onRefresh() async {
+    await Future.wait([_load(), _loadWeather(forceRefresh: true)]);
   }
 
   int _dueCount(CareActivity a) => _plants.where(a.isDue).length;
@@ -81,7 +115,7 @@ class _TasksScreenState extends State<TasksScreen> {
       body: _isLoading
           ? const _TasksSkeleton()
           : RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: _onRefresh,
               color: AppColors.primary,
               backgroundColor: AppColors.surface,
               child: ListView(
@@ -89,11 +123,11 @@ class _TasksScreenState extends State<TasksScreen> {
                 children: [
                   // Full-bleed plant-growth backdrop (like the home weather
                   // header — fills the top, sits behind the status bar).
-                  _StreakBackdrop(streak: _streak),
+                  _StreakBackdrop(streak: _streak, weather: _weather),
                   // Tasks panel sits on top of the backdrop, overlapping upward
                   // with rounded top corners.
                   Transform.translate(
-                    offset: const Offset(0, -24),
+                    offset: const Offset(0, -44),
                     child: Container(
                       decoration: const BoxDecoration(
                         color: AppColors.background,
@@ -146,10 +180,16 @@ class _TasksScreenState extends State<TasksScreen> {
 // on a soft green backdrop. The streak grows a plant (seed → bloom); each
 // cared-for day is a water drop.
 const Color _kWater = Color(0xFF4F9FD9); // water-blue for active days
-const Color _kBackdropTop = Color(0xFFEAF6EF); // soft mint (top)
-const Color _kBackdropBottom = Color(0xFFCFE8DA); // deeper mint (bottom)
 const String _kPlantStageAssets = 'assets/plant_stages';
 const String _kStageSeenKey = 'tasks_last_plant_stage';
+
+String _streakSceneIcon(DateTime now) {
+  if (now.hour < 7 || now.hour >= 18) return '02n';
+  return '02d';
+}
+
+bool _streakUsesLightText(String iconCode, DateTime now) =>
+    iconCode.endsWith('n') || now.hour >= 17 || now.hour < 8;
 
 /// Full-bleed streak backdrop (home-weather style): the plant for the current
 /// growth stage (with an idle sway and a grow-pop when it advances a stage),
@@ -157,7 +197,8 @@ const String _kStageSeenKey = 'tasks_last_plant_stage';
 /// water-day strip. The tasks panel overlaps it from above.
 class _StreakBackdrop extends StatefulWidget {
   final Streak? streak;
-  const _StreakBackdrop({required this.streak});
+  final Weather? weather;
+  const _StreakBackdrop({required this.streak, required this.weather});
 
   @override
   State<_StreakBackdrop> createState() => _StreakBackdropState();
@@ -371,49 +412,86 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final lit = _litDays();
     final stage = PlantStage.forStreak(current);
     final topInset = MediaQuery.of(context).padding.top;
+    final now = DateTime.now();
+    final iconCode = widget.weather?.iconCode ?? _streakSceneIcon(now);
+    final gradientColors = WeatherBackdrop.gradientColors(iconCode, now);
+    final lightText = _streakUsesLightText(iconCode, now);
+    final titleColor = lightText ? Colors.white : AppColors.textPrimary;
+    final secondaryColor = lightText
+        ? Colors.white.withValues(alpha: 0.84)
+        : AppColors.textSecondary;
+    final mutedColor = lightText
+        ? Colors.white.withValues(alpha: 0.68)
+        : AppColors.textMuted;
 
     return ClipRect(
       child: Container(
         width: double.infinity,
-        // Sits behind the status bar (no app bar); pad content clear of it.
-        // Extra bottom padding lets the task panel overlap the planted ground.
-        padding: EdgeInsets.fromLTRB(20, topInset + 18, 20, 34),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [_kBackdropTop, _kBackdropBottom],
+            colors: gradientColors,
           ),
         ),
-        child: Column(
+        child: Stack(
           children: [
-            Text(
-              stage.name,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
+            WeatherSceneArt(iconCode: iconCode),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: lightText ? 0.12 : 0.03),
+                      Colors.black.withValues(alpha: lightText ? 0.08 : 0.0),
+                      const Color(0xFFD8EFD8).withValues(alpha: 0.22),
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              '$current ${current == 1 ? 'day' : 'days'} streak',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+            Padding(
+              // Sits behind the status bar (no app bar); pad content clear of it.
+              // Extra bottom padding lets the task panel overlap the planted ground.
+              padding: EdgeInsets.fromLTRB(20, topInset + 18, 20, 34),
+              child: Column(
+                children: [
+                  Text(
+                    stage.name,
+                    style: TextStyle(
+                      color: titleColor,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$current ${current == 1 ? 'day' : 'days'} streak',
+                    style: TextStyle(
+                      color: secondaryColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _caption(current),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: mutedColor, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  _WeekStrip(
+                    lit: lit,
+                    labelColor: mutedColor,
+                    todayLabelColor: titleColor,
+                  ),
+                  const SizedBox(height: 8),
+                  _plantedScene(stage),
+                ],
               ),
             ),
-            const SizedBox(height: 3),
-            Text(
-              _caption(current),
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            _WeekStrip(lit: lit),
-            const SizedBox(height: 8),
-            _plantedScene(stage),
           ],
         ),
       ),
@@ -425,7 +503,14 @@ class _StreakBackdropState extends State<_StreakBackdrop>
 /// a blue water drop; consecutive cared-for days are joined by a blue bar.
 class _WeekStrip extends StatelessWidget {
   final List<bool> lit;
-  const _WeekStrip({required this.lit});
+  final Color labelColor;
+  final Color todayLabelColor;
+
+  const _WeekStrip({
+    required this.lit,
+    this.labelColor = AppColors.textSecondary,
+    this.todayLabelColor = AppColors.textPrimary,
+  });
 
   // Monday-first initials.
   static const _initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -449,6 +534,8 @@ class _WeekStrip extends StatelessWidget {
             isToday: isToday,
             litLeft: litLeft,
             litRight: litRight,
+            labelColor: labelColor,
+            todayLabelColor: todayLabelColor,
           ),
         );
       }),
@@ -462,6 +549,8 @@ class _DayCell extends StatelessWidget {
   final bool isToday;
   final bool litLeft;
   final bool litRight;
+  final Color labelColor;
+  final Color todayLabelColor;
 
   static const double _d = 28; // circle diameter
   static const double _barH = 10; // connector thickness
@@ -472,6 +561,8 @@ class _DayCell extends StatelessWidget {
     required this.isToday,
     required this.litLeft,
     required this.litRight,
+    required this.labelColor,
+    required this.todayLabelColor,
   });
 
   // Blue connecting line, shown only between two adjacent cared-for days.
@@ -488,7 +579,7 @@ class _DayCell extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: isToday ? AppColors.textPrimary : AppColors.textSecondary,
+            color: isToday ? todayLabelColor : labelColor,
             fontSize: 11,
             fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
           ),
