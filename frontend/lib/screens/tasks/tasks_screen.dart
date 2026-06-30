@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -184,12 +185,82 @@ const String _kPlantStageAssets = 'assets/plant_stages';
 const String _kStageSeenKey = 'tasks_last_plant_stage';
 
 String _streakSceneIcon(DateTime now) {
-  if (now.hour < 7 || now.hour >= 18) return '02n';
+  if (now.hour < 5 || now.hour >= 21) return '02n';
   return '02d';
 }
 
 bool _streakUsesLightText(String iconCode, DateTime now) =>
     iconCode.endsWith('n') || now.hour >= 17 || now.hour < 8;
+
+enum _StreakLightPhase { sunrise, day, noon, sunset, night }
+
+class _StreakScenePalette {
+  final ColorFilter creatureFilter;
+  final ColorFilter soilFilter;
+  final ColorFilter groundBackFilter;
+  final ColorFilter groundFrontFilter;
+
+  const _StreakScenePalette({
+    required this.creatureFilter,
+    required this.soilFilter,
+    required this.groundBackFilter,
+    required this.groundFrontFilter,
+  });
+
+  factory _StreakScenePalette.forTime(DateTime now) {
+    switch (_phaseFor(now)) {
+      case _StreakLightPhase.sunrise:
+        return _StreakScenePalette(
+          creatureFilter: _filter(const Color(0xFFFFDFC8), 0.14),
+          soilFilter: _filter(const Color(0xFFFFD0A6), 0.12),
+          groundBackFilter: _filter(const Color(0xFFFFDCB4), 0.16),
+          groundFrontFilter: _filter(const Color(0xFFFFC78D), 0.18),
+        );
+      case _StreakLightPhase.day:
+        return _StreakScenePalette(
+          creatureFilter: _filter(const Color(0xFFF7FFF2), 0.04),
+          soilFilter: _filter(const Color(0xFFFFF4D8), 0.05),
+          groundBackFilter: _filter(const Color(0xFFF0FFE8), 0.06),
+          groundFrontFilter: _filter(const Color(0xFFE8FFD8), 0.07),
+        );
+      case _StreakLightPhase.noon:
+        return _StreakScenePalette(
+          creatureFilter: _filter(const Color(0xFFFFF0B8), 0.09),
+          soilFilter: _filter(const Color(0xFFFFE2A8), 0.08),
+          groundBackFilter: _filter(const Color(0xFFFFF1BF), 0.10),
+          groundFrontFilter: _filter(const Color(0xFFFFE49B), 0.12),
+        );
+      case _StreakLightPhase.sunset:
+        return _StreakScenePalette(
+          creatureFilter: _filter(const Color(0xFFFFC08A), 0.18),
+          soilFilter: _filter(const Color(0xFFEFA36C), 0.18),
+          groundBackFilter: _filter(const Color(0xFFFFB071), 0.22),
+          groundFrontFilter: _filter(const Color(0xFFE89158), 0.24),
+        );
+      case _StreakLightPhase.night:
+        return _StreakScenePalette(
+          creatureFilter: _filter(const Color(0xFF9AAAD0), 0.30),
+          soilFilter: _filter(const Color(0xFF7C88AA), 0.28),
+          groundBackFilter: _filter(const Color(0xFF7F91B8), 0.34),
+          groundFrontFilter: _filter(const Color(0xFF65799F), 0.36),
+        );
+    }
+  }
+
+  static _StreakLightPhase _phaseFor(DateTime now) {
+    final h = now.hour;
+    if (h < 5 || h >= 21) return _StreakLightPhase.night;
+    if (h < 8) return _StreakLightPhase.sunrise;
+    if (h >= 17) return _StreakLightPhase.sunset;
+    if (h >= 11 && h < 15) return _StreakLightPhase.noon;
+    return _StreakLightPhase.day;
+  }
+
+  static ColorFilter _filter(Color target, double amount) {
+    final tint = Color.lerp(Colors.white, target, amount)!;
+    return ColorFilter.mode(tint, BlendMode.modulate);
+  }
+}
 
 /// Full-bleed streak backdrop (home-weather style): the plant for the current
 /// growth stage (with an idle sway and a grow-pop when it advances a stage),
@@ -209,6 +280,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   // Grow-pop when the plant advances a stage. The per-part idle animation
   // (sway, leaf flutter, breathe, blink) lives inside [StreakPlant].
   late final AnimationController _grow;
+  Timer? _clock;
   SharedPreferences? _prefs;
   int? _lastSeen; // last stage index the user has already seen
   int? _fromIndex; // stage to cross-fade *from* during a grow-pop
@@ -225,6 +297,9 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       duration: const Duration(milliseconds: 900),
       value: 1,
     );
+    _clock = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (mounted) setState(() {});
+    });
     _initPrefs();
   }
 
@@ -262,6 +337,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
 
   @override
   void dispose() {
+    _clock?.cancel();
     _grow.dispose();
     super.dispose();
   }
@@ -302,10 +378,18 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     return 'Grows to ${next.name.toLowerCase()} in $d ${d == 1 ? 'day' : 'days'}';
   }
 
-  Widget _groundAsset(String name) =>
-      SvgPicture.asset('$_kPlantStageAssets/$name.svg', fit: BoxFit.fill);
+  Widget _groundAsset(String name, {ColorFilter? colorFilter}) =>
+      SvgPicture.asset(
+        '$_kPlantStageAssets/$name.svg',
+        fit: BoxFit.fill,
+        colorFilter: colorFilter,
+      );
 
-  Widget _frozenPlant(PlantStage stage, double size) {
+  Widget _frozenPlant(
+    PlantStage stage,
+    double size,
+    _StreakScenePalette palette,
+  ) {
     return SizedBox(
       width: size,
       height: size,
@@ -313,7 +397,9 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         alignment: Alignment.bottomCenter,
         clipBehavior: Clip.none,
         children: [
-          Positioned.fill(child: streakSoilBack(size)),
+          Positioned.fill(
+            child: streakSoilBack(size, colorFilter: palette.soilFilter),
+          ),
           Positioned.fill(
             child: streakCreatureLayers(
               stage: stage,
@@ -322,15 +408,22 @@ class _StreakBackdropState extends State<_StreakBackdrop>
               leaf: 0,
               breathe: 1,
               blink: 0,
+              colorFilter: palette.creatureFilter,
             ),
           ),
-          Positioned.fill(child: streakSoilFront(size)),
+          Positioned.fill(
+            child: streakSoilFront(size, colorFilter: palette.soilFilter),
+          ),
         ],
       ),
     );
   }
 
-  Widget _plantForScene(PlantStage stage, double plantSize) {
+  Widget _plantForScene(
+    PlantStage stage,
+    double plantSize,
+    _StreakScenePalette palette,
+  ) {
     // Idle: the self-animating layered plant (soil static, body sways with
     // cooldown, side leaves flutter, eyes blink). On stage-up: a grow-pop
     // crossfade between frozen poses, both scaled into this planted scene.
@@ -339,6 +432,8 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         key: ValueKey('${stage.image}-$plantSize'),
         stage: stage,
         size: plantSize,
+        colorFilter: palette.creatureFilter,
+        soilColorFilter: palette.soilFilter,
       );
     }
 
@@ -356,13 +451,16 @@ class _StreakBackdropState extends State<_StreakBackdrop>
             alignment: Alignment.bottomCenter,
             clipBehavior: Clip.none,
             children: [
-              Opacity(opacity: 1 - g, child: _frozenPlant(from, fromSize)),
+              Opacity(
+                opacity: 1 - g,
+                child: _frozenPlant(from, fromSize, palette),
+              ),
               Opacity(
                 opacity: g,
                 child: Transform.scale(
                   scale: 0.5 + 0.5 * eased,
                   alignment: Alignment.bottomCenter,
-                  child: _frozenPlant(stage, plantSize),
+                  child: _frozenPlant(stage, plantSize, palette),
                 ),
               ),
             ],
@@ -372,7 +470,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     );
   }
 
-  Widget _plantedScene(PlantStage stage) {
+  Widget _plantedScene(PlantStage stage, _StreakScenePalette palette) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxPlantSize = math.min(190.0, constraints.maxWidth * 0.5);
@@ -389,16 +487,25 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                 right: -20,
                 bottom: 18,
                 height: 132,
-                child: _groundAsset('streak_ground_back'),
+                child: _groundAsset(
+                  'streak_ground_back',
+                  colorFilter: palette.groundBackFilter,
+                ),
               ),
               Positioned(
                 left: -20,
                 right: -20,
                 bottom: 0,
                 height: 110,
-                child: _groundAsset('streak_ground_front'),
+                child: _groundAsset(
+                  'streak_ground_front',
+                  colorFilter: palette.groundFrontFilter,
+                ),
               ),
-              Positioned(bottom: 62, child: _plantForScene(stage, plantSize)),
+              Positioned(
+                bottom: 62,
+                child: _plantForScene(stage, plantSize, palette),
+              ),
             ],
           ),
         );
@@ -415,6 +522,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final now = DateTime.now();
     final iconCode = widget.weather?.iconCode ?? _streakSceneIcon(now);
     final gradientColors = WeatherBackdrop.gradientColors(iconCode, now);
+    final palette = _StreakScenePalette.forTime(now);
     final lightText = _streakUsesLightText(iconCode, now);
     final titleColor = lightText ? Colors.white : AppColors.textPrimary;
     final secondaryColor = lightText
@@ -488,7 +596,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     todayLabelColor: titleColor,
                   ),
                   const SizedBox(height: 8),
-                  _plantedScene(stage),
+                  _plantedScene(stage, palette),
                 ],
               ),
             ),

@@ -83,7 +83,10 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
 
   String get _group =>
       widget.iconCode.length >= 2 ? widget.iconCode.substring(0, 2) : '01';
-  bool get _isNight => widget.iconCode.endsWith('n');
+  bool get _isNight {
+    final h = DateTime.now().hour;
+    return widget.iconCode.endsWith('n') || h < 5 || h >= 21;
+  }
 
   @override
   Widget build(BuildContext context) {

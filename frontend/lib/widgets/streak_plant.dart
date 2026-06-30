@@ -54,12 +54,19 @@ const Map<String, ({double dx, double cy, double r})> _eyeGeometry = {
   'bloom': (dx: 0.08, cy: 0.61, r: 0.034),
 };
 
-Widget _svg(String name, double size) =>
-    SvgPicture.asset('$_base/$name.svg', width: size, height: size);
+Widget _svg(String name, double size, {ColorFilter? colorFilter}) =>
+    SvgPicture.asset(
+      '$_base/$name.svg',
+      width: size,
+      height: size,
+      colorFilter: colorFilter,
+    );
 
 /// Static soil layers (shared by every stage).
-Widget streakSoilBack(double size) => _svg('soil_back', size);
-Widget streakSoilFront(double size) => _svg('soil_front', size);
+Widget streakSoilBack(double size, {ColorFilter? colorFilter}) =>
+    _svg('soil_back', size, colorFilter: colorFilter);
+Widget streakSoilFront(double size, {ColorFilter? colorFilter}) =>
+    _svg('soil_front', size, colorFilter: colorFilter);
 
 /// Builds just the creature (no soil) for [stage] at [size], applying the
 /// given animation values. Pass `sway: 0, leaf: 0, breathe: 1, blink: 0` for a
@@ -71,11 +78,12 @@ Widget streakCreatureLayers({
   required double leaf,
   required double breathe,
   required double blink,
+  ColorFilter? colorFilter,
 }) {
   final rig = _rigs[stage.image] ?? const _Rig();
 
   // Body (+ baked head leaves / bud / flower) with the blink overlay.
-  Widget body = _svg(stage.image, size);
+  Widget body = _svg(stage.image, size, colorFilter: colorFilter);
   final geo = _eyeGeometry[stage.image];
   if (geo != null && blink > 0.01) {
     body = Stack(
@@ -94,37 +102,39 @@ Widget streakCreatureLayers({
     body = Transform.scale(
       scale: breathe,
       alignment: _basePivot,
-      child: Transform.rotate(
-        angle: sway,
-        alignment: _basePivot,
-        child: body,
-      ),
+      child: Transform.rotate(angle: sway, alignment: _basePivot, child: body),
     );
   }
 
   final layers = <Widget>[];
   // Sprout stem sits behind the seed body, swaying on its base.
   if (rig.stem) {
-    layers.add(Transform.rotate(
-      angle: leaf * 1.1,
-      alignment: const Alignment(0, 0.36),
-      child: _svg('sprout_stem', size),
-    ));
+    layers.add(
+      Transform.rotate(
+        angle: leaf * 1.1,
+        alignment: const Alignment(0, 0.36),
+        child: _svg('sprout_stem', size, colorFilter: colorFilter),
+      ),
+    );
   }
   layers.add(body);
   // Side leaves overlap the front of the body, fluttering up/down on their
   // base (opposite phase left vs right). Their roots tuck behind the soil lip.
   if (rig.sides) {
-    layers.add(Transform.rotate(
-      angle: leaf,
-      alignment: const Alignment(-0.32, 0.70),
-      child: _svg('${stage.image}_sideL', size),
-    ));
-    layers.add(Transform.rotate(
-      angle: -leaf,
-      alignment: const Alignment(0.32, 0.70),
-      child: _svg('${stage.image}_sideR', size),
-    ));
+    layers.add(
+      Transform.rotate(
+        angle: leaf,
+        alignment: const Alignment(-0.32, 0.70),
+        child: _svg('${stage.image}_sideL', size, colorFilter: colorFilter),
+      ),
+    );
+    layers.add(
+      Transform.rotate(
+        angle: -leaf,
+        alignment: const Alignment(0.32, 0.70),
+        child: _svg('${stage.image}_sideR', size, colorFilter: colorFilter),
+      ),
+    );
   }
 
   return SizedBox(
@@ -141,7 +151,15 @@ Widget streakCreatureLayers({
 class StreakPlant extends StatefulWidget {
   final PlantStage stage;
   final double size;
-  const StreakPlant({super.key, required this.stage, required this.size});
+  final ColorFilter? colorFilter;
+  final ColorFilter? soilColorFilter;
+  const StreakPlant({
+    super.key,
+    required this.stage,
+    required this.size,
+    this.colorFilter,
+    this.soilColorFilter,
+  });
 
   @override
   State<StreakPlant> createState() => _StreakPlantState();
@@ -162,17 +180,21 @@ class _StreakPlantState extends State<StreakPlant>
   void initState() {
     super.initState();
     _sway = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 6500))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 6500),
+    )..repeat();
     _leaf = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 3200))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    )..repeat();
     _breathe = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 3600))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 3600),
+    )..repeat();
     _blink = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 4400))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 4400),
+    )..repeat();
   }
 
   @override
@@ -218,7 +240,12 @@ class _StreakPlantState extends State<StreakPlant>
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              Positioned.fill(child: streakSoilBack(size)),
+              Positioned.fill(
+                child: streakSoilBack(
+                  size,
+                  colorFilter: widget.soilColorFilter,
+                ),
+              ),
               Positioned.fill(
                 child: streakCreatureLayers(
                   stage: widget.stage,
@@ -227,9 +254,15 @@ class _StreakPlantState extends State<StreakPlant>
                   leaf: _leafValue(),
                   breathe: _breatheValue(),
                   blink: _blinkAmount(),
+                  colorFilter: widget.colorFilter,
                 ),
               ),
-              Positioned.fill(child: streakSoilFront(size)),
+              Positioned.fill(
+                child: streakSoilFront(
+                  size,
+                  colorFilter: widget.soilColorFilter,
+                ),
+              ),
             ],
           );
         },
