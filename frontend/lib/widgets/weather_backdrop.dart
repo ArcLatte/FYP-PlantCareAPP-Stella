@@ -107,26 +107,39 @@ class _ScenePainter extends CustomPainter {
 
   _ScenePainter({required this.iconCode, required this.t});
 
-  String get _group =>
-      iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
+  String get _group => iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
   bool get _isNight => iconCode.endsWith('n');
 
   // Fixed seed so particles don't jump between frames.
   static final _rng = math.Random(7);
   static final List<Offset> _starSeeds = List.generate(
-      26, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
-  static final List<double> _starPhases =
-      List.generate(26, (_) => _rng.nextDouble());
+    26,
+    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
+  );
+  static final List<double> _starPhases = List.generate(
+    26,
+    (_) => _rng.nextDouble(),
+  );
   static final List<Offset> _dropSeeds = List.generate(
-      42, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
+    42,
+    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
+  );
   static final List<Offset> _flakeSeeds = List.generate(
-      30, (_) => Offset(_rng.nextDouble(), _rng.nextDouble()));
-  static final List<double> _cloudYs =
-      List.generate(4, (_) => 0.08 + _rng.nextDouble() * 0.35);
-  static final List<double> _cloudOffsets =
-      List.generate(4, (_) => _rng.nextDouble());
-  static final List<double> _cloudScales =
-      List.generate(4, (_) => 0.7 + _rng.nextDouble() * 0.6);
+    30,
+    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
+  );
+  static final List<double> _cloudYs = List.generate(
+    4,
+    (_) => 0.08 + _rng.nextDouble() * 0.35,
+  );
+  static final List<double> _cloudOffsets = List.generate(
+    4,
+    (_) => _rng.nextDouble(),
+  );
+  static final List<double> _cloudScales = List.generate(
+    4,
+    (_) => 0.7 + _rng.nextDouble() * 0.6,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -197,7 +210,8 @@ class _ScenePainter extends CustomPainter {
       // Stars stay in the top ~55% of the header.
       final pos = Offset(s.dx * size.width, s.dy * size.height * 0.55);
       final twinkle =
-          0.35 + 0.65 * (0.5 + 0.5 * math.sin((t * 6 + _starPhases[i]) * 2 * math.pi));
+          0.35 +
+          0.65 * (0.5 + 0.5 * math.sin((t * 6 + _starPhases[i]) * 2 * math.pi));
       starPaint.color = Colors.white.withValues(alpha: 0.75 * twinkle);
       canvas.drawCircle(pos, i % 5 == 0 ? 1.8 : 1.1, starPaint);
     }
@@ -213,8 +227,12 @@ class _ScenePainter extends CustomPainter {
     // Crescent: full disc minus an offset shadow disc.
     final moon = Path()..addOval(Rect.fromCircle(center: center, radius: r));
     final bite = Path()
-      ..addOval(Rect.fromCircle(
-          center: center + Offset(r * 0.42, -r * 0.18), radius: r * 0.88));
+      ..addOval(
+        Rect.fromCircle(
+          center: center + Offset(r * 0.42, -r * 0.18),
+          radius: r * 0.88,
+        ),
+      );
     final crescent = Path.combine(PathOperation.difference, moon, bite);
     canvas.drawPath(crescent, Paint()..color = const Color(0xFFF6F1DE));
   }
@@ -222,8 +240,12 @@ class _ScenePainter extends CustomPainter {
   // ── Drifting stylized clouds. Each cloud is ONE path (pill base + two
   // bumps) filled in a single pass, so the translucent white stays uniform
   // with no darker overlap seams — clean flat-design look.
-  void _paintClouds(Canvas canvas, Size size,
-      {required int count, required double alpha}) {
+  void _paintClouds(
+    Canvas canvas,
+    Size size, {
+    required int count,
+    required double alpha,
+  }) {
     final paint = Paint()..color = Colors.white.withValues(alpha: alpha);
     for (int i = 0; i < count && i < _cloudYs.length; i++) {
       final scale = _cloudScales[i];
@@ -234,15 +256,28 @@ class _ScenePainter extends CustomPainter {
       final x = ((t * speed + _cloudOffsets[i]) % 1.3) * (size.width + w) - w;
       final y = size.height * _cloudYs[i];
       final cloud = Path()
-        ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromCenter(
-              center: Offset(x, y + h * 0.30), width: w, height: h),
-          Radius.circular(h / 2),
-        ))
-        ..addOval(Rect.fromCircle(
-            center: Offset(x - w * 0.16, y - h * 0.02), radius: h * 0.52))
-        ..addOval(Rect.fromCircle(
-            center: Offset(x + w * 0.14, y - h * 0.22), radius: h * 0.70));
+        ..addRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: Offset(x, y + h * 0.30),
+              width: w,
+              height: h,
+            ),
+            Radius.circular(h / 2),
+          ),
+        )
+        ..addOval(
+          Rect.fromCircle(
+            center: Offset(x - w * 0.16, y - h * 0.02),
+            radius: h * 0.52,
+          ),
+        )
+        ..addOval(
+          Rect.fromCircle(
+            center: Offset(x + w * 0.14, y - h * 0.22),
+            radius: h * 0.70,
+          ),
+        );
       canvas.drawPath(cloud, paint);
     }
   }
@@ -259,11 +294,7 @@ class _ScenePainter extends CustomPainter {
       final fall = ((t * 6 + seed.dy) % 1.0);
       final x = seed.dx * size.width + fall * size.height * slant;
       final y = fall * (size.height + 20) - 10;
-      canvas.drawLine(
-        Offset(x, y),
-        Offset(x + 2.4, y + 11),
-        paint,
-      );
+      canvas.drawLine(Offset(x, y), Offset(x + 2.4, y + 11), paint);
     }
   }
 
@@ -312,8 +343,7 @@ class _ScenePainter extends CustomPainter {
     for (int i = 0; i < 4; i++) {
       final y = size.height * (0.2 + i * 0.18);
       final w = size.width * 1.1;
-      final drift =
-          math.sin((t + i * 0.25) * 2 * math.pi) * size.width * 0.06;
+      final drift = math.sin((t + i * 0.25) * 2 * math.pi) * size.width * 0.06;
       final paint = Paint()
         ..color = Colors.white.withValues(alpha: 0.16 + (i % 2) * 0.08)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);

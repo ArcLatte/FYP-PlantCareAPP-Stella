@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -6,11 +8,19 @@ import 'package:flutter_svg/flutter_svg.dart';
 /// dropping a file with the matching name into `assets/weather/`.
 Widget _sceneAsset(String path, {BoxFit? fit, double? width, double? height}) {
   if (path.toLowerCase().endsWith('.svg')) {
-    return SvgPicture.asset(path, fit: fit ?? BoxFit.contain,
-        width: width, height: height);
+    return SvgPicture.asset(
+      path,
+      fit: fit ?? BoxFit.contain,
+      width: width,
+      height: height,
+    );
   }
-  return Image.asset(path,
-      fit: fit ?? BoxFit.contain, width: width, height: height);
+  return Image.asset(
+    path,
+    fit: fit ?? BoxFit.contain,
+    width: width,
+    height: height,
+  );
 }
 
 /// Watercolor / art-style weather scene for the home header, composited from
@@ -18,11 +28,12 @@ Widget _sceneAsset(String path, {BoxFit? fit, double? width, double? height}) {
 ///
 /// Layers, back to front: a full-bleed sky wash (picked by local time of day),
 /// a star field on clear/cloudy nights, the sun or crescent moon top-right,
-/// drifting clouds, and a rain/snow texture when it's wet out. The scene is
+/// drifting clouds, and rain/snow when it's wet out. The scene is
 /// chosen from the OpenWeather icon code ("10d", "01n", …) just like the old
 /// code-drawn [WeatherBackdrop] it replaces.
 class WeatherSceneArt extends StatefulWidget {
   final String iconCode;
+  final double rainIntensity;
 
   /// When true the drift animation is stopped (scene freezes). The home screen
   /// pauses the scene once the header scrolls out of view to save frames.
@@ -31,6 +42,7 @@ class WeatherSceneArt extends StatefulWidget {
   const WeatherSceneArt({
     super.key,
     required this.iconCode,
+    this.rainIntensity = 1.0,
     this.paused = false,
   });
 
@@ -143,11 +155,16 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                     if (cfg.precip != null)
                       AnimatedBuilder(
                         animation: _controller,
-                        builder: (context, _) => _PrecipLayer(
-                          asset: '${WeatherSceneArt._base}/${cfg.precip}',
-                          t: _controller.value,
-                          slow: cfg.precip == _A.snow,
-                        ),
+                        builder: (context, _) => cfg.precip == _A.rain
+                            ? _RainLayer(
+                                t: _controller.value,
+                                intensity: widget.rainIntensity,
+                              )
+                            : _PrecipLayer(
+                                asset: '${WeatherSceneArt._base}/${cfg.precip}',
+                                t: _controller.value,
+                                slow: cfg.precip == _A.snow,
+                              ),
                       ),
                   ],
                 );
@@ -187,8 +204,14 @@ class _Cloud {
   final double phase; // 0..1 start offset along the loop
   final double speed; // loops per controller cycle
   final double opacity;
-  const _Cloud(this.asset, this.y, this.scale, this.phase, this.speed,
-      [this.opacity = 1]);
+  const _Cloud(
+    this.asset,
+    this.y,
+    this.scale,
+    this.phase,
+    this.speed, [
+    this.opacity = 1,
+  ]);
 }
 
 /// Resolved per-condition layer set.
@@ -270,12 +293,63 @@ class _SceneConfig {
         return _SceneConfig(
           celestial: body,
           stars: isNight,
-          clouds: const [
-            _Cloud(_A.cloudSoft, 0.30, 0.45, 0.2, 0.4, 0.85),
-          ],
+          clouds: const [_Cloud(_A.cloudSoft, 0.30, 0.45, 0.2, 0.4, 0.85)],
         );
     }
   }
+}
+
+/// Code-drawn rain layer, matching the softer animated style from the original
+/// weather backdrop instead of tiling the rain SVG texture.
+class _RainLayer extends StatelessWidget {
+  final double t;
+  final double intensity;
+
+  const _RainLayer({required this.t, required this.intensity});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _RainPainter(t, intensity),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+class _RainPainter extends CustomPainter {
+  final double t;
+  final double intensity;
+
+  _RainPainter(this.t, this.intensity);
+
+  static final math.Random _rng = math.Random(11);
+  static final List<Offset> _dropSeeds = List.generate(
+    42,
+    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
+  );
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.45)
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    const slant = 0.18;
+    final speed = 6 * intensity.clamp(0.75, 1.6);
+
+    for (final seed in _dropSeeds) {
+      final fall = ((t * speed + seed.dy) % 1.0);
+      final x = seed.dx * size.width + fall * size.height * slant;
+      final y = fall * (size.height + 20) - 10;
+      canvas.drawLine(Offset(x, y), Offset(x + 2.4, y + 11), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RainPainter oldDelegate) =>
+      oldDelegate.t != t || oldDelegate.intensity != intensity;
 }
 
 /// Tiles a precipitation texture across the section and scrolls it downward.

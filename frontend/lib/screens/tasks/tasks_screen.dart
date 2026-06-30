@@ -192,6 +192,11 @@ String _streakSceneIcon(DateTime now) {
 bool _streakUsesLightText(String iconCode, DateTime now) =>
     iconCode.endsWith('n') || now.hour >= 17 || now.hour < 8;
 
+bool _streakUsesRain(String iconCode) {
+  final group = iconCode.length >= 2 ? iconCode.substring(0, 2) : '';
+  return group == '09' || group == '10' || group == '11';
+}
+
 enum _StreakLightPhase { sunrise, day, noon, sunset, night }
 
 class _StreakScenePalette {
@@ -211,38 +216,38 @@ class _StreakScenePalette {
     switch (_phaseFor(now)) {
       case _StreakLightPhase.sunrise:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFFFFDFC8), 0.14),
+          creatureFilter: _filter(const Color(0xFFFFEBDD), 0.09),
           soilFilter: _filter(const Color(0xFFFFD0A6), 0.12),
-          groundBackFilter: _filter(const Color(0xFFFFDCB4), 0.16),
-          groundFrontFilter: _filter(const Color(0xFFFFC78D), 0.18),
+          groundBackFilter: _filter(const Color(0xFF9EAE91), 0.08),
+          groundFrontFilter: _filter(const Color(0xFF668575), 0.16),
         );
       case _StreakLightPhase.day:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFFF7FFF2), 0.04),
+          creatureFilter: _filter(Colors.white, 0.0),
           soilFilter: _filter(const Color(0xFFFFF4D8), 0.05),
-          groundBackFilter: _filter(const Color(0xFFF0FFE8), 0.06),
-          groundFrontFilter: _filter(const Color(0xFFE8FFD8), 0.07),
+          groundBackFilter: _filter(const Color(0xFF829B86), 0.10),
+          groundFrontFilter: _filter(const Color(0xFF557D72), 0.18),
         );
       case _StreakLightPhase.noon:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFFFFF0B8), 0.09),
+          creatureFilter: _filter(const Color(0xFFFFFAE8), 0.03),
           soilFilter: _filter(const Color(0xFFFFE2A8), 0.08),
-          groundBackFilter: _filter(const Color(0xFFFFF1BF), 0.10),
-          groundFrontFilter: _filter(const Color(0xFFFFE49B), 0.12),
+          groundBackFilter: _filter(const Color(0xFF8DA17D), 0.10),
+          groundFrontFilter: _filter(const Color(0xFF5D8270), 0.18),
         );
       case _StreakLightPhase.sunset:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFFFFC08A), 0.18),
+          creatureFilter: _filter(const Color(0xFFFFD1A8), 0.12),
           soilFilter: _filter(const Color(0xFFEFA36C), 0.18),
-          groundBackFilter: _filter(const Color(0xFFFFB071), 0.22),
-          groundFrontFilter: _filter(const Color(0xFFE89158), 0.24),
+          groundBackFilter: _filter(const Color(0xFF9B9474), 0.14),
+          groundFrontFilter: _filter(const Color(0xFF657C69), 0.22),
         );
       case _StreakLightPhase.night:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFF9AAAD0), 0.30),
+          creatureFilter: _filter(const Color(0xFFB7C8F1), 0.22),
           soilFilter: _filter(const Color(0xFF7C88AA), 0.28),
-          groundBackFilter: _filter(const Color(0xFF7F91B8), 0.34),
-          groundFrontFilter: _filter(const Color(0xFF65799F), 0.36),
+          groundBackFilter: _filter(const Color(0xFF506982), 0.30),
+          groundFrontFilter: _filter(const Color(0xFF3E5D67), 0.36),
         );
     }
   }
@@ -280,6 +285,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   // Grow-pop when the plant advances a stage. The per-part idle animation
   // (sway, leaf flutter, breathe, blink) lives inside [StreakPlant].
   late final AnimationController _grow;
+  late final AnimationController _rain;
   Timer? _clock;
   SharedPreferences? _prefs;
   int? _lastSeen; // last stage index the user has already seen
@@ -297,6 +303,11 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       duration: const Duration(milliseconds: 900),
       value: 1,
     );
+    _rain = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 40),
+    );
+    _syncRainAnimation();
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) setState(() {});
     });
@@ -314,6 +325,19 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     super.didUpdateWidget(old);
     if (old.streak?.currentStreak != widget.streak?.currentStreak) {
       _evaluate();
+    }
+    if (old.weather?.iconCode != widget.weather?.iconCode) {
+      _syncRainAnimation();
+    }
+  }
+
+  void _syncRainAnimation() {
+    final iconCode =
+        widget.weather?.iconCode ?? _streakSceneIcon(DateTime.now());
+    if (_streakUsesRain(iconCode)) {
+      if (!_rain.isAnimating) _rain.repeat();
+    } else {
+      _rain.stop();
     }
   }
 
@@ -339,6 +363,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   void dispose() {
     _clock?.cancel();
     _grow.dispose();
+    _rain.dispose();
     super.dispose();
   }
 
@@ -367,15 +392,6 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       if (!day.isBefore(start) && !day.isAfter(end)) lit[i] = true;
     }
     return lit;
-  }
-
-  String _caption(int current) {
-    if (current == 0) return 'Care for a plant to start growing';
-    final stage = PlantStage.forStreak(current);
-    final next = PlantStage.next(stage);
-    if (next == null) return 'Fully grown — keep it going';
-    final d = next.minDays - current;
-    return 'Grows to ${next.name.toLowerCase()} in $d ${d == 1 ? 'day' : 'days'}';
   }
 
   Widget _groundAsset(String name, {ColorFilter? colorFilter}) =>
@@ -470,14 +486,22 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     );
   }
 
-  Widget _plantedScene(PlantStage stage, _StreakScenePalette palette) {
+  Widget _plantedScene(
+    PlantStage stage,
+    _StreakScenePalette palette, {
+    required Widget weekStrip,
+    required bool lightText,
+    required bool raining,
+    required double rainT,
+    required double rainIntensity,
+  }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxPlantSize = math.min(190.0, constraints.maxWidth * 0.5);
-        final plantSize = math.min(stage.size * 1.38, maxPlantSize);
+        final maxPlantSize = math.min(205.0, constraints.maxWidth * 0.56);
+        final plantSize = math.min(stage.size * 1.46, maxPlantSize);
 
         return SizedBox(
-          height: 198,
+          height: 268,
           child: Stack(
             alignment: Alignment.bottomCenter,
             clipBehavior: Clip.none,
@@ -485,26 +509,51 @@ class _StreakBackdropState extends State<_StreakBackdrop>
               Positioned(
                 left: -20,
                 right: -20,
-                bottom: 18,
-                height: 132,
+                bottom: 0,
+                height: 238,
                 child: _groundAsset(
                   'streak_ground_back',
                   colorFilter: palette.groundBackFilter,
                 ),
               ),
               Positioned(
-                left: -20,
-                right: -20,
+                left: -24,
+                right: -24,
                 bottom: 0,
-                height: 110,
+                height: 232,
                 child: _groundAsset(
                   'streak_ground_front',
                   colorFilter: palette.groundFrontFilter,
                 ),
               ),
               Positioned(
-                bottom: 62,
+                bottom: 132,
                 child: _plantForScene(stage, plantSize, palette),
+              ),
+              if (raining)
+                Positioned(
+                  left: -20,
+                  right: -20,
+                  top: 0,
+                  bottom: 70,
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _StreakRainPainter(
+                        t: rainT,
+                        lightText: lightText,
+                        intensity: rainIntensity,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 64,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                  child: weekStrip,
+                ),
               ),
             ],
           ),
@@ -518,12 +567,15 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final current = widget.streak?.currentStreak ?? 0;
     final lit = _litDays();
     final stage = PlantStage.forStreak(current);
+    final headline = current == 0 ? 'Start your streak' : '$current day streak';
     final topInset = MediaQuery.of(context).padding.top;
     final now = DateTime.now();
     final iconCode = widget.weather?.iconCode ?? _streakSceneIcon(now);
     final gradientColors = WeatherBackdrop.gradientColors(iconCode, now);
     final palette = _StreakScenePalette.forTime(now);
     final lightText = _streakUsesLightText(iconCode, now);
+    final raining = _streakUsesRain(iconCode);
+    final rainIntensity = widget.weather?.rainIntensity ?? 1.0;
     final titleColor = lightText ? Colors.white : AppColors.textPrimary;
     final secondaryColor = lightText
         ? Colors.white.withValues(alpha: 0.84)
@@ -544,7 +596,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         ),
         child: Stack(
           children: [
-            WeatherSceneArt(iconCode: iconCode),
+            WeatherSceneArt(iconCode: iconCode, rainIntensity: rainIntensity),
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -563,40 +615,61 @@ class _StreakBackdropState extends State<_StreakBackdrop>
             Padding(
               // Sits behind the status bar (no app bar); pad content clear of it.
               // Extra bottom padding lets the task panel overlap the planted ground.
-              padding: EdgeInsets.fromLTRB(20, topInset + 18, 20, 34),
+              padding: EdgeInsets.fromLTRB(20, topInset + 26, 20, 0),
               child: Column(
                 children: [
                   Text(
-                    stage.name,
+                    headline,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: titleColor,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
+                      fontSize: current == 0 ? 30 : 34,
+                      fontWeight: FontWeight.w900,
+                      height: 1.0,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
-                    '$current ${current == 1 ? 'day' : 'days'} streak',
+                    stage.name,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: secondaryColor,
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    _caption(current),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: mutedColor, fontSize: 12),
-                  ),
-                  const SizedBox(height: 16),
-                  _WeekStrip(
-                    lit: lit,
-                    labelColor: mutedColor,
-                    todayLabelColor: titleColor,
-                  ),
-                  const SizedBox(height: 8),
-                  _plantedScene(stage, palette),
+                  const SizedBox(height: 10),
+                  if (raining)
+                    AnimatedBuilder(
+                      animation: _rain,
+                      builder: (context, _) => _plantedScene(
+                        stage,
+                        palette,
+                        lightText: lightText,
+                        raining: true,
+                        rainT: _rain.value,
+                        rainIntensity: rainIntensity,
+                        weekStrip: _WeekStrip(
+                          lit: lit,
+                          labelColor: mutedColor,
+                          todayLabelColor: titleColor,
+                        ),
+                      ),
+                    )
+                  else
+                    _plantedScene(
+                      stage,
+                      palette,
+                      lightText: lightText,
+                      raining: false,
+                      rainT: 0,
+                      rainIntensity: rainIntensity,
+                      weekStrip: _WeekStrip(
+                        lit: lit,
+                        labelColor: mutedColor,
+                        todayLabelColor: titleColor,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -607,8 +680,85 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   }
 }
 
-/// Current week (Mon→Sun): a day initial above a circle. Each cared-for day is
-/// a blue water drop; consecutive cared-for days are joined by a blue bar.
+/// Rain that falls through the planted streak scene and stops at the grass.
+class _StreakRainPainter extends CustomPainter {
+  final double t;
+  final bool lightText;
+  final double intensity;
+
+  const _StreakRainPainter({
+    required this.t,
+    required this.lightText,
+    required this.intensity,
+  });
+
+  static final math.Random _rng = math.Random(23);
+  static final List<Offset> _drops = List.generate(
+    42,
+    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
+  );
+  static const List<Offset> _puddles = [
+    Offset(0.24, 0.86),
+    Offset(0.48, 0.91),
+    Offset(0.70, 0.86),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rainPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.45)
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    const slant = 0.18;
+    final speed = 6 * intensity.clamp(0.75, 1.6);
+
+    for (final seed in _drops) {
+      final fall = ((t * speed + seed.dy) % 1.0);
+      final x = seed.dx * size.width + fall * size.height * slant;
+      final y = fall * (size.height + 20) - 10;
+      canvas.drawLine(Offset(x, y), Offset(x + 2.4, y + 11), rainPaint);
+    }
+
+    final puddlePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = Colors.white.withValues(alpha: lightText ? 0.20 : 0.16);
+    final shimmerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = const Color(0xFFD9F3FF).withValues(alpha: 0.18);
+
+    for (var i = 0; i < _puddles.length; i++) {
+      final p = _puddles[i];
+      final pulse = 0.5 + 0.5 * math.sin((t * 2 * math.pi) + i * 1.7);
+      final center = Offset(size.width * p.dx, size.height * p.dy);
+      final width = 24 + pulse * 8;
+      final height = 5 + pulse * 2;
+      final rect = Rect.fromCenter(
+        center: center,
+        width: width,
+        height: height,
+      );
+      canvas.drawOval(rect, puddlePaint);
+      canvas.drawArc(
+        rect.deflate(3),
+        math.pi * 0.08,
+        math.pi * 0.72,
+        false,
+        shimmerPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StreakRainPainter oldDelegate) =>
+      oldDelegate.t != t ||
+      oldDelegate.lightText != lightText ||
+      oldDelegate.intensity != intensity;
+}
+
+/// Current week: a day initial above a circle. Each cared-for day is a blue
+/// water drop; consecutive cared-for days are joined by a blue bar.
 class _WeekStrip extends StatelessWidget {
   final List<bool> lit;
   final Color labelColor;
@@ -660,8 +810,8 @@ class _DayCell extends StatelessWidget {
   final Color labelColor;
   final Color todayLabelColor;
 
-  static const double _d = 28; // circle diameter
-  static const double _barH = 10; // connector thickness
+  static const double _d = 26; // circle diameter
+  static const double _barH = 7; // connector thickness
 
   const _DayCell({
     required this.label,
@@ -688,11 +838,11 @@ class _DayCell extends StatelessWidget {
           label,
           style: TextStyle(
             color: isToday ? todayLabelColor : labelColor,
-            fontSize: 11,
+            fontSize: 10.5,
             fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 7),
         SizedBox(
           height: _d,
           child: Stack(
@@ -709,7 +859,7 @@ class _DayCell extends StatelessWidget {
                     color: lit
                         ? _kWater
                         : (isToday ? _kWater : AppColors.cardBorder),
-                    width: isToday && !lit ? 2 : 1,
+                    width: isToday && !lit ? 2 : 0.8,
                   ),
                 ),
                 child: lit

@@ -10,6 +10,8 @@ class Weather {
   final double? uv;
   final String condition;
   final String iconCode;
+  final int? weatherId;
+  final double? rain1h;
   final String? cityName;
 
   const Weather({
@@ -18,6 +20,8 @@ class Weather {
     required this.uv,
     required this.condition,
     required this.iconCode,
+    this.weatherId,
+    this.rain1h,
     this.cityName,
   });
 
@@ -27,6 +31,8 @@ class Weather {
     'uv': uv,
     'condition': condition,
     'iconCode': iconCode,
+    'weatherId': weatherId,
+    'rain1h': rain1h,
     'cityName': cityName,
   };
 
@@ -36,10 +42,37 @@ class Weather {
     uv: (json['uv'] as num?)?.toDouble(),
     condition: json['condition'] as String,
     iconCode: json['iconCode'] as String,
+    weatherId: (json['weatherId'] as num?)?.toInt(),
+    rain1h: (json['rain1h'] as num?)?.toDouble(),
     cityName: json['cityName'] as String?,
   );
 
   String get tempDisplay => '${tempC.floor()}°C';
+
+  double get rainIntensity {
+    final group = iconCode.length >= 2 ? iconCode.substring(0, 2) : '';
+    final mm = rain1h;
+    if (mm != null) {
+      if (mm < 0.5) return 0.75;
+      if (mm < 2.5) return 1.0;
+      if (mm < 7.5) return 1.25;
+      return 1.55;
+    }
+
+    final id = weatherId;
+    if (id != null) {
+      if (id == 500 || id == 520) return 0.8;
+      if (id == 501 || id == 521) return 1.0;
+      if (id == 502 || id == 503 || id == 504 || id == 522 || id == 531) {
+        return 1.4;
+      }
+      if (id >= 200 && id < 300) return 1.3;
+    }
+
+    if (group == '09') return 1.15;
+    if (group == '11') return 1.3;
+    return 1.0;
+  }
 
   /// Material icon matching the OpenWeather condition. Picks a day/night
   /// variant for clear-sky based on the icon-code suffix ('d' or 'n').
@@ -160,6 +193,7 @@ class WeatherService {
       }
 
       final main = c['main'] as Map<String, dynamic>? ?? const {};
+      final rain = c['rain'] as Map<String, dynamic>? ?? const {};
       final weatherList = (c['weather'] as List?) ?? const [];
       final firstWeather = (weatherList.isNotEmpty
           ? weatherList.first as Map<String, dynamic>
@@ -171,6 +205,8 @@ class WeatherService {
         uv: uv,
         condition: (firstWeather['main'] ?? '').toString(),
         iconCode: (firstWeather['icon'] ?? '01d').toString(),
+        weatherId: (firstWeather['id'] as num?)?.toInt(),
+        rain1h: (rain['1h'] as num?)?.toDouble(),
         cityName: geoName ?? c['name']?.toString(),
       );
       await _writeCache(weather);

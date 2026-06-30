@@ -8,10 +8,10 @@ chosen by the current streak length (see `lib/models/plant_stage.dart`):
 | `seed`      | Seed         | 0 days     |
 | `sprout`    | Sprout       | 1 day      |
 | `seedling`  | Seedling     | 3 days     |
-| `young`     | Young plant  | 7 days     |
-| `leafy`     | Leafy plant  | 14 days    |
+| `young`     | Young        | 7 days     |
+| `leafy`     | Leafy        | 14 days    |
 | `budding`   | Budding      | 21 days    |
-| `bloom`     | Blooming     | 30 days    |
+| `bloom`     | Bloom        | 30 days    |
 
 ## Replacing with your own art (e.g. AI-generated)
 

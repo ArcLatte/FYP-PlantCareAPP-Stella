@@ -218,8 +218,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text("Today's care",
-                  style: Theme.of(sheetContext).textTheme.titleLarge),
+              Text(
+                "Today's care",
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
               const SizedBox(height: 12),
               if (due.isEmpty)
                 Padding(
@@ -227,13 +229,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Center(
                     child: Column(
                       children: [
-                        const Icon(Icons.check_circle_rounded,
-                            color: AppColors.primary, size: 44),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.primary,
+                          size: 44,
+                        ),
                         const SizedBox(height: 10),
                         Text(
                           'All caught up — nothing due today!',
-                          style:
-                              Theme.of(sheetContext).textTheme.bodyMedium,
+                          style: Theme.of(sheetContext).textTheme.bodyMedium,
                         ),
                       ],
                     ),
@@ -252,12 +256,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color:
-                                  AppColors.primary.withValues(alpha: 0.12),
+                              color: AppColors.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(Icons.eco_rounded,
-                                color: AppColors.primary, size: 22),
+                            child: const Icon(
+                              Icons.eco_rounded,
+                              color: AppColors.primary,
+                              size: 22,
+                            ),
                           ),
                           title: Text(
                             p.name,
@@ -278,8 +284,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 12,
                             ),
                           ),
-                          trailing: const Icon(Icons.chevron_right_rounded,
-                              color: AppColors.textMuted),
+                          trailing: const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.textMuted,
+                          ),
                           onTap: () async {
                             Navigator.pop(sheetContext);
                             await context.push('/plants/${p.id}');
@@ -539,15 +547,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final w = _weather;
     if (w == null) return const SizedBox.shrink();
     // Freeze the animation once the header has scrolled out of view.
-    return WeatherSceneArt(iconCode: w.iconCode, paused: _headerCollapsed);
+    return WeatherSceneArt(
+      iconCode: w.iconCode,
+      rainIntensity: w.rainIntensity,
+      paused: _headerCollapsed,
+    );
   }
 
   Widget _buildWeatherCard() {
     final statusBarInset = MediaQuery.of(context).padding.top;
     // Gradient tracks time of day (dawn/day/sunset/night), nudged by the
     // weather icon's day/night flag once a report is loaded.
-    final gradientColors =
-        WeatherBackdrop.gradientColors(_weather?.iconCode ?? '01d');
+    final gradientColors = WeatherBackdrop.gradientColors(
+      _weather?.iconCode ?? '01d',
+    );
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1267,7 +1280,6 @@ class _StatusBadge extends StatelessWidget {
     );
   }
 }
-
 
 class _ActionIcon extends StatelessWidget {
   final IconData icon;
