@@ -19,6 +19,9 @@ import '../../widgets/xp_toast.dart';
 
 const _kAllFilter = '__all__';
 const _kUnsortedFilter = '__unsorted__';
+const _kWeatherTextShadow = [
+  Shadow(color: Color(0x660B1424), blurRadius: 8, offset: Offset(0, 1)),
+];
 
 /// Status-based filter applied on top of the location chips.
 enum _StatusFilter { all, needsWater, needsAttention, healthy }
@@ -588,6 +591,37 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               // Full-section animated weather backdrop (behind the content).
               _weatherBackground(),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.34),
+                        Colors.black.withValues(alpha: 0.18),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.46, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.18),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.58],
+                    ),
+                  ),
+                ),
+              ),
               Padding(
                 padding: EdgeInsets.only(
                   top: statusBarInset + 16,
@@ -609,6 +643,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 13,
+                                  shadows: _kWeatherTextShadow,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -618,6 +653,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   color: Colors.white,
                                   fontSize: 22,
                                   fontWeight: FontWeight.w700,
+                                  shadows: _kWeatherTextShadow,
                                 ),
                               ),
                             ],
@@ -698,6 +734,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 13,
+                            shadows: _kWeatherTextShadow,
                           ),
                         ),
                       ],
@@ -713,6 +750,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontSize: 56,
                             fontWeight: FontWeight.w700,
                             height: 1.0,
+                            shadows: _kWeatherTextShadow,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -734,6 +772,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   color: Colors.white,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w500,
+                                  shadows: _kWeatherTextShadow,
                                 ),
                               ),
                             ],
@@ -748,8 +787,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
+                        color: const Color(0xFF203052).withValues(alpha: 0.54),
                         borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
                       ),
                       child: Row(
                         children: [

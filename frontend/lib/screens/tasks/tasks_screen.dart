@@ -19,6 +19,10 @@ import '../../widgets/weather_backdrop.dart';
 import '../../widgets/weather_scene_art.dart';
 import 'care_activity.dart';
 
+const _kStreakTextShadow = [
+  Shadow(color: Color(0x660B1424), blurRadius: 8, offset: Offset(0, 1)),
+];
+
 class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
 
@@ -604,10 +608,12 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: lightText ? 0.12 : 0.03),
-                      Colors.black.withValues(alpha: lightText ? 0.08 : 0.0),
+                      Colors.black.withValues(alpha: lightText ? 0.34 : 0.10),
+                      Colors.black.withValues(alpha: lightText ? 0.18 : 0.04),
+                      Colors.transparent,
                       const Color(0xFFD8EFD8).withValues(alpha: 0.22),
                     ],
+                    stops: const [0.0, 0.30, 0.58, 1.0],
                   ),
                 ),
               ),
@@ -626,6 +632,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       fontSize: current == 0 ? 30 : 34,
                       fontWeight: FontWeight.w900,
                       height: 1.0,
+                      shadows: lightText ? _kStreakTextShadow : null,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -636,6 +643,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       color: secondaryColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
+                      shadows: lightText ? _kStreakTextShadow : null,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -706,8 +714,8 @@ class _StreakRainPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rainPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.45)
-      ..strokeWidth = 1.6
+      ..color = Colors.white.withValues(alpha: 0.28)
+      ..strokeWidth = 1.35
       ..strokeCap = StrokeCap.round;
     const slant = 0.18;
     final speed = 6 * intensity.clamp(0.75, 1.6);
@@ -832,14 +840,18 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = isToday ? todayLabelColor : labelColor;
     return Column(
       children: [
         Text(
           label,
           style: TextStyle(
-            color: isToday ? todayLabelColor : labelColor,
+            color: textColor,
             fontSize: 10.5,
             fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+            shadows: textColor.computeLuminance() > 0.65
+                ? _kStreakTextShadow
+                : null,
           ),
         ),
         const SizedBox(height: 7),

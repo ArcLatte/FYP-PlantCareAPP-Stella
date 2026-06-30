@@ -259,16 +259,16 @@ class _SceneConfig {
       case '10': // rain
         return _SceneConfig(
           clouds: const [
-            _Cloud(_A.cloudGrey, 0.14, 0.6, 0.1, 0.3, 0.95),
-            _Cloud(_A.cloudGrey, 0.30, 0.5, 0.6, 0.42, 0.85),
+            _Cloud(_A.cloudGrey, 0.18, 0.52, 0.1, 0.3, 0.76),
+            _Cloud(_A.cloudGrey, 0.36, 0.44, 0.6, 0.42, 0.70),
           ],
           precip: _A.rain,
         );
       case '11': // thunderstorm
         return _SceneConfig(
           clouds: const [
-            _Cloud(_A.cloudGrey, 0.12, 0.66, 0.05, 0.28, 1.0),
-            _Cloud(_A.cloudGrey, 0.30, 0.54, 0.55, 0.4, 0.9),
+            _Cloud(_A.cloudGrey, 0.17, 0.58, 0.05, 0.28, 0.82),
+            _Cloud(_A.cloudGrey, 0.37, 0.48, 0.55, 0.4, 0.74),
           ],
           precip: _A.rain,
         );
@@ -333,8 +333,8 @@ class _RainPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.45)
-      ..strokeWidth = 1.6
+      ..color = Colors.white.withValues(alpha: 0.30)
+      ..strokeWidth = 1.35
       ..strokeCap = StrokeCap.round;
     const slant = 0.18;
     final speed = 6 * intensity.clamp(0.75, 1.6);
