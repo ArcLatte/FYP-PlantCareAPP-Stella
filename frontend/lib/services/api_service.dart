@@ -12,6 +12,7 @@ import '../models/streak.dart';
 import '../models/activity.dart';
 import '../models/user_profile.dart';
 import '../models/achievement.dart';
+import '../models/weekly_challenge.dart';
 import '../models/xp_result.dart';
 import '../models/post.dart';
 
@@ -367,6 +368,14 @@ class ApiService {
       return Streak.fromJson(jsonDecode(response.body));
     }
     throw Exception('Failed to load streak');
+  }
+
+  static Future<WeeklyChallenge> getWeeklyChallenge() async {
+    final response = await _authGet(AppConstants.weeklyChallengeUrl);
+    if (response.statusCode == 200) {
+      return WeeklyChallenge.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load weekly challenge');
   }
 
   static Future<List<ActivityEvent>> getActivity() async {

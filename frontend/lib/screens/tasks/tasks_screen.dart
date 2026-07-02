@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
+import '../../models/weekly_challenge.dart';
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
@@ -17,6 +18,7 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/streak_plant.dart';
 import '../../widgets/weather_backdrop.dart';
 import '../../widgets/weather_scene_art.dart';
+import '../../widgets/weekly_challenge_card.dart';
 import 'care_activity.dart';
 
 const _kStreakTextShadow = [
@@ -33,6 +35,7 @@ class TasksScreen extends StatefulWidget {
 class _TasksScreenState extends State<TasksScreen> {
   List<Plant> _plants = [];
   Streak? _streak;
+  WeeklyChallenge? _weekly;
   Weather? _weather;
   bool _isLoading = true;
 
@@ -59,6 +62,13 @@ class _TasksScreenState extends State<TasksScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       AppSnackBar.error(context, 'Failed to load tasks: $e');
+    }
+    // Loaded separately so a challenge hiccup can't take down the task list.
+    try {
+      final weekly = await ApiService.getWeeklyChallenge();
+      if (mounted) setState(() => _weekly = weekly);
+    } catch (_) {
+      // Card simply stays hidden.
     }
   }
 
@@ -144,6 +154,12 @@ class _TasksScreenState extends State<TasksScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Weekly Challenge sits above Today's tasks: it's a
+                          // week-scoped goal, not a today-only task.
+                          if (_weekly != null) ...[
+                            WeeklyChallengeCard(challenge: _weekly!),
+                            const SizedBox(height: 20),
+                          ],
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -398,6 +414,27 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     return lit;
   }
 
+  /// Days of the current week sitting inside a save-shielded gap: after the
+  /// last care day but before today, while `freezeActive`. Rendered as ice
+  /// dots so the user sees the save holding the line.
+  List<bool> _frozenDays() {
+    final frozen = List<bool>.filled(7, false);
+    final s = widget.streak;
+    if (s == null || !s.freezeActive || s.lastCareDate == null) return frozen;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final l = s.lastCareDate!;
+    final last = DateTime(l.year, l.month, l.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+
+    for (int i = 0; i < 7; i++) {
+      final day = monday.add(Duration(days: i));
+      if (day.isAfter(last) && day.isBefore(today)) frozen[i] = true;
+    }
+    return frozen;
+  }
+
   Widget _groundAsset(String name, {ColorFilter? colorFilter}) =>
       SvgPicture.asset(
         '$_kPlantStageAssets/$name.svg',
@@ -570,6 +607,9 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   Widget build(BuildContext context) {
     final current = widget.streak?.currentStreak ?? 0;
     final lit = _litDays();
+    final frozen = _frozenDays();
+    final freezes = widget.streak?.freezes ?? 0;
+    final shielded = widget.streak?.freezeActive ?? false;
     final stage = PlantStage.forStreak(current);
     final headline = current == 0 ? 'Start your streak' : '$current day streak';
     final topInset = MediaQuery.of(context).padding.top;
@@ -646,6 +686,14 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       shadows: lightText ? _kStreakTextShadow : null,
                     ),
                   ),
+                  if (freezes > 0 || shielded) ...[
+                    const SizedBox(height: 8),
+                    _FreezeChip(
+                      count: freezes,
+                      shielded: shielded,
+                      lightText: lightText,
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   if (raining)
                     AnimatedBuilder(
@@ -659,6 +707,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                         rainIntensity: rainIntensity,
                         weekStrip: _WeekStrip(
                           lit: lit,
+                          frozen: frozen,
                           labelColor: mutedColor,
                           todayLabelColor: titleColor,
                         ),
@@ -674,6 +723,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       rainIntensity: rainIntensity,
                       weekStrip: _WeekStrip(
                         lit: lit,
+                        frozen: frozen,
                         labelColor: mutedColor,
                         todayLabelColor: titleColor,
                       ),
@@ -766,14 +816,17 @@ class _StreakRainPainter extends CustomPainter {
 }
 
 /// Current week: a day initial above a circle. Each cared-for day is a blue
-/// water drop; consecutive cared-for days are joined by a blue bar.
+/// water drop; consecutive cared-for days are joined by a blue bar. Days in
+/// a save-shielded gap render as ice dots.
 class _WeekStrip extends StatelessWidget {
   final List<bool> lit;
+  final List<bool> frozen;
   final Color labelColor;
   final Color todayLabelColor;
 
   const _WeekStrip({
     required this.lit,
+    this.frozen = const [false, false, false, false, false, false, false],
     this.labelColor = AppColors.textSecondary,
     this.todayLabelColor = AppColors.textPrimary,
   });
@@ -791,12 +844,16 @@ class _WeekStrip extends StatelessWidget {
         final day = monday.add(Duration(days: i));
         final isToday = day == today;
         final litHere = lit[i];
-        final litLeft = i > 0 && litHere && lit[i - 1];
-        final litRight = i < 6 && litHere && lit[i + 1];
+        // Frozen days count as part of the chain, so connectors span them.
+        bool inChain(int j) => lit[j] || frozen[j];
+        final chainHere = inChain(i);
+        final litLeft = i > 0 && chainHere && inChain(i - 1);
+        final litRight = i < 6 && chainHere && inChain(i + 1);
         return Expanded(
           child: _DayCell(
             label: _initials[i],
             lit: litHere,
+            frozen: frozen[i],
             isToday: isToday,
             litLeft: litLeft,
             litRight: litRight,
@@ -812,6 +869,7 @@ class _WeekStrip extends StatelessWidget {
 class _DayCell extends StatelessWidget {
   final String label;
   final bool lit;
+  final bool frozen;
   final bool isToday;
   final bool litLeft;
   final bool litRight;
@@ -820,10 +878,13 @@ class _DayCell extends StatelessWidget {
 
   static const double _d = 26; // circle diameter
   static const double _barH = 7; // connector thickness
+  // Lighter ice tint for shielded days, distinct from the cared water-blue.
+  static const Color _iceFill = Color(0xFF9CCFEE);
 
   const _DayCell({
     required this.label,
     required this.lit,
+    this.frozen = false,
     required this.isToday,
     required this.litLeft,
     required this.litRight,
@@ -866,11 +927,13 @@ class _DayCell extends StatelessWidget {
                 height: _d,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: lit ? _kWater : Colors.white,
+                  color: lit ? _kWater : (frozen ? _iceFill : Colors.white),
                   border: Border.all(
                     color: lit
                         ? _kWater
-                        : (isToday ? _kWater : AppColors.cardBorder),
+                        : frozen
+                            ? _iceFill
+                            : (isToday ? _kWater : AppColors.cardBorder),
                     width: isToday && !lit ? 2 : 0.8,
                   ),
                 ),
@@ -880,12 +943,66 @@ class _DayCell extends StatelessWidget {
                         color: Colors.white,
                         size: 15,
                       )
-                    : null,
+                    : frozen
+                        ? const Icon(
+                            Icons.ac_unit_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          )
+                        : null,
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Small pill under the streak headline showing banked streak saves, and —
+/// while a save is actively holding a gap — a "shielded" callout.
+class _FreezeChip extends StatelessWidget {
+  final int count;
+  final bool shielded;
+  final bool lightText;
+  const _FreezeChip({
+    required this.count,
+    required this.shielded,
+    required this.lightText,
+  });
+
+  static const Color _ice = Color(0xFF9CCFEE);
+
+  @override
+  Widget build(BuildContext context) {
+    final label = shielded
+        ? 'Streak shielded · $count ${count == 1 ? 'save' : 'saves'} left'
+        : '$count streak ${count == 1 ? 'save' : 'saves'}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: lightText
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.white.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _ice.withValues(alpha: 0.7), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.ac_unit_rounded, color: Color(0xFF4F9FD9), size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: lightText ? Colors.white : AppColors.textPrimary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              shadows: lightText ? _kStreakTextShadow : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

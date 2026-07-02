@@ -18,6 +18,7 @@ urlpatterns = [
     path('species/', views.species_list),
     path('species/<int:pk>/', views.species_detail),
     path('streak/', views.streak),
+    path('weekly-challenge/', views.weekly_challenge),
     path('activity/', views.activity),
     path('profile/', views.profile),
     path('achievements/', views.achievements_list),

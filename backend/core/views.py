@@ -10,6 +10,7 @@ from .models import (
     Achievement, UserAchievement,
 )
 from .achievements import check_achievements, progress_snapshot, PROGRESS
+from .weekly import challenge_state, check_weekly_challenge
 from .serializers import (
     PlantSerializer, PlantSpeciesSerializer, LocationSerializer,
     DiseaseSerializer,
@@ -57,17 +58,23 @@ transform = transforms.Compose([
 # ─── Gamification helper ─────────────────────────────────────────
 
 def _grant_xp_and_check(user, amount: int) -> dict:
-    """Award XP then run achievement predicates (which may grant more XP).
-    Returns a dict to spread into a JSON response so the frontend can show
-    the gain / level-up / unlocked-badge toasts.
+    """Award XP then run achievement + weekly-challenge checks (which may
+    grant more XP / streak saves). Returns a dict to spread into a JSON
+    response so the frontend can show the gain / level-up / unlocked-badge /
+    challenge-complete toasts.
     """
     initial_level = user.level
     grant = user.award_xp(amount)
     newly = check_achievements(user)
-    # If an achievement reward leveled us up, prefer the post-unlock level.
+    weekly = check_weekly_challenge(user)
+    # If an achievement/challenge reward leveled us up, prefer the final level.
     leveled = grant['leveled_up'] or (user.level > initial_level)
     return {
-        'xp_gained': grant['xp_gained'] + sum(a.xp_reward for a in newly),
+        'xp_gained': (
+            grant['xp_gained']
+            + sum(a.xp_reward for a in newly)
+            + (weekly['xp_reward'] if weekly else 0)
+        ),
         'leveled_up_to': user.level if leveled else None,
         'unlocked': [
             {
@@ -79,6 +86,7 @@ def _grant_xp_and_check(user, amount: int) -> dict:
             }
             for a in newly
         ],
+        'weekly_completed': weekly,
     }
 
 
@@ -211,11 +219,16 @@ def water_plant(request, pk):
 
     plant.last_watered = timezone.now()
     plant.save(update_fields=['last_watered'])
-    request.user.register_care_activity()
+    care = request.user.register_care_activity()
     CareLog.objects.create(user=request.user, plant=plant, activity='water')
     xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
-    return Response({**serializer.data, **xp})
+    return Response({
+        **serializer.data,
+        **xp,
+        'streak_saved': care['saved'],
+        'freezes_left': care['freezes_left'],
+    })
 
 
 @api_view(['POST'])
@@ -234,11 +247,16 @@ def fertilize_plant(request, pk):
 
     plant.last_fertilized = timezone.now()
     plant.save(update_fields=['last_fertilized'])
-    request.user.register_care_activity()
+    care = request.user.register_care_activity()
     CareLog.objects.create(user=request.user, plant=plant, activity='fertilize')
     xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
-    return Response({**serializer.data, **xp})
+    return Response({
+        **serializer.data,
+        **xp,
+        'streak_saved': care['saved'],
+        'freezes_left': care['freezes_left'],
+    })
 
 
 @api_view(['POST'])
@@ -257,11 +275,16 @@ def mist_plant(request, pk):
 
     plant.last_misted = timezone.now()
     plant.save(update_fields=['last_misted'])
-    request.user.register_care_activity()
+    care = request.user.register_care_activity()
     CareLog.objects.create(user=request.user, plant=plant, activity='mist')
     xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
-    return Response({**serializer.data, **xp})
+    return Response({
+        **serializer.data,
+        **xp,
+        'streak_saved': care['saved'],
+        'freezes_left': care['freezes_left'],
+    })
 
 
 @api_view(['POST'])
@@ -290,7 +313,13 @@ def add_note(request, pk):
     if photo:
         log.photo = photo
         log.save(update_fields=['photo'])
-    return Response(_note_event(log, plant), status=201)
+    # Notes grant no XP, but they count toward the weekly challenge (e.g.
+    # "Journalist") — completing it here still pays its rewards immediately.
+    weekly = check_weekly_challenge(request.user)
+    extra = {}
+    if weekly:
+        extra = {'weekly_completed': weekly, 'xp_gained': weekly['xp_reward']}
+    return Response({**_note_event(log, plant), **extra}, status=201)
 
 
 def _note_event(log, plant):
@@ -358,7 +387,16 @@ def streak(request):
         'longest_streak': u.longest_streak,
         'last_care_date': u.last_care_date,
         'active_today': u.last_care_date == today,
+        'freezes': u.streak_freezes,
+        'freeze_active': u.freeze_active,
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def weekly_challenge(request):
+    """The current week's challenge with the user's live progress."""
+    return Response(challenge_state(request.user))
 
 
 def _scan_label_health(scan):
@@ -743,6 +781,7 @@ def profile(request):
         'xp_for_next_level': u.xp_for_next_level,
         'current_streak': u.effective_streak,
         'longest_streak': u.longest_streak,
+        'freezes': u.streak_freezes,
         'achievements_unlocked': unlocked,
         'achievements_total': total,
     })

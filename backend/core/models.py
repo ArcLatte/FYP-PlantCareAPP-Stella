@@ -1,14 +1,22 @@
-from datetime import timedelta
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
 
 class CustomUser(AbstractUser):
+    # ─── Streak-save tunables ────────────────────────────────
+    STARTER_SAVES = 2       # every account begins with this many saves
+    MAX_SAVES = 3           # bank cap — earning past this is discarded
+    MAX_BRIDGED_DAYS = 2    # saves can cover at most this many missed days
+
     email = models.EmailField(unique=True)
     current_streak = models.PositiveIntegerField(default=0)
     longest_streak = models.PositiveIntegerField(default=0)
     last_care_date = models.DateField(null=True, blank=True)
+    # Banked streak saves ("freezes"): auto-consumed to bridge short gaps in
+    # daily care so one missed day doesn't wipe the streak. Earned via weekly
+    # challenges and level-ups, capped at MAX_SAVES.
+    streak_freezes = models.PositiveIntegerField(default=STARTER_SAVES)
 
     # Levelling
     xp = models.PositiveIntegerField(default=0)
@@ -64,37 +72,87 @@ class CustomUser(AbstractUser):
         while self.xp >= self.xp_threshold(self.level + 1):
             self.level += 1
             leveled = True
-        self.save(update_fields=['xp', 'level'])
+            # Level-up perk: bank a streak save (until the weekly-challenge
+            # earning loop, this is the trickle that refills the bank).
+            self.grant_streak_save()
+        self.save(update_fields=['xp', 'level', 'streak_freezes'])
         return {'xp_gained': amount, 'leveled_up': leveled, 'new_level': self.level}
+
+    def grant_streak_save(self, count: int = 1) -> int:
+        """Add streak saves in memory, respecting the MAX_SAVES cap. Returns
+        how many were actually banked. Caller is responsible for saving."""
+        before = self.streak_freezes
+        self.streak_freezes = min(self.streak_freezes + count, self.MAX_SAVES)
+        return self.streak_freezes - before
 
     # ─── Streak ───────────────────────────────────────────────
 
-    def register_care_activity(self):
-        """Call after any water/fertilize/mist action. Advances the streak
-        at most once per calendar day."""
+    def register_care_activity(self) -> dict:
+        """Call after any water/fertilize/mist action. Advances the streak at
+        most once per calendar day. A short gap (missed days) is bridged by
+        auto-consuming banked streak saves — one per missed day — so the
+        streak continues instead of resetting. Saves are never partially
+        spent: a gap too big for the bank resets the streak and keeps them.
+
+        Returns a small result dict (`saved`, `missed`, `freezes_left`) so
+        views can tell the client a save was consumed."""
         today = timezone.localdate()
+        result = {'saved': False, 'missed': 0, 'freezes_left': self.streak_freezes}
         if self.last_care_date == today:
-            return  # already counted today
-        if self.last_care_date == today - timedelta(days=1):
-            self.current_streak += 1
+            return result  # already counted today
+
+        if self.last_care_date is None:
+            self.current_streak = 1  # first ever care action
         else:
-            self.current_streak = 1  # first ever, or a gap broke it
+            missed = (today - self.last_care_date).days - 1  # full uncared days
+            if missed == 0:
+                self.current_streak += 1  # cared yesterday — normal advance
+            elif missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS:
+                # Bridge the gap: spend one save per missed day. Bridged days
+                # preserve the streak but don't inflate it.
+                self.streak_freezes -= missed
+                self.current_streak += 1
+                result.update(saved=True, missed=missed)
+            else:
+                self.current_streak = 1  # gap too big — reset, keep the saves
+
         self.last_care_date = today
         self.longest_streak = max(self.longest_streak, self.current_streak)
         self.save(update_fields=[
             'current_streak', 'longest_streak', 'last_care_date',
+            'streak_freezes',
         ])
+        result['freezes_left'] = self.streak_freezes
+        return result
 
     @property
     def effective_streak(self):
-        """Displayed streak: a stale streak reads as broken (0) without
-        mutating storage until the next action resets it."""
+        """Displayed streak. Read-only — never mutates storage. A streak
+        counts as alive while banked saves could still bridge the current
+        gap (so the companion plant doesn't falsely collapse to Seed on a
+        day the user is about to save); it reads 0 only once truly dead."""
         if self.last_care_date is None:
             return 0
         today = timezone.localdate()
-        if self.last_care_date in (today, today - timedelta(days=1)):
-            return self.current_streak
+        gap = (today - self.last_care_date).days
+        if gap <= 1:
+            return self.current_streak  # cared today or yesterday
+        missed = gap - 1
+        if missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS:
+            return self.current_streak  # shielded: a save will cover this
         return 0
+
+    @property
+    def freeze_active(self) -> bool:
+        """True while the streak is being held alive by banked saves (a gap
+        exists but is coverable). Drives the shield indicator in the UI."""
+        if self.last_care_date is None:
+            return False
+        gap = (timezone.localdate() - self.last_care_date).days
+        if gap <= 1:
+            return False
+        missed = gap - 1
+        return missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS
 
 
 class PlantSpecies(models.Model):
@@ -337,6 +395,30 @@ class UserAchievement(models.Model):
 
     def __str__(self):
         return f"{self.user.username} ✓ {self.achievement.code}"
+
+
+class WeeklyChallengeProgress(models.Model):
+    """Completion record for a user's weekly challenge. One row per user per
+    ISO week, created the moment the challenge's target is reached (rewards
+    are granted at the same time — see `weekly.check_weekly_challenge`).
+    The challenge definitions themselves live in code (`weekly.CHALLENGES`),
+    mirroring how achievement predicates live in `achievements.py`."""
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='weekly_completions',
+    )
+    week_start = models.DateField()  # Monday of the ISO week
+    challenge_code = models.CharField(max_length=40)
+    completed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('user', 'week_start')
+        ordering = ['-week_start']
+
+    def __str__(self):
+        return f"{self.user.username} ✓ {self.challenge_code} ({self.week_start})"
 
 
 # ─── Social layer ────────────────────────────────────────────────
