@@ -119,26 +119,57 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                       WeatherSceneArt.skyAsset(widget.iconCode),
                       fit: BoxFit.cover,
                     ),
-                    // Stars on clear / cloudy nights.
+                    // Stars on clear / cloudy nights, with a slow twinkle.
                     if (cfg.stars)
                       Positioned(
                         top: 0,
                         left: 0,
                         right: 0,
                         height: h * 0.62,
-                        child: _sceneAsset(
-                          '${WeatherSceneArt._base}/${_A.stars}',
-                          fit: BoxFit.cover,
+                        child: AnimatedBuilder(
+                          animation: _controller,
+                          builder: (context, child) => Opacity(
+                            opacity: 0.72 +
+                                0.28 *
+                                    (0.5 +
+                                        0.5 *
+                                            math.sin(_controller.value *
+                                                2 *
+                                                math.pi *
+                                                5)),
+                            child: child,
+                          ),
+                          child: _sceneAsset(
+                            '${WeatherSceneArt._base}/${_A.stars}',
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
-                    // Sun or moon, top-right.
+                    // Sun or moon, top-right — gently pulsing and bobbing.
                     if (cfg.celestial != null)
                       Positioned(
                         right: w * 0.06,
                         top: h * 0.06,
                         width: w * 0.30,
                         height: w * 0.30,
-                        child: _sceneAsset(cfg.celestial!),
+                        child: AnimatedBuilder(
+                          animation: _controller,
+                          builder: (context, child) {
+                            final t = _controller.value;
+                            return Transform.translate(
+                              offset: Offset(
+                                0,
+                                3 * math.sin(t * 2 * math.pi * 2),
+                              ),
+                              child: Transform.scale(
+                                scale:
+                                    1 + 0.035 * math.sin(t * 2 * math.pi * 4),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _sceneAsset(cfg.celestial!),
+                        ),
                       ),
                     // Drifting clouds.
                     AnimatedBuilder(
@@ -166,6 +197,22 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                                 slow: cfg.precip == _A.snow,
                               ),
                       ),
+                    // Thunderstorm lightning: brief sky flashes a few times
+                    // per drift cycle (a double-strike and a single).
+                    if (cfg.lightning)
+                      AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, _) {
+                          final a = _flashAlpha(_controller.value);
+                          if (a <= 0.003) return const SizedBox.shrink();
+                          return IgnorePointer(
+                            child: Container(
+                              color: const Color(0xFFEAF2FF)
+                                  .withValues(alpha: a),
+                            ),
+                          );
+                        },
+                      ),
                   ],
                 );
               },
@@ -174,6 +221,23 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
         ),
       ),
     );
+  }
+
+  /// Lightning flash brightness at loop position [t]: a quick double-strike
+  /// early in the cycle and one single strike later, each a sharp spike that
+  /// decays in a few frames.
+  double _flashAlpha(double t) {
+    double spike(double center, double width) {
+      final d = (t - center).abs();
+      if (d >= width) return 0;
+      final p = 1 - d / width;
+      return p * p;
+    }
+
+    final a = spike(0.18, 0.010) +
+        0.7 * spike(0.215, 0.008) +
+        spike(0.63, 0.012);
+    return a.clamp(0.0, 1.0) * 0.34;
   }
 
   /// Positions one cloud, looping it left→right across the header.
@@ -220,12 +284,14 @@ class _SceneConfig {
   final bool stars;
   final List<_Cloud> clouds;
   final String? precip; // 'rain.svg' / 'snow.svg' / null
+  final bool lightning; // thunderstorm flash overlay
 
   const _SceneConfig({
     this.celestial,
     this.stars = false,
     this.clouds = const [],
     this.precip,
+    this.lightning = false,
   });
 
   static const _sun = '${WeatherSceneArt._base}/${_A.sun}';
@@ -271,6 +337,7 @@ class _SceneConfig {
             _Cloud(_A.cloudGrey, 0.37, 0.48, 0.55, 0.4, 0.74),
           ],
           precip: _A.rain,
+          lightning: true,
         );
       case '13': // snow
         return _SceneConfig(

@@ -150,6 +150,11 @@ PREDICATES: dict[str, Callable] = {
 }
 
 
+# Seeds paid out per unlock, by badge tier (spendable currency — see
+# `CustomUser.seeds`). XP rewards stay on the Achievement row.
+SEED_REWARDS = {'bronze': 10, 'silver': 25, 'gold': 50}
+
+
 def check_achievements(user) -> list[Achievement]:
     """Unlock any newly-qualifying achievements for `user`. Returns the
     Achievement instances unlocked on this call (may be empty).
@@ -176,6 +181,8 @@ def check_achievements(user) -> list[Achievement]:
             # Code is registered here but seed hasn't been run — skip silently.
             continue
         UserAchievement.objects.create(user=user, achievement=ach)
+        # Seeds ride along before award_xp so its save() persists both.
+        user.seeds += SEED_REWARDS.get(ach.tier, 10)
         user.award_xp(ach.xp_reward)
         newly.append(ach)
     return newly

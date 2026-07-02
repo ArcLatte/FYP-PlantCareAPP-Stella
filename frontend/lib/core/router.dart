@@ -22,6 +22,7 @@ import '../screens/social/post_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/profile/achievements_screen.dart';
 import '../screens/profile/settings_screen.dart';
+import '../screens/profile/shop_screen.dart';
 import '../widgets/app_shell.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
@@ -211,6 +212,10 @@ final GoRouter appRouter = GoRouter(
                 GoRoute(
                   path: 'achievements',
                   builder: (context, state) => const AchievementsScreen(),
+                ),
+                GoRoute(
+                  path: 'shop',
+                  builder: (context, state) => const ShopScreen(),
                 ),
                 GoRoute(
                   path: 'settings',

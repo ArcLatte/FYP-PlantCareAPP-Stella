@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/plant_stage.dart';
 
@@ -78,6 +80,7 @@ Widget streakCreatureLayers({
   required double leaf,
   required double breathe,
   required double blink,
+  double squash = 0,
   ColorFilter? colorFilter,
 }) {
   final rig = _rigs[stage.image] ?? const _Rig();
@@ -99,8 +102,11 @@ Widget streakCreatureLayers({
     );
   }
   if (rig.bodySway) {
+    // Breathe mostly vertically (squash-and-stretch reads more alive than a
+    // uniform pulse); `squash` adds the tap-bounce's extra stretch on top.
     body = Transform.scale(
-      scale: breathe,
+      scaleX: (1 + (breathe - 1) * 0.45) * (1 + squash * 0.9),
+      scaleY: breathe * (1 - squash),
       alignment: _basePivot,
       child: Transform.rotate(angle: sway, alignment: _basePivot, child: body),
     );
@@ -167,14 +173,21 @@ class StreakPlant extends StatefulWidget {
 
 class _StreakPlantState extends State<StreakPlant>
     with TickerProviderStateMixin {
+  static final math.Random _rng = math.Random();
+
   // Idle body sway with a built-in rest period (see [_swayValue]).
   late final AnimationController _sway;
   // Side-leaf / stem flutter.
   late final AnimationController _leaf;
   // Slow breathing pulse.
   late final AnimationController _breathe;
-  // Periodic eye blink.
+  // One blink (close→open, ~260ms). Fired at randomized intervals by
+  // [_scheduleBlink] — sometimes twice in a row — instead of a fixed loop,
+  // so the creature reads as alive rather than metronomic.
   late final AnimationController _blink;
+  // Tap response: an excited wiggle + squash-stretch bounce.
+  late final AnimationController _pounce;
+  Timer? _blinkTimer;
 
   @override
   void initState() {
@@ -193,16 +206,46 @@ class _StreakPlantState extends State<StreakPlant>
     )..repeat();
     _blink = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 4400),
-    )..repeat();
+      duration: const Duration(milliseconds: 260),
+    );
+    _pounce = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 640),
+      value: 1,
+    );
+    _scheduleBlink();
+  }
+
+  void _scheduleBlink() {
+    _blinkTimer = Timer(
+      Duration(milliseconds: 2400 + _rng.nextInt(3200)),
+      () async {
+        if (!mounted) return;
+        await _blink.forward(from: 0);
+        // Occasional quick double-blink.
+        if (_rng.nextDouble() < 0.28) {
+          await Future.delayed(const Duration(milliseconds: 110));
+          if (!mounted) return;
+          await _blink.forward(from: 0);
+        }
+        if (mounted) _scheduleBlink();
+      },
+    );
+  }
+
+  void _onTap() {
+    HapticFeedback.lightImpact();
+    _pounce.forward(from: 0);
   }
 
   @override
   void dispose() {
+    _blinkTimer?.cancel();
     _sway.dispose();
     _leaf.dispose();
     _breathe.dispose();
     _blink.dispose();
+    _pounce.dispose();
     super.dispose();
   }
 
@@ -221,51 +264,75 @@ class _StreakPlantState extends State<StreakPlant>
   double _breatheValue() => 1 + math.sin(_breathe.value * 2 * math.pi) * 0.02;
 
   double _blinkAmount() {
-    const start = 0.94;
     final v = _blink.value;
-    if (v < start) return 0;
-    final t = (v - start) / (1 - start);
-    return t < 0.5 ? t / 0.5 : (1 - t) / 0.5;
+    if (v <= 0 || v >= 1) return 0;
+    return v < 0.5 ? v / 0.5 : (1 - v) / 0.5;
+  }
+
+  // Tap bounce: a damped wiggle + stretch that settles within ~0.6s.
+  double _pounceSway() {
+    final p = _pounce.value;
+    if (p >= 1) return 0;
+    return math.sin(p * math.pi * 3) * 0.075 * (1 - p);
+  }
+
+  double _pounceSquash() {
+    final p = _pounce.value;
+    if (p >= 1) return 0;
+    return math.sin(p * math.pi * 2) * 0.06 * (1 - p);
+  }
+
+  // The tap bounce also excites the side leaves a little.
+  double _pounceLeaf() {
+    final p = _pounce.value;
+    if (p >= 1) return 0;
+    return math.sin(p * math.pi * 4) * 0.05 * (1 - p);
   }
 
   @override
   Widget build(BuildContext context) {
     final size = widget.size;
-    return SizedBox(
-      width: size,
-      height: size,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([_sway, _leaf, _breathe, _blink]),
-        builder: (context, _) {
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
-                child: streakSoilBack(
-                  size,
-                  colorFilter: widget.soilColorFilter,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _onTap,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: AnimatedBuilder(
+          animation:
+              Listenable.merge([_sway, _leaf, _breathe, _blink, _pounce]),
+          builder: (context, _) {
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: streakSoilBack(
+                    size,
+                    colorFilter: widget.soilColorFilter,
+                  ),
                 ),
-              ),
-              Positioned.fill(
-                child: streakCreatureLayers(
-                  stage: widget.stage,
-                  size: size,
-                  sway: _swayValue(),
-                  leaf: _leafValue(),
-                  breathe: _breatheValue(),
-                  blink: _blinkAmount(),
-                  colorFilter: widget.colorFilter,
+                Positioned.fill(
+                  child: streakCreatureLayers(
+                    stage: widget.stage,
+                    size: size,
+                    sway: _swayValue() + _pounceSway(),
+                    leaf: _leafValue() + _pounceLeaf(),
+                    breathe: _breatheValue(),
+                    blink: _blinkAmount(),
+                    squash: _pounceSquash(),
+                    colorFilter: widget.colorFilter,
+                  ),
                 ),
-              ),
-              Positioned.fill(
-                child: streakSoilFront(
-                  size,
-                  colorFilter: widget.soilColorFilter,
+                Positioned.fill(
+                  child: streakSoilFront(
+                    size,
+                    colorFilter: widget.soilColorFilter,
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }

@@ -12,6 +12,7 @@ import '../models/streak.dart';
 import '../models/activity.dart';
 import '../models/user_profile.dart';
 import '../models/achievement.dart';
+import '../models/cosmetic.dart';
 import '../models/weekly_challenge.dart';
 import '../models/xp_result.dart';
 import '../models/post.dart';
@@ -406,6 +407,46 @@ class ApiService {
           .toList();
     }
     throw Exception('Failed to load achievements');
+  }
+
+  // ─── Seed shop ─────────────────────────────────────────────
+
+  static Future<ShopState> getShop() async {
+    final response = await _authGet(AppConstants.shopUrl);
+    if (response.statusCode == 200) {
+      return ShopState.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load shop');
+  }
+
+  static Future<ShopState> buyCosmetic(String code) =>
+      _shopAction(code, 'buy');
+
+  /// Equip toggles: equipping the currently-equipped item unequips it.
+  static Future<ShopState> equipCosmetic(String code) =>
+      _shopAction(code, 'equip');
+
+  /// Shared buy/equip POST. Both endpoints return `{seeds, item}`; the shop
+  /// screen refetches the full catalog after, so only the balance matters
+  /// here — wrap the single item into a [ShopState] for a uniform return.
+  static Future<ShopState> _shopAction(String code, String action) async {
+    final headers = await _authHeaders();
+    final response = await http.post(
+      Uri.parse('${AppConstants.shopUrl}$code/$action/'),
+      headers: headers,
+    );
+    final body = jsonDecode(response.body);
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return ShopState(
+        seeds: (body['seeds'] as num?)?.toInt() ?? 0,
+        items: [Cosmetic.fromJson(body['item'] as Map<String, dynamic>)],
+      );
+    }
+    throw Exception(
+      (body is Map && body['error'] is String)
+          ? body['error'] as String
+          : 'Failed to $action item',
+    );
   }
 
   static Future<Achievement> pinAchievement(String code) =>

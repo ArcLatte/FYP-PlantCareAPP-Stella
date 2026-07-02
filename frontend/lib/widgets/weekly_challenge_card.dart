@@ -122,11 +122,18 @@ class WeeklyChallengeCard extends StatelessWidget {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: done ? 1.0 : challenge.fraction,
-                    minHeight: 8,
-                    backgroundColor: accent.withValues(alpha: 0.14),
-                    valueColor: AlwaysStoppedAnimation(accent),
+                  // Fill sweeps in from zero on first build (and animates
+                  // between values when progress changes).
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: done ? 1.0 : challenge.fraction),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) => LinearProgressIndicator(
+                      value: value,
+                      minHeight: 8,
+                      backgroundColor: accent.withValues(alpha: 0.14),
+                      valueColor: AlwaysStoppedAnimation(accent),
+                    ),
                   ),
                 ),
               ),
@@ -152,10 +159,18 @@ class WeeklyChallengeCard extends StatelessWidget {
                 color: AppColors.amber,
               ),
               const SizedBox(width: 8),
+              if (challenge.seedsReward > 0) ...[
+                _RewardChip(
+                  icon: Icons.spa_rounded,
+                  label: '+${challenge.seedsReward}',
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 8),
+              ],
               if (challenge.saveReward > 0)
                 _RewardChip(
                   icon: Icons.ac_unit_rounded,
-                  label: '+${challenge.saveReward} streak save',
+                  label: '+${challenge.saveReward} save',
                   color: _ice,
                 ),
             ],

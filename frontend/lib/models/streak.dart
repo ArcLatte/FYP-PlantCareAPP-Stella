@@ -12,6 +12,10 @@ class Streak {
   /// the streak is alive but shielded, not yet re-earned.
   final bool freezeActive;
 
+  /// Equipped creature-skin payload (`{'tint': '#hex', 'amount': 0.x}`)
+  /// or null when no skin is equipped.
+  final Map<String, dynamic>? equippedSkin;
+
   const Streak({
     required this.currentStreak,
     required this.longestStreak,
@@ -19,6 +23,7 @@ class Streak {
     required this.activeToday,
     this.freezes = 0,
     this.freezeActive = false,
+    this.equippedSkin,
   });
 
   factory Streak.fromJson(Map<String, dynamic> json) {
@@ -30,6 +35,9 @@ class Streak {
       activeToday: json['active_today'] == true,
       freezes: (json['freezes'] as num?)?.toInt() ?? 0,
       freezeActive: json['freeze_active'] == true,
+      equippedSkin: (json['equipped_skin'] is Map<String, dynamic>)
+          ? json['equipped_skin'] as Map<String, dynamic>
+          : null,
     );
   }
 }

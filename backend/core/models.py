@@ -9,6 +9,13 @@ class CustomUser(AbstractUser):
     MAX_SAVES = 3           # bank cap — earning past this is discarded
     MAX_BRIDGED_DAYS = 2    # saves can cover at most this many missed days
 
+    # ─── Seed-earning tunables ───────────────────────────────
+    # Seeds are the spendable currency (cosmetics); XP stays the status
+    # track (levels/tiers). Earned on level-ups, achievement unlocks and
+    # weekly-challenge completions — never bought with XP.
+    SEEDS_PER_LEVEL_UP = 25
+    STARTER_SEEDS = 30
+
     email = models.EmailField(unique=True)
     current_streak = models.PositiveIntegerField(default=0)
     longest_streak = models.PositiveIntegerField(default=0)
@@ -17,6 +24,9 @@ class CustomUser(AbstractUser):
     # daily care so one missed day doesn't wipe the streak. Earned via weekly
     # challenges and level-ups, capped at MAX_SAVES.
     streak_freezes = models.PositiveIntegerField(default=STARTER_SAVES)
+    # Spendable currency for the cosmetic shop. Small starter grant so the
+    # shop isn't a dead screen for new users.
+    seeds = models.PositiveIntegerField(default=STARTER_SEEDS)
 
     # Levelling
     xp = models.PositiveIntegerField(default=0)
@@ -66,17 +76,25 @@ class CustomUser(AbstractUser):
         response payload.
         """
         if amount <= 0:
-            return {'xp_gained': 0, 'leveled_up': False, 'new_level': self.level}
+            return {
+                'xp_gained': 0, 'leveled_up': False, 'new_level': self.level,
+                'seeds_gained': 0,
+            }
         self.xp += amount
         leveled = False
+        seeds_gained = 0
         while self.xp >= self.xp_threshold(self.level + 1):
             self.level += 1
             leveled = True
-            # Level-up perk: bank a streak save (until the weekly-challenge
-            # earning loop, this is the trickle that refills the bank).
+            # Level-up perks: bank a streak save and pay out seeds.
             self.grant_streak_save()
-        self.save(update_fields=['xp', 'level', 'streak_freezes'])
-        return {'xp_gained': amount, 'leveled_up': leveled, 'new_level': self.level}
+            seeds_gained += self.SEEDS_PER_LEVEL_UP
+        self.seeds += seeds_gained
+        self.save(update_fields=['xp', 'level', 'streak_freezes', 'seeds'])
+        return {
+            'xp_gained': amount, 'leveled_up': leveled, 'new_level': self.level,
+            'seeds_gained': seeds_gained,
+        }
 
     def grant_streak_save(self, count: int = 1) -> int:
         """Add streak saves in memory, respecting the MAX_SAVES cap. Returns
@@ -419,6 +437,69 @@ class WeeklyChallengeProgress(models.Model):
 
     def __str__(self):
         return f"{self.user.username} ✓ {self.challenge_code} ({self.week_start})"
+
+
+class Cosmetic(models.Model):
+    """A purchasable cosmetic. Seeded via `seed_cosmetics` (catalog lives
+    there), purchased with seeds, purely visual — never affects gameplay.
+
+    v1 ships creature skins only: `payload` holds a tint (`{"tint": "#hex",
+    "amount": 0.0-1.0}`) applied to the streak companion via the same
+    ColorFilter channel the time-of-day lighting uses, so no new art assets
+    are required. Later kinds (pot styles, scene backgrounds, profile
+    frames) add payload shapes without schema changes."""
+
+    class Kind(models.TextChoices):
+        CREATURE_SKIN = 'creature_skin', 'Creature skin'
+
+    class Rarity(models.TextChoices):
+        COMMON = 'common', 'Common'
+        RARE = 'rare', 'Rare'
+        EPIC = 'epic', 'Epic'
+
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=80)
+    description = models.CharField(max_length=200, blank=True)
+    kind = models.CharField(
+        max_length=20, choices=Kind.choices, default=Kind.CREATURE_SKIN,
+    )
+    rarity = models.CharField(
+        max_length=8, choices=Rarity.choices, default=Rarity.COMMON,
+    )
+    cost_seeds = models.PositiveIntegerField()
+    payload = models.JSONField(default=dict, blank=True)
+    sort = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort', 'cost_seeds', 'code']
+
+    def __str__(self):
+        return f"{self.name} ({self.cost_seeds} seeds)"
+
+
+class UserCosmetic(models.Model):
+    """Join row: a user owns a cosmetic. At most one cosmetic per kind is
+    equipped at a time (enforced in the equip view)."""
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='cosmetics',
+    )
+    cosmetic = models.ForeignKey(
+        Cosmetic,
+        on_delete=models.CASCADE,
+        related_name='owned_by',
+    )
+    equipped = models.BooleanField(default=False)
+    acquired_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('user', 'cosmetic')
+        ordering = ['-acquired_at']
+
+    def __str__(self):
+        return f"{self.user.username} owns {self.cosmetic.code}"
 
 
 # ─── Social layer ────────────────────────────────────────────────

@@ -19,6 +19,7 @@ class AppConstants {
   static const String activityUrl = '$baseUrl/activity/';
   static const String profileUrl = '$baseUrl/profile/';
   static const String achievementsUrl = '$baseUrl/achievements/';
+  static const String shopUrl = '$baseUrl/shop/';
 
   // Scan endpoints
   static const String scansUrl = '$baseUrl/scans/';

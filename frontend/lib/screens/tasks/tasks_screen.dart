@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
+import '../../models/cosmetic.dart';
 import '../../models/plant.dart';
 import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
@@ -157,33 +158,45 @@ class _TasksScreenState extends State<TasksScreen> {
                           // Weekly Challenge sits above Today's tasks: it's a
                           // week-scoped goal, not a today-only task.
                           if (_weekly != null) ...[
-                            WeeklyChallengeCard(challenge: _weekly!),
+                            _Entrance(
+                              index: 0,
+                              child: WeeklyChallengeCard(challenge: _weekly!),
+                            ),
                             const SizedBox(height: 20),
                           ],
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                "Today's tasks",
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                              _HistoryButton(onTap: _openHistory),
-                            ],
+                          _Entrance(
+                            index: 1,
+                            child: Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Today's tasks",
+                                  style:
+                                      Theme.of(context).textTheme.titleLarge,
+                                ),
+                                _HistoryButton(onTap: _openHistory),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                           if (_allCaughtUp)
-                            const _AllCaughtUp()
-                          else
-                            for (final a in _visibleActivities)
+                            const _Entrance(index: 2, child: _AllCaughtUp())
+                          else ...[
+                            for (final (i, a) in _visibleActivities.indexed)
                               if (_dueCount(a) > 0)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
-                                  child: _TaskCard(
-                                    activity: a,
-                                    count: _dueCount(a),
-                                    onTap: () => _openActivity(a),
+                                  child: _Entrance(
+                                    index: 2 + i,
+                                    child: _TaskCard(
+                                      activity: a,
+                                      count: _dueCount(a),
+                                      onTap: () => _openActivity(a),
+                                    ),
                                   ),
                                 ),
+                          ],
                         ],
                       ),
                     ),
@@ -306,6 +319,8 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   // (sway, leaf flutter, breathe, blink) lives inside [StreakPlant].
   late final AnimationController _grow;
   late final AnimationController _rain;
+  // Gentle glow on today's empty week-strip dot, inviting the day's care.
+  late final AnimationController _pulse;
   Timer? _clock;
   SharedPreferences? _prefs;
   int? _lastSeen; // last stage index the user has already seen
@@ -327,6 +342,10 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       vsync: this,
       duration: const Duration(seconds: 40),
     );
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat();
     _syncRainAnimation();
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) setState(() {});
@@ -384,6 +403,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     _clock?.cancel();
     _grow.dispose();
     _rain.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 
@@ -441,6 +461,36 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         fit: BoxFit.fill,
         colorFilter: colorFilter,
       );
+
+  /// Week strip wrapped in the pulse driver: while today is still uncared,
+  /// its dot glows softly to invite the day's first action.
+  Widget _buildWeekStrip(
+    List<bool> lit,
+    List<bool> frozen,
+    Color mutedColor,
+    Color titleColor,
+  ) {
+    final activeToday = widget.streak?.activeToday ?? false;
+    if (activeToday || widget.streak == null) {
+      return _WeekStrip(
+        lit: lit,
+        frozen: frozen,
+        labelColor: mutedColor,
+        todayLabelColor: titleColor,
+      );
+    }
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, _) => _WeekStrip(
+        lit: lit,
+        frozen: frozen,
+        labelColor: mutedColor,
+        todayLabelColor: titleColor,
+        todayPulse:
+            0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi),
+      ),
+    );
+  }
 
   Widget _frozenPlant(
     PlantStage stage,
@@ -616,7 +666,24 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final now = DateTime.now();
     final iconCode = widget.weather?.iconCode ?? _streakSceneIcon(now);
     final gradientColors = WeatherBackdrop.gradientColors(iconCode, now);
-    final palette = _StreakScenePalette.forTime(now);
+    var palette = _StreakScenePalette.forTime(now);
+    // An equipped shop skin replaces the creature's time-of-day tint so the
+    // skin reads consistently all day; soil/ground keep their lighting.
+    final skin = widget.streak?.equippedSkin;
+    final skinTint = Cosmetic.parseTint(skin);
+    if (skinTint != null) {
+      final amount =
+          ((skin?['amount'] as num?)?.toDouble() ?? 0.3).clamp(0.0, 1.0);
+      palette = _StreakScenePalette(
+        creatureFilter: ColorFilter.mode(
+          Color.lerp(Colors.white, skinTint, amount)!,
+          BlendMode.modulate,
+        ),
+        soilFilter: palette.soilFilter,
+        groundBackFilter: palette.groundBackFilter,
+        groundFrontFilter: palette.groundFrontFilter,
+      );
+    }
     final lightText = _streakUsesLightText(iconCode, now);
     final raining = _streakUsesRain(iconCode);
     final rainIntensity = widget.weather?.rainIntensity ?? 1.0;
@@ -705,11 +772,11 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                         raining: true,
                         rainT: _rain.value,
                         rainIntensity: rainIntensity,
-                        weekStrip: _WeekStrip(
-                          lit: lit,
-                          frozen: frozen,
-                          labelColor: mutedColor,
-                          todayLabelColor: titleColor,
+                        weekStrip: _buildWeekStrip(
+                          lit,
+                          frozen,
+                          mutedColor,
+                          titleColor,
                         ),
                       ),
                     )
@@ -721,11 +788,11 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       raining: false,
                       rainT: 0,
                       rainIntensity: rainIntensity,
-                      weekStrip: _WeekStrip(
-                        lit: lit,
-                        frozen: frozen,
-                        labelColor: mutedColor,
-                        todayLabelColor: titleColor,
+                      weekStrip: _buildWeekStrip(
+                        lit,
+                        frozen,
+                        mutedColor,
+                        titleColor,
                       ),
                     ),
                 ],
@@ -824,11 +891,15 @@ class _WeekStrip extends StatelessWidget {
   final Color labelColor;
   final Color todayLabelColor;
 
+  /// 0–1 glow strength for today's uncared dot (0 = no pulse).
+  final double todayPulse;
+
   const _WeekStrip({
     required this.lit,
     this.frozen = const [false, false, false, false, false, false, false],
     this.labelColor = AppColors.textSecondary,
     this.todayLabelColor = AppColors.textPrimary,
+    this.todayPulse = 0,
   });
 
   // Monday-first initials.
@@ -859,6 +930,7 @@ class _WeekStrip extends StatelessWidget {
             litRight: litRight,
             labelColor: labelColor,
             todayLabelColor: todayLabelColor,
+            pulse: isToday ? todayPulse : 0,
           ),
         );
       }),
@@ -876,6 +948,9 @@ class _DayCell extends StatelessWidget {
   final Color labelColor;
   final Color todayLabelColor;
 
+  /// 0–1 breathing-glow strength for an uncared today dot.
+  final double pulse;
+
   static const double _d = 26; // circle diameter
   static const double _barH = 7; // connector thickness
   // Lighter ice tint for shielded days, distinct from the cared water-blue.
@@ -890,6 +965,7 @@ class _DayCell extends StatelessWidget {
     required this.litRight,
     required this.labelColor,
     required this.todayLabelColor,
+    this.pulse = 0,
   });
 
   // Blue connecting line, shown only between two adjacent cared-for days.
@@ -936,6 +1012,16 @@ class _DayCell extends StatelessWidget {
                             : (isToday ? _kWater : AppColors.cardBorder),
                     width: isToday && !lit ? 2 : 0.8,
                   ),
+                  // Soft breathing glow inviting today's first care action.
+                  boxShadow: (isToday && !lit && pulse > 0)
+                      ? [
+                          BoxShadow(
+                            color: _kWater.withValues(alpha: 0.45 * pulse),
+                            blurRadius: 6 + 6 * pulse,
+                            spreadRadius: 1 + 1.5 * pulse,
+                          ),
+                        ]
+                      : null,
                 ),
                 child: lit
                     ? const Icon(
@@ -1044,9 +1130,38 @@ class _HistoryButton extends StatelessWidget {
   }
 }
 
+// ─── Staggered entrance ────────────────────────────────────────
+
+/// One-shot slide-up + fade for panel content on first build. Later items
+/// start slightly after earlier ones via an [Interval], giving the panel a
+/// gentle cascade instead of popping in all at once.
+class _Entrance extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _Entrance({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final delay = (index * 0.14).clamp(0.0, 0.6);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 720),
+      curve: Interval(delay, 1, curve: Curves.easeOutCubic),
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, 18 * (1 - t)),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 // ─── Task category card ────────────────────────────────────────
 
-class _TaskCard extends StatelessWidget {
+class _TaskCard extends StatefulWidget {
   final CareActivity activity;
   final int count;
   final VoidCallback onTap;
@@ -1057,10 +1172,27 @@ class _TaskCard extends StatelessWidget {
   });
 
   @override
+  State<_TaskCard> createState() => _TaskCardState();
+}
+
+class _TaskCardState extends State<_TaskCard> {
+  bool _pressed = false;
+
+  CareActivity get activity => widget.activity;
+  int get count => widget.count;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
+      onTap: widget.onTap,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.surface,
@@ -1121,6 +1253,7 @@ class _TaskCard extends StatelessWidget {
             const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
           ],
         ),
+        ),
       ),
     );
   }
@@ -1143,17 +1276,26 @@ class _AllCaughtUp extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.check_circle_rounded,
-              color: AppColors.primary,
-              size: 36,
+          // The check pops in with an elastic overshoot — a small celebration
+          // for having tended the whole garden.
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 900),
+            curve: Curves.elasticOut,
+            builder: (context, t, child) =>
+                Transform.scale(scale: t, child: child),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.primary,
+                size: 36,
+              ),
             ),
           ),
           const SizedBox(height: 16),

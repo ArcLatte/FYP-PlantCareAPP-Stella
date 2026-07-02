@@ -46,7 +46,7 @@ class XpToast {
           r.leveledUpTo == null &&
           r.weeklyCompleted == null &&
           r.xpGained > 0) {
-        messenger.showSnackBar(_xpSnack(r.xpGained));
+        messenger.showSnackBar(_xpSnack(r.xpGained, r.seedsGained));
       }
     }
 
@@ -104,6 +104,7 @@ class XpToast {
                 ),
                 Text(
                   '+${w.xpReward} XP'
+                  '${w.seedsReward > 0 ? ' · +${w.seedsReward} seeds' : ''}'
                   '${w.savesBanked > 0 ? ' · ❄️ +${w.savesBanked} streak save' : ''}',
                   style: const TextStyle(
                     color: Colors.white70,
@@ -128,14 +129,14 @@ class XpToast {
     );
   }
 
-  static SnackBar _xpSnack(int amount) {
+  static SnackBar _xpSnack(int amount, [int seeds = 0]) {
     return SnackBar(
       content: Row(
         children: [
           const Icon(Icons.star_rounded, color: Colors.white, size: 20),
           const SizedBox(width: 10),
           Text(
-            '+$amount XP',
+            seeds > 0 ? '+$amount XP · +$seeds seeds' : '+$amount XP',
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,

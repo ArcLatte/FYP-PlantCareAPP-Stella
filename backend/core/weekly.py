@@ -20,6 +20,9 @@ from .models import CareLog, ScanResult, WeeklyChallengeProgress
 
 CARE_ACTIVITIES = ('water', 'fertilize', 'mist')
 
+# Seeds paid out on top of XP + streak save when a challenge completes.
+SEEDS_REWARD = 40
+
 # The rotating pool. `metric` keys into _metric_value below. Distinct-day /
 # note / scan metrics are preferred over raw action counts because they can't
 # be tap-farmed on a single plant.
@@ -133,6 +136,7 @@ def challenge_state(user) -> dict:
         'completed': completed,
         'xp_reward': challenge['xp_reward'],
         'save_reward': challenge['save_reward'],
+        'seeds_reward': SEEDS_REWARD,
         'week_start': start,
         'week_end': end - timedelta(days=1),  # inclusive Sunday for display
         'days_left': max(0, (end - timezone.localdate()).days),
@@ -154,11 +158,13 @@ def check_weekly_challenge(user) -> dict | None:
         user=user, week_start=start, challenge_code=challenge['code'],
     )
     saves_banked = user.grant_streak_save(challenge['save_reward'])
-    user.award_xp(challenge['xp_reward'])  # also persists streak_freezes
+    user.seeds += SEEDS_REWARD
+    user.award_xp(challenge['xp_reward'])  # persists freezes + seeds too
     return {
         'code': challenge['code'],
         'name': challenge['name'],
         'icon': challenge['icon'],
         'xp_reward': challenge['xp_reward'],
         'saves_banked': saves_banked,
+        'seeds_reward': SEEDS_REWARD,
     }

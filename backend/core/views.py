@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate
 from django.utils import timezone
 from .models import (
     CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location, CareLog,
-    Achievement, UserAchievement,
+    Achievement, UserAchievement, Cosmetic, UserCosmetic,
 )
 from .achievements import check_achievements, progress_snapshot, PROGRESS
 from .weekly import challenge_state, check_weekly_challenge
@@ -64,6 +64,7 @@ def _grant_xp_and_check(user, amount: int) -> dict:
     challenge-complete toasts.
     """
     initial_level = user.level
+    initial_seeds = user.seeds
     grant = user.award_xp(amount)
     newly = check_achievements(user)
     weekly = check_weekly_challenge(user)
@@ -75,6 +76,9 @@ def _grant_xp_and_check(user, amount: int) -> dict:
             + sum(a.xp_reward for a in newly)
             + (weekly['xp_reward'] if weekly else 0)
         ),
+        # Snapshot delta: catches every payout source (level-ups, achievement
+        # tiers, weekly bounty) no matter which check granted it.
+        'seeds_gained': user.seeds - initial_seeds,
         'leveled_up_to': user.level if leveled else None,
         'unlocked': [
             {
@@ -318,7 +322,11 @@ def add_note(request, pk):
     weekly = check_weekly_challenge(request.user)
     extra = {}
     if weekly:
-        extra = {'weekly_completed': weekly, 'xp_gained': weekly['xp_reward']}
+        extra = {
+            'weekly_completed': weekly,
+            'xp_gained': weekly['xp_reward'],
+            'seeds_gained': weekly['seeds_reward'],
+        }
     return Response({**_note_event(log, plant), **extra}, status=201)
 
 
@@ -382,6 +390,12 @@ def note_detail(request, pk, log_id):
 def streak(request):
     u = request.user
     today = timezone.localdate()
+    skin = (
+        UserCosmetic.objects
+        .filter(user=u, equipped=True, cosmetic__kind=Cosmetic.Kind.CREATURE_SKIN)
+        .select_related('cosmetic')
+        .first()
+    )
     return Response({
         'current_streak': u.effective_streak,
         'longest_streak': u.longest_streak,
@@ -389,6 +403,9 @@ def streak(request):
         'active_today': u.last_care_date == today,
         'freezes': u.streak_freezes,
         'freeze_active': u.freeze_active,
+        # Equipped creature-skin payload ({'tint': '#hex', 'amount': 0.x})
+        # or null — the Tasks scene applies it to the companion.
+        'equipped_skin': skin.cosmetic.payload if skin else None,
     })
 
 
@@ -782,6 +799,7 @@ def profile(request):
         'current_streak': u.effective_streak,
         'longest_streak': u.longest_streak,
         'freezes': u.streak_freezes,
+        'seeds': u.seeds,
         'achievements_unlocked': unlocked,
         'achievements_total': total,
     })
@@ -868,3 +886,91 @@ def unpin_achievement(request, code):
         ua.is_pinned = False
         ua.save(update_fields=['is_pinned'])
     return Response(_serialize_achievement(ua.achievement, ua))
+
+
+# ─── Gamification: seed shop ─────────────────────────────────────
+
+def _serialize_cosmetic(c, owned_row):
+    return {
+        'code': c.code,
+        'name': c.name,
+        'description': c.description,
+        'kind': c.kind,
+        'rarity': c.rarity,
+        'cost_seeds': c.cost_seeds,
+        'payload': c.payload,
+        'owned': owned_row is not None,
+        'equipped': bool(owned_row and owned_row.equipped),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def shop(request):
+    """The full cosmetic catalog with the user's balance/ownership state."""
+    owned = {
+        uc.cosmetic_id: uc
+        for uc in UserCosmetic.objects.filter(user=request.user)
+    }
+    return Response({
+        'seeds': request.user.seeds,
+        'items': [
+            _serialize_cosmetic(c, owned.get(c.id))
+            for c in Cosmetic.objects.all()
+        ],
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def shop_buy(request, code):
+    try:
+        cosmetic = Cosmetic.objects.get(code=code)
+    except Cosmetic.DoesNotExist:
+        return Response({'error': 'Item not found.'}, status=404)
+
+    u = request.user
+    if UserCosmetic.objects.filter(user=u, cosmetic=cosmetic).exists():
+        return Response({'error': 'Already owned.'}, status=400)
+    if u.seeds < cosmetic.cost_seeds:
+        return Response(
+            {'error': f'Not enough seeds ({u.seeds}/{cosmetic.cost_seeds}).'},
+            status=400,
+        )
+
+    u.seeds -= cosmetic.cost_seeds
+    u.save(update_fields=['seeds'])
+    row = UserCosmetic.objects.create(user=u, cosmetic=cosmetic)
+    return Response({
+        'seeds': u.seeds,
+        'item': _serialize_cosmetic(cosmetic, row),
+    }, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def shop_equip(request, code):
+    """Equip an owned cosmetic (unequips any other of the same kind), or
+    unequip it if it's the one currently equipped — a simple toggle."""
+    try:
+        row = UserCosmetic.objects.select_related('cosmetic').get(
+            user=request.user, cosmetic__code=code,
+        )
+    except UserCosmetic.DoesNotExist:
+        return Response({'error': 'Item not owned.'}, status=404)
+
+    if row.equipped:
+        row.equipped = False
+        row.save(update_fields=['equipped'])
+    else:
+        UserCosmetic.objects.filter(
+            user=request.user,
+            cosmetic__kind=row.cosmetic.kind,
+            equipped=True,
+        ).update(equipped=False)
+        row.equipped = True
+        row.save(update_fields=['equipped'])
+    return Response({
+        'seeds': request.user.seeds,
+        'item': _serialize_cosmetic(row.cosmetic, row),
+    })

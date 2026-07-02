@@ -6,6 +6,7 @@ import 'weekly_challenge.dart';
 /// individual call-site signatures don't have to change.
 class XpResult {
   final int xpGained;
+  final int seedsGained;
   final int? leveledUpTo;
   final List<Achievement> unlocked;
 
@@ -18,6 +19,7 @@ class XpResult {
 
   const XpResult({
     required this.xpGained,
+    this.seedsGained = 0,
     required this.leveledUpTo,
     required this.unlocked,
     this.streakSaved = false,
@@ -43,6 +45,7 @@ class XpResult {
               .map((e) => Achievement.fromJson(e as Map<String, dynamic>))
               .toList()
         : <Achievement>[];
+    final seeds = (json['seeds_gained'] as num?)?.toInt() ?? 0;
     final saved = json['streak_saved'] == true;
     final weekly = WeeklyCompletion.fromJsonOrNull(json['weekly_completed']);
     if (xp == 0 && lvl == null && unlocked.isEmpty && !saved && weekly == null) {
@@ -50,6 +53,7 @@ class XpResult {
     }
     return XpResult(
       xpGained: xp,
+      seedsGained: seeds,
       leveledUpTo: lvl,
       unlocked: unlocked,
       streakSaved: saved,

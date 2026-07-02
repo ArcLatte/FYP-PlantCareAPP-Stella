@@ -9,6 +9,7 @@ class UserProfile {
   final int xpForNextLevel;
   final int currentStreak;
   final int longestStreak;
+  final int seeds;
   final int achievementsUnlocked;
   final int achievementsTotal;
 
@@ -22,6 +23,7 @@ class UserProfile {
     required this.xpForNextLevel,
     required this.currentStreak,
     required this.longestStreak,
+    this.seeds = 0,
     required this.achievementsUnlocked,
     required this.achievementsTotal,
   });
@@ -37,6 +39,7 @@ class UserProfile {
       xpForNextLevel: (json['xp_for_next_level'] as num?)?.toInt() ?? 100,
       currentStreak: (json['current_streak'] as num?)?.toInt() ?? 0,
       longestStreak: (json['longest_streak'] as num?)?.toInt() ?? 0,
+      seeds: (json['seeds'] as num?)?.toInt() ?? 0,
       achievementsUnlocked:
           (json['achievements_unlocked'] as num?)?.toInt() ?? 0,
       achievementsTotal: (json['achievements_total'] as num?)?.toInt() ?? 0,

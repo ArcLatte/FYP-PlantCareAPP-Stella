@@ -11,6 +11,7 @@ class WeeklyChallenge {
   final bool completed;
   final int xpReward;
   final int saveReward;
+  final int seedsReward;
   final int daysLeft;
 
   const WeeklyChallenge({
@@ -23,6 +24,7 @@ class WeeklyChallenge {
     required this.completed,
     required this.xpReward,
     required this.saveReward,
+    this.seedsReward = 0,
     required this.daysLeft,
   });
 
@@ -40,6 +42,7 @@ class WeeklyChallenge {
       completed: json['completed'] == true,
       xpReward: (json['xp_reward'] as num?)?.toInt() ?? 0,
       saveReward: (json['save_reward'] as num?)?.toInt() ?? 0,
+      seedsReward: (json['seeds_reward'] as num?)?.toInt() ?? 0,
       daysLeft: (json['days_left'] as num?)?.toInt() ?? 0,
     );
   }
@@ -52,12 +55,14 @@ class WeeklyCompletion {
   final String name;
   final int xpReward;
   final int savesBanked;
+  final int seedsReward;
 
   const WeeklyCompletion({
     required this.code,
     required this.name,
     required this.xpReward,
     required this.savesBanked,
+    this.seedsReward = 0,
   });
 
   static WeeklyCompletion? fromJsonOrNull(dynamic json) {
@@ -67,6 +72,7 @@ class WeeklyCompletion {
       name: json['name'] ?? '',
       xpReward: (json['xp_reward'] as num?)?.toInt() ?? 0,
       savesBanked: (json['saves_banked'] as num?)?.toInt() ?? 0,
+      seedsReward: (json['seeds_reward'] as num?)?.toInt() ?? 0,
     );
   }
 }
