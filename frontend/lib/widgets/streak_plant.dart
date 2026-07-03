@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/plant_stage.dart';
+import 'scene_effects.dart';
 
 /// Layered, per-part animated streak plant for the Tasks page.
 ///
@@ -187,6 +188,9 @@ class _StreakPlantState extends State<StreakPlant>
   late final AnimationController _blink;
   // Tap response: an excited wiggle + squash-stretch bounce.
   late final AnimationController _pounce;
+  // Tap celebration: a one-shot heart/sparkle burst over the creature.
+  late final AnimationController _burst;
+  int _burstSeed = 1;
   Timer? _blinkTimer;
 
   @override
@@ -213,6 +217,11 @@ class _StreakPlantState extends State<StreakPlant>
       duration: const Duration(milliseconds: 640),
       value: 1,
     );
+    _burst = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+      value: 1,
+    );
     _scheduleBlink();
   }
 
@@ -236,6 +245,9 @@ class _StreakPlantState extends State<StreakPlant>
   void _onTap() {
     HapticFeedback.lightImpact();
     _pounce.forward(from: 0);
+    // A fresh seed each tap gives the burst a new scatter pattern.
+    _burstSeed = _rng.nextInt(1 << 16);
+    _burst.forward(from: 0);
   }
 
   @override
@@ -246,6 +258,7 @@ class _StreakPlantState extends State<StreakPlant>
     _breathe.dispose();
     _blink.dispose();
     _pounce.dispose();
+    _burst.dispose();
     super.dispose();
   }
 
@@ -299,8 +312,9 @@ class _StreakPlantState extends State<StreakPlant>
         width: size,
         height: size,
         child: AnimatedBuilder(
-          animation:
-              Listenable.merge([_sway, _leaf, _breathe, _blink, _pounce]),
+          animation: Listenable.merge(
+            [_sway, _leaf, _breathe, _blink, _pounce, _burst],
+          ),
           builder: (context, _) {
             return Stack(
               clipBehavior: Clip.none,
@@ -327,6 +341,19 @@ class _StreakPlantState extends State<StreakPlant>
                   child: streakSoilFront(
                     size,
                     colorFilter: widget.soilColorFilter,
+                  ),
+                ),
+                // Hearts + sparkles fly out when the creature is petted.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: SparkleBurstPainter(
+                        p: _burst.value,
+                        seed: _burstSeed,
+                        count: 14,
+                        hearts: true,
+                      ),
+                    ),
                   ),
                 ),
               ],

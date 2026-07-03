@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'scene_effects.dart';
+
 /// Loads a weather-scene asset, auto-picking the loader by file extension so
 /// the SVGs can be swapped for your own `.png` / `.jpg` / `.webp` art just by
 /// dropping a file with the matching name into `assets/weather/`.
@@ -103,6 +105,9 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
   @override
   Widget build(BuildContext context) {
     final cfg = _SceneConfig.forGroup(_group, _isNight);
+    // Extra ambient life on clear-ish scenes: motes + birds by day,
+    // fireflies (and, fully clear, shooting stars) by night.
+    final clearish = _group == '01' || _group == '02';
     return Positioned.fill(
       child: IgnorePointer(
         child: ClipRect(
@@ -145,6 +150,28 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                           ),
                         ),
                       ),
+                    // Meteor streaks on fully clear nights.
+                    if (cfg.stars && _group == '01')
+                      AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, _) => CustomPaint(
+                          painter: ShootingStarsPainter(_controller.value),
+                        ),
+                      ),
+                    // Rotating soft rays behind the daytime sun.
+                    if (cfg.celestial != null && !_isNight)
+                      Positioned(
+                        right: w * 0.06 - w * 0.14,
+                        top: h * 0.06 - w * 0.14,
+                        width: w * 0.58,
+                        height: w * 0.58,
+                        child: AnimatedBuilder(
+                          animation: _controller,
+                          builder: (context, _) => CustomPaint(
+                            painter: SunRaysPainter(_controller.value),
+                          ),
+                        ),
+                      ),
                     // Sun or moon, top-right — gently pulsing and bobbing.
                     if (cfg.celestial != null)
                       Positioned(
@@ -171,6 +198,14 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                           child: _sceneAsset(cfg.celestial!),
                         ),
                       ),
+                    // Sunlit pollen motes drifting up on gentle days.
+                    if (clearish && !_isNight)
+                      AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, _) => CustomPaint(
+                          painter: MotesPainter(_controller.value),
+                        ),
+                      ),
                     // Drifting clouds.
                     AnimatedBuilder(
                       animation: _controller,
@@ -182,36 +217,42 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                         ],
                       ),
                     ),
-                    // Rain / snow.
+                    // A flock crossing the sky on clear-ish days; fireflies
+                    // wandering low on clear-ish nights.
+                    if (clearish)
+                      AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, _) => CustomPaint(
+                          painter: _isNight
+                              ? FirefliesPainter(_controller.value, count: 7)
+                              : BirdsPainter(_controller.value),
+                        ),
+                      ),
+                    // Rain / snow, code-drawn with parallax depth.
                     if (cfg.precip != null)
                       AnimatedBuilder(
                         animation: _controller,
-                        builder: (context, _) => cfg.precip == _A.rain
-                            ? _RainLayer(
-                                t: _controller.value,
-                                intensity: widget.rainIntensity,
-                              )
-                            : _PrecipLayer(
-                                asset: '${WeatherSceneArt._base}/${cfg.precip}',
-                                t: _controller.value,
-                                slow: cfg.precip == _A.snow,
-                              ),
+                        builder: (context, _) => IgnorePointer(
+                          child: CustomPaint(
+                            painter: cfg.precip == _A.rain
+                                ? AmbientRainPainter(
+                                    _controller.value,
+                                    widget.rainIntensity,
+                                  )
+                                : SnowPainter(_controller.value),
+                          ),
+                        ),
                       ),
-                    // Thunderstorm lightning: brief sky flashes a few times
-                    // per drift cycle (a double-strike and a single).
+                    // Thunderstorm: sky flash + jagged bolts a few times per
+                    // drift cycle (a double-strike and a single).
                     if (cfg.lightning)
                       AnimatedBuilder(
                         animation: _controller,
-                        builder: (context, _) {
-                          final a = _flashAlpha(_controller.value);
-                          if (a <= 0.003) return const SizedBox.shrink();
-                          return IgnorePointer(
-                            child: Container(
-                              color: const Color(0xFFEAF2FF)
-                                  .withValues(alpha: a),
-                            ),
-                          );
-                        },
+                        builder: (context, _) => IgnorePointer(
+                          child: CustomPaint(
+                            painter: LightningPainter(_controller.value),
+                          ),
+                        ),
                       ),
                   ],
                 );
@@ -223,31 +264,16 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
     );
   }
 
-  /// Lightning flash brightness at loop position [t]: a quick double-strike
-  /// early in the cycle and one single strike later, each a sharp spike that
-  /// decays in a few frames.
-  double _flashAlpha(double t) {
-    double spike(double center, double width) {
-      final d = (t - center).abs();
-      if (d >= width) return 0;
-      final p = 1 - d / width;
-      return p * p;
-    }
-
-    final a = spike(0.18, 0.010) +
-        0.7 * spike(0.215, 0.008) +
-        spike(0.63, 0.012);
-    return a.clamp(0.0, 1.0) * 0.34;
-  }
-
-  /// Positions one cloud, looping it left→right across the header.
+  /// Positions one cloud, looping it left→right across the header with a
+  /// slight vertical bob so the drift doesn't read as a flat slide.
   Widget _drift(_Cloud cl, double w, double h, double t) {
     final cloudW = w * cl.scale;
     final span = w + cloudW;
     final x = ((t * cl.speed + cl.phase) % 1.2) * span - cloudW;
+    final bob = 3.0 * math.sin(2 * math.pi * (t * 2 + cl.phase));
     return Positioned(
       left: x,
-      top: h * cl.y,
+      top: h * cl.y + bob,
       width: cloudW,
       child: Opacity(
         opacity: cl.opacity,
@@ -363,107 +389,6 @@ class _SceneConfig {
           clouds: const [_Cloud(_A.cloudSoft, 0.30, 0.45, 0.2, 0.4, 0.85)],
         );
     }
-  }
-}
-
-/// Code-drawn rain layer, matching the softer animated style from the original
-/// weather backdrop instead of tiling the rain SVG texture.
-class _RainLayer extends StatelessWidget {
-  final double t;
-  final double intensity;
-
-  const _RainLayer({required this.t, required this.intensity});
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: CustomPaint(
-        painter: _RainPainter(t, intensity),
-        child: const SizedBox.expand(),
-      ),
-    );
-  }
-}
-
-class _RainPainter extends CustomPainter {
-  final double t;
-  final double intensity;
-
-  _RainPainter(this.t, this.intensity);
-
-  static final math.Random _rng = math.Random(11);
-  static final List<Offset> _dropSeeds = List.generate(
-    42,
-    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
-  );
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.30)
-      ..strokeWidth = 1.35
-      ..strokeCap = StrokeCap.round;
-    const slant = 0.18;
-    final speed = 6 * intensity.clamp(0.75, 1.6);
-
-    for (final seed in _dropSeeds) {
-      final fall = ((t * speed + seed.dy) % 1.0);
-      final x = seed.dx * size.width + fall * size.height * slant;
-      final y = fall * (size.height + 20) - 10;
-      canvas.drawLine(Offset(x, y), Offset(x + 2.4, y + 11), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_RainPainter oldDelegate) =>
-      oldDelegate.t != t || oldDelegate.intensity != intensity;
-}
-
-/// Tiles a precipitation texture across the section and scrolls it downward.
-class _PrecipLayer extends StatelessWidget {
-  final String asset;
-  final double t;
-  final bool slow;
-
-  const _PrecipLayer({required this.asset, required this.t, this.slow = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        const tile = 120.0;
-        final cols = (c.maxWidth / tile).ceil() + 1;
-        final rows = (c.maxHeight / tile).ceil() + 2;
-        // Scroll one tile-height per (slow) loop, wrapping seamlessly.
-        final cycles = slow ? 3.0 : 8.0;
-        final dy = ((t * cycles) % 1.0) * tile;
-        return ClipRect(
-          child: Transform.translate(
-            offset: Offset(0, dy - tile),
-            child: OverflowBox(
-              minWidth: 0,
-              maxWidth: double.infinity,
-              minHeight: 0,
-              maxHeight: double.infinity,
-              alignment: Alignment.topLeft,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int r = 0; r < rows; r++)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (int col = 0; col < cols; col++)
-                          _sceneAsset(asset, width: tile, height: tile),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 }
 

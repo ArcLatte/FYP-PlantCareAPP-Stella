@@ -15,6 +15,7 @@ import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/scene_effects.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/streak_plant.dart';
 import '../../widgets/weather_backdrop.dart';
@@ -321,6 +322,9 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   late final AnimationController _rain;
   // Gentle glow on today's empty week-strip dot, inviting the day's care.
   late final AnimationController _pulse;
+  // Ambient life around the plant (fireflies / motes / butterflies) — one
+  // shared loop so the whole scene rides a single ticker.
+  late final AnimationController _ambient;
   Timer? _clock;
   SharedPreferences? _prefs;
   int? _lastSeen; // last stage index the user has already seen
@@ -345,6 +349,10 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
+    )..repeat();
+    _ambient = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 24),
     )..repeat();
     _syncRainAnimation();
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -404,6 +412,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     _grow.dispose();
     _rain.dispose();
     _pulse.dispose();
+    _ambient.dispose();
     super.dispose();
   }
 
@@ -570,6 +579,18 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                   child: _frozenPlant(stage, plantSize, palette),
                 ),
               ),
+              // Level-up sparkle celebration flung out with the pop.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: SparkleBurstPainter(
+                      p: g,
+                      seed: _fromIndex! + 5,
+                      count: 20,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -582,10 +603,12 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     _StreakScenePalette palette, {
     required Widget weekStrip,
     required bool lightText,
+    required bool night,
     required bool raining,
     required double rainT,
     required double rainIntensity,
   }) {
+    final stageIndex = PlantStage.all.indexOf(stage);
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxPlantSize = math.min(205.0, constraints.maxWidth * 0.56);
@@ -621,6 +644,33 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                 bottom: 132,
                 child: _plantForScene(stage, plantSize, palette),
               ),
+              // Ambient life around the plant: fireflies after dark; pollen
+              // motes — plus butterflies once the plant is grown — by day.
+              // Rain keeps the scene to just the weather.
+              if (!raining)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: 88,
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _ambient,
+                      builder: (context, _) => CustomPaint(
+                        painter: night
+                            ? FirefliesPainter(_ambient.value, count: 7)
+                            : MotesPainter(_ambient.value, count: 10),
+                        foregroundPainter: !night && stageIndex >= 3
+                            ? ButterfliesPainter(
+                                _ambient.value,
+                                flapCycles: 48,
+                              )
+                            : null,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ),
+                ),
               if (raining)
                 Positioned(
                   left: -20,
@@ -685,6 +735,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       );
     }
     final lightText = _streakUsesLightText(iconCode, now);
+    final night = iconCode.endsWith('n') || now.hour < 5 || now.hour >= 21;
     final raining = _streakUsesRain(iconCode);
     final rainIntensity = widget.weather?.rainIntensity ?? 1.0;
     final titleColor = lightText ? Colors.white : AppColors.textPrimary;
@@ -744,7 +795,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    stage.name,
+                    'Lv ${PlantStage.all.indexOf(stage) + 1} · ${stage.name}',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: secondaryColor,
@@ -762,6 +813,17 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     ),
                   ],
                   const SizedBox(height: 10),
+                  // XP-style bar to the next growth stage.
+                  AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (context, _) => _StageProgress(
+                      streak: current,
+                      stage: stage,
+                      lightText: lightText,
+                      shine: _pulse.value,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   if (raining)
                     AnimatedBuilder(
                       animation: _rain,
@@ -769,6 +831,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                         stage,
                         palette,
                         lightText: lightText,
+                        night: night,
                         raining: true,
                         rainT: _rain.value,
                         rainIntensity: rainIntensity,
@@ -785,6 +848,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       stage,
                       palette,
                       lightText: lightText,
+                      night: night,
                       raining: false,
                       rainT: 0,
                       rainIntensity: rainIntensity,
@@ -817,11 +881,6 @@ class _StreakRainPainter extends CustomPainter {
     required this.intensity,
   });
 
-  static final math.Random _rng = math.Random(23);
-  static final List<Offset> _drops = List.generate(
-    42,
-    (_) => Offset(_rng.nextDouble(), _rng.nextDouble()),
-  );
   static const List<Offset> _puddles = [
     Offset(0.24, 0.86),
     Offset(0.48, 0.91),
@@ -830,19 +889,8 @@ class _StreakRainPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rainPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.28)
-      ..strokeWidth = 1.35
-      ..strokeCap = StrokeCap.round;
-    const slant = 0.18;
-    final speed = 6 * intensity.clamp(0.75, 1.6);
-
-    for (final seed in _drops) {
-      final fall = ((t * speed + seed.dy) % 1.0);
-      final x = seed.dx * size.width + fall * size.height * slant;
-      final y = fall * (size.height + 20) - 10;
-      canvas.drawLine(Offset(x, y), Offset(x + 2.4, y + 11), rainPaint);
-    }
+    // Shared parallax rain sheets, with splash rings blipping at the grass.
+    paintRain(canvas, size, t, intensity, splashLine: 0.88);
 
     final puddlePaint = Paint()
       ..style = PaintingStyle.stroke
@@ -923,6 +971,7 @@ class _WeekStrip extends StatelessWidget {
         return Expanded(
           child: _DayCell(
             label: _initials[i],
+            index: i,
             lit: litHere,
             frozen: frozen[i],
             isToday: isToday,
@@ -940,6 +989,7 @@ class _WeekStrip extends StatelessWidget {
 
 class _DayCell extends StatelessWidget {
   final String label;
+  final int index; // Mon = 0 … Sun = 6, staggers the pop-in entrance
   final bool lit;
   final bool frozen;
   final bool isToday;
@@ -958,6 +1008,7 @@ class _DayCell extends StatelessWidget {
 
   const _DayCell({
     required this.label,
+    required this.index,
     required this.lit,
     this.frozen = false,
     required this.isToday,
@@ -998,7 +1049,18 @@ class _DayCell extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Row(children: [_bar(litLeft), _bar(litRight)]),
-              Container(
+              // Dots pop in left→right with a small overshoot on first build.
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 800),
+                curve: Interval(
+                  math.min(index * 0.09, 0.6),
+                  1,
+                  curve: Curves.easeOutBack,
+                ),
+                builder: (context, s, child) =>
+                    Transform.scale(scale: s, child: child),
+                child: Container(
                 width: _d,
                 height: _d,
                 decoration: BoxDecoration(
@@ -1036,6 +1098,7 @@ class _DayCell extends StatelessWidget {
                             size: 14,
                           )
                         : null,
+                ),
               ),
             ],
           ),
@@ -1089,6 +1152,114 @@ class _FreezeChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// XP-style progress bar to the next growth stage: an animated fill with a
+/// periodic shine sweep, labelled "n / m days to `stage`" (or a bloomed
+/// callout at max stage). [shine] is a repeating 0–1 driver.
+class _StageProgress extends StatelessWidget {
+  final int streak;
+  final PlantStage stage;
+  final bool lightText;
+  final double shine;
+
+  const _StageProgress({
+    required this.streak,
+    required this.stage,
+    required this.lightText,
+    required this.shine,
+  });
+
+  static const double _w = 190;
+  static const double _h = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = PlantStage.next(stage);
+    final done = next == null ? 1 : streak - stage.minDays;
+    final span = next == null ? 1 : next.minDays - stage.minDays;
+    final frac = (done / span).clamp(0.0, 1.0);
+    final label = next == null
+        ? 'Fully bloomed!'
+        : '$done / $span days to ${next.name}';
+    final trackColor = lightText
+        ? Colors.white.withValues(alpha: 0.22)
+        : Colors.black.withValues(alpha: 0.10);
+    final textColor = lightText
+        ? Colors.white.withValues(alpha: 0.9)
+        : AppColors.textSecondary;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: _w,
+          height: _h,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(_h),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: trackColor),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: frac),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, f, child) => FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: f,
+                    child: child,
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6FCF6A), Color(0xFFB9E88B)],
+                      ),
+                      borderRadius: BorderRadius.circular(_h),
+                    ),
+                    // The shine sweeps across the filled part, then rests
+                    // for the remainder of the pulse cycle.
+                    child: frac > 0.05 && shine < 0.45
+                        ? Align(
+                            alignment:
+                                Alignment(-1.3 + 2.6 * (shine / 0.45), 0),
+                            child: Container(
+                              width: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.35),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (next == null) ...[
+              Icon(Icons.auto_awesome, size: 12, color: textColor),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                shadows: lightText ? _kStreakTextShadow : null,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

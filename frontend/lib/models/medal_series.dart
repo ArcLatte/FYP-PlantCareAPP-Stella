@@ -204,6 +204,120 @@ class MedalSeries {
   double? get nextProgressFraction => next?.progressFraction;
 }
 
+// ─── Categories (gacha-style achievement series) ─────────────────
+
+/// One themed chapter of the achievement book, Genshin-style: a banner
+/// grouping several medal series. Completing every achievement inside
+/// unlocks the category's namecard (a profile-card background).
+class MedalCategorySpec {
+  final String id;
+  final String name;
+  final String tagline;
+  final IconData icon;
+  final List<String> seriesIds; // MedalSeriesSpec ids in display order
+  final String namecardId; // ProfileCardTheme id awarded at 100%
+  const MedalCategorySpec(
+    this.id,
+    this.name,
+    this.tagline,
+    this.icon,
+    this.seriesIds,
+    this.namecardId,
+  );
+}
+
+const kMedalCategorySpecs = <MedalCategorySpec>[
+  MedalCategorySpec(
+    'growth',
+    'The Verdant Path',
+    'Grow your garden, one pot at a time.',
+    Icons.park_rounded,
+    ['gardener'],
+    'nc_verdant',
+  ),
+  MedalCategorySpec(
+    'care',
+    'Tender Hands',
+    'Water, feed and mist — every single day.',
+    Icons.water_drop_rounded,
+    ['waterer', 'fertilizer', 'mister'],
+    'nc_rain',
+  ),
+  MedalCategorySpec(
+    'streak',
+    'The Eternal Flame',
+    'Never let the streak go out.',
+    Icons.local_fire_department_rounded,
+    ['streak'],
+    'nc_hive',
+  ),
+  MedalCategorySpec(
+    'health',
+    'The Keen Eye',
+    'Scan, diagnose, and keep every leaf healthy.',
+    Icons.biotech_rounded,
+    ['scanner', 'spotter', 'clean_bill'],
+    'nc_lens',
+  ),
+  MedalCategorySpec(
+    'mastery',
+    'Ascension',
+    'Master new species and rise through the ranks.',
+    Icons.rocket_launch_rounded,
+    ['botanist', 'rising'],
+    'nc_summit',
+  ),
+];
+
+/// A category resolved against the user's fetched series.
+class MedalCategory {
+  final MedalCategorySpec spec;
+  final List<MedalSeries> series;
+  MedalCategory({required this.spec, required this.series});
+
+  int get earned =>
+      series.fold(0, (sum, s) => sum + s.level);
+  int get total =>
+      series.fold(0, (sum, s) => sum + s.maxLevel);
+  double get fraction => total == 0 ? 0.0 : earned / total;
+  bool get completed => total > 0 && earned == total;
+
+  /// Group [all] series into categories. Series not claimed by any spec
+  /// land in a trailing "Wonders of the Garden" catch-all so new backend
+  /// achievements never silently vanish.
+  static List<MedalCategory> fromSeries(List<MedalSeries> all) {
+    final bySeriesId = {for (final s in all) s.id: s};
+    final covered = <String>{};
+    final result = <MedalCategory>[];
+    for (final spec in kMedalCategorySpecs) {
+      final members = [
+        for (final id in spec.seriesIds)
+          if (bySeriesId.containsKey(id)) bySeriesId[id]!,
+      ];
+      covered.addAll(spec.seriesIds);
+      if (members.isNotEmpty) {
+        result.add(MedalCategory(spec: spec, series: members));
+      }
+    }
+    final leftovers =
+        [for (final s in all) if (!covered.contains(s.id)) s];
+    if (leftovers.isNotEmpty) {
+      result.add(MedalCategory(
+        spec: const MedalCategorySpec(
+          'wonders',
+          'Wonders of the Garden',
+          'Curious feats beyond the beaten path.',
+          Icons.auto_awesome_rounded,
+          [],
+          'nc_wonders',
+        ),
+        series: leftovers,
+      ));
+    }
+    return result;
+  }
+}
+
 /// Series position of a single achievement, resolved from the static spec
 /// alone — used by the unlock reveal, which only has the just-unlocked
 /// achievement (not the full fetched list).

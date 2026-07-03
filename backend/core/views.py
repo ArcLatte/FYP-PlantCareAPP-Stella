@@ -843,7 +843,8 @@ def achievements_list(request):
     return Response(data)
 
 
-PIN_CAP = 3
+# One pin per slot in the profile's honeycomb medal case (4 + 5 + 4 hive rows).
+PIN_CAP = 13
 
 
 @api_view(['POST'])
