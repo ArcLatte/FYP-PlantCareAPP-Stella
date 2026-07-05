@@ -6,7 +6,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
-import '../../models/cosmetic.dart';
 import '../../models/plant.dart';
 import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
@@ -15,6 +14,7 @@ import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/pot.dart';
 import '../../widgets/scene_effects.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/streak_plant.dart';
@@ -22,6 +22,7 @@ import '../../widgets/weather_backdrop.dart';
 import '../../widgets/weather_scene_art.dart';
 import '../../widgets/weekly_challenge_card.dart';
 import 'care_activity.dart';
+import 'streak_calendar_sheet.dart';
 
 const _kStreakTextShadow = [
   Shadow(color: Color(0x660B1424), blurRadius: 8, offset: Offset(0, 1)),
@@ -168,13 +169,11 @@ class _TasksScreenState extends State<TasksScreen> {
                           _Entrance(
                             index: 1,
                             child: Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
                                   "Today's tasks",
-                                  style:
-                                      Theme.of(context).textTheme.titleLarge,
+                                  style: Theme.of(context).textTheme.titleLarge,
                                 ),
                                 _HistoryButton(onTap: _openHistory),
                               ],
@@ -286,6 +285,15 @@ class _StreakScenePalette {
     }
   }
 
+  factory _StreakScenePalette.rainDay() {
+    return _StreakScenePalette(
+      creatureFilter: _filter(const Color(0xFFD7E5EC), 0.10),
+      soilFilter: _filter(const Color(0xFFA9B8BC), 0.18),
+      groundBackFilter: _filter(const Color(0xFF738C91), 0.18),
+      groundFrontFilter: _filter(const Color(0xFF4D6E73), 0.24),
+    );
+  }
+
   static _StreakLightPhase _phaseFor(DateTime now) {
     final h = now.hour;
     if (h < 5 || h >= 21) return _StreakLightPhase.night;
@@ -303,8 +311,8 @@ class _StreakScenePalette {
 
 /// Full-bleed streak backdrop (home-weather style): the plant for the current
 /// growth stage (with an idle sway and a grow-pop when it advances a stage),
-/// the stage name + day count, a "next stage" hint, then the current week's
-/// water-day strip. The tasks panel overlaps it from above.
+/// the stage name + day count, a "next stage" hint, then a 7-day water strip
+/// centered on today. The tasks panel overlaps it from above.
 class _StreakBackdrop extends StatefulWidget {
   final Streak? streak;
   final Weather? weather;
@@ -416,15 +424,48 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     super.dispose();
   }
 
-  /// Which days of the current week (Mon→Sun) fall inside the current streak.
+  /// The reference "today" for the strip: the server's date when available
+  /// (care days are dated on the server clock), else the device date.
+  DateTime _today() {
+    final t = widget.streak?.today;
+    if (t != null) return DateTime(t.year, t.month, t.day);
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  /// First day of the strip's rolling 7-day window: 3 days before today, so
+  /// today always sits in the middle cell (index 3), Duolingo-style.
+  DateTime _stripStart() => _today().subtract(const Duration(days: 3));
+
+  /// Which days of the strip window were actually cared for.
   List<bool> _litDays() {
     final lit = List<bool>.filled(7, false);
     final s = widget.streak;
-    final current = s?.currentStreak ?? 0;
-    if (s == null || current <= 0) return lit;
+    if (s == null) return lit;
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _today();
+    final start = _stripStart();
+
+    // Preferred: the real care days the backend sends. Counting back from
+    // the streak length (fallback below) drifts once a save bridges a
+    // missed day — the count is smaller than the calendar span, so the lit
+    // chain shifts and days that were lit yesterday go dark.
+    final recent = s.recentCareDays;
+    if (recent != null) {
+      for (int i = 0; i < 7; i++) {
+        final day = start.add(Duration(days: i));
+        // Future cells (right of today) can never hold a streak — the day
+        // hasn't happened yet. Guard against a care date leaking into the
+        // right half (e.g. device/server clock skew or a timezone-boundary
+        // care action) and lighting a day that's still ahead.
+        if (day.isAfter(today)) continue;
+        lit[i] = recent.contains(day);
+      }
+      return lit;
+    }
+
+    final current = s.currentStreak;
+    if (current <= 0) return lit;
     DateTime? end;
     if (s.activeToday) {
       end = today;
@@ -433,17 +474,16 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       end = DateTime(l.year, l.month, l.day);
     }
     if (end == null) return lit;
-    final start = end.subtract(Duration(days: current - 1));
-    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final runStart = end.subtract(Duration(days: current - 1));
 
     for (int i = 0; i < 7; i++) {
-      final day = monday.add(Duration(days: i));
-      if (!day.isBefore(start) && !day.isAfter(end)) lit[i] = true;
+      final day = start.add(Duration(days: i));
+      if (!day.isBefore(runStart) && !day.isAfter(end)) lit[i] = true;
     }
     return lit;
   }
 
-  /// Days of the current week sitting inside a save-shielded gap: after the
+  /// Days of the strip window sitting inside a save-shielded gap: after the
   /// last care day but before today, while `freezeActive`. Rendered as ice
   /// dots so the user sees the save holding the line.
   List<bool> _frozenDays() {
@@ -451,14 +491,13 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final s = widget.streak;
     if (s == null || !s.freezeActive || s.lastCareDate == null) return frozen;
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _today();
+    final start = _stripStart();
     final l = s.lastCareDate!;
     final last = DateTime(l.year, l.month, l.day);
-    final monday = today.subtract(Duration(days: today.weekday - 1));
 
     for (int i = 0; i < 7; i++) {
-      final day = monday.add(Duration(days: i));
+      final day = start.add(Duration(days: i));
       if (day.isAfter(last) && day.isBefore(today)) frozen[i] = true;
     }
     return frozen;
@@ -476,16 +515,23 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   Widget _buildWeekStrip(
     List<bool> lit,
     List<bool> frozen,
-    Color mutedColor,
+    Color labelColor,
     Color titleColor,
   ) {
+    // Today's weekday letter pops in water-blue; on dark scenes (white
+    // title text) a lighter blue keeps it readable.
+    final todayBlue = titleColor.computeLuminance() > 0.65
+        ? const Color(0xFF9AD4F7)
+        : _kWater;
+    final start = _stripStart();
     final activeToday = widget.streak?.activeToday ?? false;
     if (activeToday || widget.streak == null) {
       return _WeekStrip(
         lit: lit,
         frozen: frozen,
-        labelColor: mutedColor,
-        todayLabelColor: titleColor,
+        start: start,
+        labelColor: labelColor,
+        todayLabelColor: todayBlue,
       );
     }
     return AnimatedBuilder(
@@ -493,13 +539,17 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       builder: (context, _) => _WeekStrip(
         lit: lit,
         frozen: frozen,
-        labelColor: mutedColor,
-        todayLabelColor: titleColor,
-        todayPulse:
-            0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi),
+        start: start,
+        labelColor: labelColor,
+        todayLabelColor: todayBlue,
+        todayPulse: 0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi),
       ),
     );
   }
+
+  /// The pot the companion sits in: the equipped shop pot, or the default
+  /// terracotta when nothing is equipped.
+  PotStyle get _potStyle => PotStyle.fromPayload(widget.streak?.equippedPot);
 
   Widget _frozenPlant(
     PlantStage stage,
@@ -514,7 +564,11 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(
-            child: streakSoilBack(size, colorFilter: palette.soilFilter),
+            child: streakPotBack(
+              size,
+              _potStyle,
+              colorFilter: palette.soilFilter,
+            ),
           ),
           Positioned.fill(
             child: streakCreatureLayers(
@@ -528,7 +582,11 @@ class _StreakBackdropState extends State<_StreakBackdrop>
             ),
           ),
           Positioned.fill(
-            child: streakSoilFront(size, colorFilter: palette.soilFilter),
+            child: streakPotFront(
+              size,
+              _potStyle,
+              colorFilter: palette.soilFilter,
+            ),
           ),
         ],
       ),
@@ -550,6 +608,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         size: plantSize,
         colorFilter: palette.creatureFilter,
         soilColorFilter: palette.soilFilter,
+        potStyle: _potStyle,
       );
     }
 
@@ -661,10 +720,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                             ? FirefliesPainter(_ambient.value, count: 7)
                             : MotesPainter(_ambient.value, count: 10),
                         foregroundPainter: !night && stageIndex >= 3
-                            ? ButterfliesPainter(
-                                _ambient.value,
-                                flapCycles: 48,
-                              )
+                            ? ButterfliesPainter(_ambient.value, flapCycles: 48)
                             : null,
                         child: const SizedBox.expand(),
                       ),
@@ -687,13 +743,34 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     ),
                   ),
                 ),
+              // Tapping the day strip pops up the full streak calendar.
               Positioned(
                 left: 8,
                 right: 8,
                 bottom: 64,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
-                  child: weekStrip,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showStreakCalendarSheet(context),
+                  child: Container(
+                    // A soft frosted panel behind the whole strip lifts the
+                    // day labels + dots off the busy weather art so they stay
+                    // legible. Translucent (not solid) so the scene reads
+                    // through it; a hairline border defines the edge.
+                    padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+                    decoration: BoxDecoration(
+                      color: lightText
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : Colors.white.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: lightText
+                            ? Colors.white.withValues(alpha: 0.28)
+                            : Colors.white.withValues(alpha: 0.6),
+                        width: 1,
+                      ),
+                    ),
+                    child: weekStrip,
+                  ),
                 ),
               ),
             ],
@@ -716,35 +793,18 @@ class _StreakBackdropState extends State<_StreakBackdrop>
     final now = DateTime.now();
     final iconCode = widget.weather?.iconCode ?? _streakSceneIcon(now);
     final gradientColors = WeatherBackdrop.gradientColors(iconCode, now);
-    var palette = _StreakScenePalette.forTime(now);
-    // An equipped shop skin replaces the creature's time-of-day tint so the
-    // skin reads consistently all day; soil/ground keep their lighting.
-    final skin = widget.streak?.equippedSkin;
-    final skinTint = Cosmetic.parseTint(skin);
-    if (skinTint != null) {
-      final amount =
-          ((skin?['amount'] as num?)?.toDouble() ?? 0.3).clamp(0.0, 1.0);
-      palette = _StreakScenePalette(
-        creatureFilter: ColorFilter.mode(
-          Color.lerp(Colors.white, skinTint, amount)!,
-          BlendMode.modulate,
-        ),
-        soilFilter: palette.soilFilter,
-        groundBackFilter: palette.groundBackFilter,
-        groundFrontFilter: palette.groundFrontFilter,
-      );
-    }
     final lightText = _streakUsesLightText(iconCode, now);
     final night = iconCode.endsWith('n') || now.hour < 5 || now.hour >= 21;
     final raining = _streakUsesRain(iconCode);
+    var palette = _StreakScenePalette.forTime(now);
+    if (raining && !night) {
+      palette = _StreakScenePalette.rainDay();
+    }
     final rainIntensity = widget.weather?.rainIntensity ?? 1.0;
     final titleColor = lightText ? Colors.white : AppColors.textPrimary;
     final secondaryColor = lightText
         ? Colors.white.withValues(alpha: 0.84)
         : AppColors.textSecondary;
-    final mutedColor = lightText
-        ? Colors.white.withValues(alpha: 0.68)
-        : AppColors.textMuted;
 
     return ClipRect(
       child: Container(
@@ -838,7 +898,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                         weekStrip: _buildWeekStrip(
                           lit,
                           frozen,
-                          mutedColor,
+                          secondaryColor,
                           titleColor,
                         ),
                       ),
@@ -855,7 +915,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       weekStrip: _buildWeekStrip(
                         lit,
                         frozen,
-                        mutedColor,
+                        secondaryColor,
                         titleColor,
                       ),
                     ),
@@ -930,38 +990,44 @@ class _StreakRainPainter extends CustomPainter {
       oldDelegate.intensity != intensity;
 }
 
-/// Current week: a day initial above a circle. Each cared-for day is a blue
-/// water drop; consecutive cared-for days are joined by a blue bar. Days in
-/// a save-shielded gap render as ice dots.
+/// Rolling 7-day strip centered on today (index 3): a two-letter weekday
+/// label above a circle. Each cared-for day is a blue water drop; consecutive
+/// cared-for days are joined by a blue bar. Days in a save-shielded gap render
+/// as ice dots.
 class _WeekStrip extends StatelessWidget {
   final List<bool> lit;
   final List<bool> frozen;
   final Color labelColor;
   final Color todayLabelColor;
 
+  /// First day of the 7-day window (today − 3), so today lands at index 3.
+  /// Derived from the server date by the parent so labels and lit dots stay
+  /// aligned with the care days.
+  final DateTime start;
+
   /// 0–1 glow strength for today's uncared dot (0 = no pulse).
   final double todayPulse;
 
   const _WeekStrip({
     required this.lit,
+    required this.start,
     this.frozen = const [false, false, false, false, false, false, false],
     this.labelColor = AppColors.textSecondary,
     this.todayLabelColor = AppColors.textPrimary,
     this.todayPulse = 0,
   });
 
-  // Monday-first initials.
-  static const _initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  // Two-letter weekday labels, indexed by DateTime.weekday - 1 (Mon = 0).
+  static const _initials = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final monday = today.subtract(Duration(days: today.weekday - 1));
+    // Rolling window with today centered (index 3), Duolingo-style: the
+    // three days just lived on the left, the three ahead on the right.
     return Row(
       children: List.generate(7, (i) {
-        final day = monday.add(Duration(days: i));
-        final isToday = day == today;
+        final day = start.add(Duration(days: i));
+        final isToday = i == 3;
         final litHere = lit[i];
         // Frozen days count as part of the chain, so connectors span them.
         bool inChain(int j) => lit[j] || frozen[j];
@@ -970,7 +1036,7 @@ class _WeekStrip extends StatelessWidget {
         final litRight = i < 6 && chainHere && inChain(i + 1);
         return Expanded(
           child: _DayCell(
-            label: _initials[i],
+            label: _initials[day.weekday - 1],
             index: i,
             lit: litHere,
             frozen: frozen[i],
@@ -1035,8 +1101,11 @@ class _DayCell extends StatelessWidget {
           label,
           style: TextStyle(
             color: textColor,
-            fontSize: 10.5,
-            fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+            fontSize: 11.5,
+            // Heavier weight + wider tracking reads clearly against the sky;
+            // today stays boldest as the strip's anchor.
+            fontWeight: isToday ? FontWeight.w900 : FontWeight.w800,
+            letterSpacing: 0.3,
             shadows: textColor.computeLuminance() > 0.65
                 ? _kStreakTextShadow
                 : null,
@@ -1061,43 +1130,43 @@ class _DayCell extends StatelessWidget {
                 builder: (context, s, child) =>
                     Transform.scale(scale: s, child: child),
                 child: Container(
-                width: _d,
-                height: _d,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: lit ? _kWater : (frozen ? _iceFill : Colors.white),
-                  border: Border.all(
-                    color: lit
-                        ? _kWater
-                        : frozen
-                            ? _iceFill
-                            : (isToday ? _kWater : AppColors.cardBorder),
-                    width: isToday && !lit ? 2 : 0.8,
-                  ),
-                  // Soft breathing glow inviting today's first care action.
-                  boxShadow: (isToday && !lit && pulse > 0)
-                      ? [
-                          BoxShadow(
-                            color: _kWater.withValues(alpha: 0.45 * pulse),
-                            blurRadius: 6 + 6 * pulse,
-                            spreadRadius: 1 + 1.5 * pulse,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: lit
-                    ? const Icon(
-                        Icons.water_drop_rounded,
-                        color: Colors.white,
-                        size: 15,
-                      )
-                    : frozen
-                        ? const Icon(
-                            Icons.ac_unit_rounded,
-                            color: Colors.white,
-                            size: 14,
-                          )
+                  width: _d,
+                  height: _d,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: lit ? _kWater : (frozen ? _iceFill : Colors.white),
+                    border: Border.all(
+                      color: lit
+                          ? _kWater
+                          : frozen
+                          ? _iceFill
+                          : (isToday ? _kWater : AppColors.cardBorder),
+                      width: isToday && !lit ? 2 : 0.8,
+                    ),
+                    // Soft breathing glow inviting today's first care action.
+                    boxShadow: (isToday && !lit && pulse > 0)
+                        ? [
+                            BoxShadow(
+                              color: _kWater.withValues(alpha: 0.45 * pulse),
+                              blurRadius: 6 + 6 * pulse,
+                              spreadRadius: 1 + 1.5 * pulse,
+                            ),
+                          ]
                         : null,
+                  ),
+                  child: lit
+                      ? const Icon(
+                          Icons.water_drop_rounded,
+                          color: Colors.white,
+                          size: 15,
+                        )
+                      : frozen
+                      ? const Icon(
+                          Icons.ac_unit_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        )
+                      : null,
                 ),
               ),
             ],
@@ -1156,9 +1225,11 @@ class _FreezeChip extends StatelessWidget {
   }
 }
 
-/// XP-style progress bar to the next growth stage: an animated fill with a
-/// periodic shine sweep, labelled "n / m days to `stage`" (or a bloomed
-/// callout at max stage). [shine] is a repeating 0–1 driver.
+/// Progress bar to the next growth stage: an animated fill with a periodic
+/// shine sweep, labelled "streak / threshold days to `stage`" (or a bloomed
+/// callout at max stage). Counts total streak days — not days within the
+/// current stage — so evolving never resets it to empty. [shine] is a
+/// repeating 0–1 driver.
 class _StageProgress extends StatelessWidget {
   final int streak;
   final PlantStage stage;
@@ -1178,8 +1249,11 @@ class _StageProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final next = PlantStage.next(stage);
-    final done = next == null ? 1 : streak - stage.minDays;
-    final span = next == null ? 1 : next.minDays - stage.minDays;
+    // Cumulative count (total streak days vs the next stage's threshold), so
+    // the bar never snaps back to empty on the day the creature evolves —
+    // `done` always matches the headline day count.
+    final done = next == null ? 1 : streak;
+    final span = next == null ? 1 : next.minDays;
     final frac = (done / span).clamp(0.0, 1.0);
     final label = next == null
         ? 'Fully bloomed!'
@@ -1223,8 +1297,10 @@ class _StageProgress extends StatelessWidget {
                     // for the remainder of the pulse cycle.
                     child: frac > 0.05 && shine < 0.45
                         ? Align(
-                            alignment:
-                                Alignment(-1.3 + 2.6 * (shine / 0.45), 0),
+                            alignment: Alignment(
+                              -1.3 + 2.6 * (shine / 0.45),
+                              0,
+                            ),
                             child: Container(
                               width: 12,
                               decoration: BoxDecoration(
@@ -1364,66 +1440,72 @@ class _TaskCardState extends State<_TaskCard> {
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
         child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 12,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: activity.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cardBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 12,
+                offset: Offset(0, 2),
               ),
-              child: Icon(activity.icon, color: activity.color, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    activity.label,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$count ${count == 1 ? 'plant' : 'plants'} need attention',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: activity.color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(activity.icon, color: activity.color, size: 24),
               ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: activity.color,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '$count',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      activity.label,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$count ${count == 1 ? 'plant' : 'plants'} need attention',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
-          ],
-        ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: activity.color,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textMuted,
+              ),
+            ],
+          ),
         ),
       ),
     );

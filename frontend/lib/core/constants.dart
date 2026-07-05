@@ -9,12 +9,14 @@ class AppConstants {
   static const String registerUrl = '$baseUrl/auth/register/';
   static const String logoutUrl = '$baseUrl/auth/logout/';
   static const String changePasswordUrl = '$baseUrl/auth/change-password/';
+  static const String deleteAccountUrl = '$baseUrl/auth/delete-account/';
 
   // Plant endpoints
   static const String plantsUrl = '$baseUrl/plants/';
   static const String speciesUrl = '$baseUrl/species/';
   static const String locationsUrl = '$baseUrl/locations/';
   static const String streakUrl = '$baseUrl/streak/';
+  static const String streakCalendarUrl = '$baseUrl/streak/calendar/';
   static const String weeklyChallengeUrl = '$baseUrl/weekly-challenge/';
   static const String activityUrl = '$baseUrl/activity/';
   static const String profileUrl = '$baseUrl/profile/';

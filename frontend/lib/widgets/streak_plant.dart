@@ -4,17 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/plant_stage.dart';
+import 'pot.dart';
 import 'scene_effects.dart';
 
 /// Layered, per-part animated streak plant for the Tasks page.
 ///
 /// Each growth stage is composed from separate SVG layers in
-/// `assets/plant_stages/` so they can move independently:
+/// `assets/plant_stages/` so they can move independently, planted in a
+/// code-drawn pot (see `pot.dart`; the style is a shop cosmetic):
 ///
-///   soil_back (static) → sprout_stem → `stage` body (+head leaves, face)
-///   → `stage_sideL` / `stage_sideR` leaves → soil_front (static)
+///   pot back/soil (static) → sprout_stem → `stage` body (+head leaves,
+///   face) → `stage_sideL` / `stage_sideR` leaves → pot front (static)
 ///
-/// The soil never moves. The body does a gentle idle sway + breathe that
+/// The pot never moves. The body does a gentle idle sway + breathe that
 /// *rests* between bursts (a cooldown, so it isn't constantly wobbling), the
 /// side leaves flutter up/down pivoting on their base near the soil, and the
 /// sprout's single leaf sways on its stem. `seed` is fully still; `sprout`
@@ -25,7 +27,7 @@ import 'scene_effects.dart';
 
 const String _base = 'assets/plant_stages';
 
-/// Pivot at the base of the creature (hidden behind the front soil lip), so
+/// Pivot at the base of the creature (hidden behind the pot's front rim), so
 /// the sway/breathe rotates the visible body while the root stays planted.
 const Alignment _basePivot = Alignment(0, 0.8);
 
@@ -65,11 +67,28 @@ Widget _svg(String name, double size, {ColorFilter? colorFilter}) =>
       colorFilter: colorFilter,
     );
 
-/// Static soil layers (shared by every stage).
-Widget streakSoilBack(double size, {ColorFilter? colorFilter}) =>
-    _svg('soil_back', size, colorFilter: colorFilter);
-Widget streakSoilFront(double size, {ColorFilter? colorFilter}) =>
-    _svg('soil_front', size, colorFilter: colorFilter);
+/// Static pot layers (shared by every stage). The optional [colorFilter] is
+/// the scene's time-of-day soil tint, applied to the whole painted layer.
+Widget streakPotBack(
+  double size,
+  PotStyle style, {
+  ColorFilter? colorFilter,
+}) =>
+    _potLayer(PotBackPainter(style), size, colorFilter);
+Widget streakPotFront(
+  double size,
+  PotStyle style, {
+  ColorFilter? colorFilter,
+}) =>
+    _potLayer(PotFrontPainter(style), size, colorFilter);
+
+Widget _potLayer(CustomPainter painter, double size, ColorFilter? filter) {
+  final paint = CustomPaint(
+    size: Size(size, size),
+    painter: painter,
+  );
+  return filter == null ? paint : ColorFiltered(colorFilter: filter, child: paint);
+}
 
 /// Builds just the creature (no soil) for [stage] at [size], applying the
 /// given animation values. Pass `sway: 0, leaf: 0, breathe: 1, blink: 0` for a
@@ -126,7 +145,7 @@ Widget streakCreatureLayers({
   }
   layers.add(body);
   // Side leaves overlap the front of the body, fluttering up/down on their
-  // base (opposite phase left vs right). Their roots tuck behind the soil lip.
+  // base (opposite phase left vs right). Their roots tuck behind the pot rim.
   if (rig.sides) {
     layers.add(
       Transform.rotate(
@@ -154,18 +173,20 @@ Widget streakCreatureLayers({
   );
 }
 
-/// Animated idle streak plant (soil + creature + soil), self-driving.
+/// Animated idle streak plant (pot + creature + pot), self-driving.
 class StreakPlant extends StatefulWidget {
   final PlantStage stage;
   final double size;
   final ColorFilter? colorFilter;
   final ColorFilter? soilColorFilter;
+  final PotStyle potStyle;
   const StreakPlant({
     super.key,
     required this.stage,
     required this.size,
     this.colorFilter,
     this.soilColorFilter,
+    this.potStyle = PotStyle.terracotta,
   });
 
   @override
@@ -320,8 +341,9 @@ class _StreakPlantState extends State<StreakPlant>
               clipBehavior: Clip.none,
               children: [
                 Positioned.fill(
-                  child: streakSoilBack(
+                  child: streakPotBack(
                     size,
+                    widget.potStyle,
                     colorFilter: widget.soilColorFilter,
                   ),
                 ),
@@ -338,8 +360,9 @@ class _StreakPlantState extends State<StreakPlant>
                   ),
                 ),
                 Positioned.fill(
-                  child: streakSoilFront(
+                  child: streakPotFront(
                     size,
+                    widget.potStyle,
                     colorFilter: widget.soilColorFilter,
                   ),
                 ),

@@ -56,8 +56,12 @@ class WeatherSceneArt extends StatefulWidget {
   static String skyAsset(String iconCode, [DateTime? when]) {
     final now = when ?? DateTime.now();
     final isNight = iconCode.endsWith('n');
+    final group = iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
     final h = now.hour;
     if (isNight || h < 5 || h >= 21) return '$_base/${_A.skyNight}';
+    if (group == '09' || group == '10' || group == '11') {
+      return '$_base/${_A.skyRain}';
+    }
     if (h < 8) return '$_base/${_A.skyDawn}';
     if (h < 17) return '$_base/${_A.skyDay}';
     return '$_base/${_A.skySunset}';
@@ -134,14 +138,17 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                         child: AnimatedBuilder(
                           animation: _controller,
                           builder: (context, child) => Opacity(
-                            opacity: 0.72 +
+                            opacity:
+                                0.72 +
                                 0.28 *
                                     (0.5 +
                                         0.5 *
-                                            math.sin(_controller.value *
-                                                2 *
-                                                math.pi *
-                                                5)),
+                                            math.sin(
+                                              _controller.value *
+                                                  2 *
+                                                  math.pi *
+                                                  5,
+                                            )),
                             child: child,
                           ),
                           child: _sceneAsset(
@@ -400,6 +407,7 @@ class _SceneConfig {
 class _A {
   static const skyDawn = 'sky_dawn.svg';
   static const skyDay = 'sky_day.svg';
+  static const skyRain = 'sky_rain.svg';
   static const skySunset = 'sky_sunset.svg';
   static const skyNight = 'sky_night.svg';
   static const sun = 'sun.svg';

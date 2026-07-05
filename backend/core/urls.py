@@ -7,6 +7,7 @@ urlpatterns = [
     path('auth/login/', views.login),
     path('auth/logout/', views.logout),
     path('auth/change-password/', views.change_password),
+    path('auth/delete-account/', views.delete_account),
 
     path('plants/', views.plant_list),
     path('plants/<int:pk>/', views.plant_detail),
@@ -18,6 +19,7 @@ urlpatterns = [
     path('species/', views.species_list),
     path('species/<int:pk>/', views.species_detail),
     path('streak/', views.streak),
+    path('streak/calendar/', views.streak_calendar),
     path('weekly-challenge/', views.weekly_challenge),
     path('activity/', views.activity),
     path('profile/', views.profile),

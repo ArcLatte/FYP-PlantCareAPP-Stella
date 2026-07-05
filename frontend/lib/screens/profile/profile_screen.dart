@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../models/achievement.dart';
-import '../../models/cosmetic.dart';
 import '../../models/medal_series.dart';
 import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
@@ -14,13 +13,14 @@ import '../../models/user_profile.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/medal.dart';
+import '../../widgets/pot.dart';
 import '../../widgets/profile_card_scenes.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/streak_plant.dart';
 import '../../widgets/tier_frame.dart';
 
-const String _kCardThemeKey = 'profile_card_theme';
 const String _kMedalSlotsKey = 'medal_case_slots';
+const double _kShellNavClearance = 112;
 
 /// Honeycomb display case rows (top → bottom): a hex-gem silhouette with
 /// the widest band through the middle. Total = backend PIN_CAP.
@@ -52,7 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     _prefs ??= await SharedPreferences.getInstance();
-    _cardThemeId = _prefs!.getString(_kCardThemeKey) ?? 'auto';
+    _cardThemeId = _prefs!.getString(kCardThemePrefKey) ?? 'auto';
 
     // Load endpoints independently so one failure can't hide the others.
     UserProfile? profile;
@@ -76,8 +76,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       error = error == null ? 'achievements: $e' : '$error; achievements: $e';
     }
-    // Streak feeds the hero-card companion (stage + equipped skin) — purely
-    // decorative, so a failure here is silent.
+    // Namecards bought in the Seed Shop unlock in the card picker alongside
+    // the achievement ones. Decorative — a failure here is silent.
+    try {
+      final shop = await ApiService.getShop();
+      namecards = {
+        ...namecards,
+        for (final c in shop.items)
+          if (c.owned && c.isNamecard && c.themeId != null) c.themeId!,
+      };
+    } catch (_) {}
+    // Streak feeds the hero-card companion (stage + equipped pot) —
+    // purely decorative, so a failure here is silent.
     Streak? streak;
     try {
       streak = await ApiService.getStreak();
@@ -147,13 +157,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final displayedSeries = {
       for (final code in _slots.whereType<String>()) _seriesForCode(code)?.id,
     };
-    final available = _series
-        .where((s) =>
-            s.anyUnlocked &&
-            s.current != null &&
-            !displayedSeries.contains(s.id))
-        .toList()
-      ..sort((a, b) => b.metal.index.compareTo(a.metal.index));
+    final available =
+        _series
+            .where(
+              (s) =>
+                  s.anyUnlocked &&
+                  s.current != null &&
+                  !displayedSeries.contains(s.id),
+            )
+            .toList()
+          ..sort((a, b) => b.metal.index.compareTo(a.metal.index));
 
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -189,8 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _load(); // re-sync pinned state
     } catch (e) {
       if (!mounted) return;
-      AppSnackBar.error(
-          context, e.toString().replaceFirst('Exception: ', ''));
+      AppSnackBar.error(context, e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -209,14 +221,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final tierIdx = TierFrame.tierIndex(profile.tier);
 
     Widget grid(List<Widget> tiles) => GridView.count(
-          crossAxisCount: 2,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.9,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: tiles,
-        );
+      crossAxisCount: 2,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.9,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: tiles,
+    );
 
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -242,8 +254,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Rank up tiers for scenes · complete achievement series '
-                  'for namecards.',
+                  'Rank up tiers for scenes · earn namecards from '
+                  'achievement series or the Seed Shop.',
                   style: Theme.of(sheetCtx).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 14),
@@ -292,6 +304,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               selected: _cardThemeId == t.id,
                             ),
                         ]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'SEED SHOP NAMECARDS',
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        grid([
+                          for (final t in kShopNamecardThemes)
+                            _ThemeTile(
+                              id: t.id,
+                              theme: t,
+                              label: t.name,
+                              locked: !_namecards.contains(t.id),
+                              lockLabel: 'Find it in the Seed Shop',
+                              selected: _cardThemeId == t.id,
+                            ),
+                        ]),
                       ],
                     ),
                   ),
@@ -303,12 +337,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (picked == null) return;
-    await _prefs?.setString(_kCardThemeKey, picked);
+    await _prefs?.setString(kCardThemePrefKey, picked);
     if (mounted) setState(() => _cardThemeId = picked);
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding =
+        MediaQuery.paddingOf(context).bottom + _kShellNavClearance;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
@@ -316,7 +353,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_rounded),
-            onPressed: () => context.push('/profile/settings'),
+            onPressed: () async {
+              await context.push('/profile/settings');
+              _load(); // avatar / username may have changed
+            },
           ),
         ],
       ),
@@ -327,7 +367,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               color: AppColors.primary,
               backgroundColor: AppColors.surface,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding),
                 children: [
                   if (_profile != null) ...[
                     _CompanionCard(
@@ -373,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 // ─── Companion hero card ───────────────────────────────────────
 
 /// Gacha-style identity card: an illustrated tier scene behind a framed
-/// avatar + level badge, the streak companion (wearing its equipped skin)
+/// avatar + level badge, the streak companion (wearing its equipped pot)
 /// standing on the painted hill, an animated XP bar with a shine sweep, and
 /// a "next tier" goal line. The palette button opens the background picker.
 class _CompanionCard extends StatefulWidget {
@@ -430,17 +470,14 @@ class _CompanionCardState extends State<_CompanionCard>
     return null;
   }
 
-  ColorFilter? get _skinFilter {
-    final skin = widget.streak?.equippedSkin;
-    final tint = Cosmetic.parseTint(skin);
-    if (tint == null) return null;
-    final amount =
-        ((skin?['amount'] as num?)?.toDouble() ?? 0.3).clamp(0.0, 1.0);
-    return ColorFilter.mode(
-      Color.lerp(Colors.white, tint, amount)!,
-      BlendMode.modulate,
-    );
-  }
+  static Widget _avatarInitial(UserProfile profile) => Text(
+    profile.username.isEmpty ? '?' : profile.username[0].toUpperCase(),
+    style: const TextStyle(
+      color: Colors.white,
+      fontSize: 24,
+      fontWeight: FontWeight.w800,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -469,7 +506,7 @@ class _CompanionCardState extends State<_CompanionCard>
               child: StreakPlant(
                 stage: stage,
                 size: 104,
-                colorFilter: _skinFilter,
+                potStyle: PotStyle.fromPayload(widget.streak?.equippedPot),
               ),
             ),
             Positioned(
@@ -512,16 +549,17 @@ class _CompanionCardState extends State<_CompanionCard>
                                 color: Colors.white24,
                                 shape: BoxShape.circle,
                               ),
-                              child: Text(
-                                profile.username.isEmpty
-                                    ? '?'
-                                    : profile.username[0].toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: profile.avatarUrl != null
+                                  ? Image.network(
+                                      profile.avatarUrl!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      errorBuilder: (_, _, _) =>
+                                          _avatarInitial(profile),
+                                    )
+                                  : _avatarInitial(profile),
                             ),
                           ),
                           Positioned(
@@ -529,12 +567,16 @@ class _CompanionCardState extends State<_CompanionCard>
                             bottom: -2,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2.5),
+                                horizontal: 7,
+                                vertical: 2.5,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(color: tierColor, width: 1.5),
+                                border: Border.all(
+                                  color: tierColor,
+                                  width: 1.5,
+                                ),
                               ),
                               child: Text(
                                 'Lv ${profile.level}',
@@ -572,7 +614,9 @@ class _CompanionCardState extends State<_CompanionCard>
                             const SizedBox(height: 5),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.20),
                                 borderRadius: BorderRadius.circular(20),
@@ -704,9 +748,7 @@ class _XpBar extends StatelessWidget {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.white, accent],
-                  ),
+                  gradient: LinearGradient(colors: [Colors.white, accent]),
                   borderRadius: BorderRadius.circular(_h),
                 ),
                 child: fraction > 0.05 && shine < 0.4
@@ -827,8 +869,7 @@ class _ThemeTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                         child: Text(
                           lockLabel ?? 'Reach ${theme.tierName}',
                           textAlign: TextAlign.center,
@@ -1039,7 +1080,7 @@ class _ShopRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    'Spend seeds on skins for your companion',
+                    'Spend seeds on pots and namecards',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -1152,17 +1193,19 @@ class _MedalCase extends StatelessWidget {
                 final cx = w / 2 + (j - (n - 1) / 2) * hexW;
                 final index = slot++;
                 final code = slots[index];
-                cells.add(Positioned(
-                  left: cx - hexW / 2,
-                  top: cy - hexR,
-                  width: hexW,
-                  height: hexR * 2,
-                  child: _HexSlot(
-                    series: code == null ? null : seriesForCode(code),
-                    radius: hexR,
-                    onTap: () => onSlotTap(index),
+                cells.add(
+                  Positioned(
+                    left: cx - hexW / 2,
+                    top: cy - hexR,
+                    width: hexW,
+                    height: hexR * 2,
+                    child: _HexSlot(
+                      series: code == null ? null : seriesForCode(code),
+                      radius: hexR,
+                      onTap: () => onSlotTap(index),
+                    ),
                   ),
-                ));
+                );
               }
             }
             return SizedBox(
@@ -1256,8 +1299,7 @@ class _HexCellPainter extends CustomPainter {
               tint!.withValues(alpha: 0.20),
               tint!.withValues(alpha: 0.04),
             ],
-          ).createShader(
-              Rect.fromCircle(center: Offset(cx, cy), radius: r)),
+          ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: r)),
       );
     } else {
       canvas.drawPath(
@@ -1270,8 +1312,9 @@ class _HexCellPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.6
-        ..color = const Color(0xFFD9B44A)
-            .withValues(alpha: tint != null ? 0.75 : 0.40),
+        ..color = const Color(
+          0xFFD9B44A,
+        ).withValues(alpha: tint != null ? 0.75 : 0.40),
     );
   }
 
@@ -1329,7 +1372,9 @@ class _SlotPickerSheet extends StatelessWidget {
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.background,
                     borderRadius: BorderRadius.circular(14),
@@ -1364,11 +1409,11 @@ class _SlotPickerSheet extends StatelessWidget {
                         ),
                       ),
                       TextButton.icon(
-                        onPressed: () =>
-                            Navigator.pop(context, kRemove),
+                        onPressed: () => Navigator.pop(context, kRemove),
                         icon: const Icon(
-                            Icons.remove_circle_outline_rounded,
-                            size: 16),
+                          Icons.remove_circle_outline_rounded,
+                          size: 16,
+                        ),
                         label: const Text('Remove'),
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.error,
@@ -1418,8 +1463,7 @@ class _SlotPickerSheet extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: AppColors.background,
                               borderRadius: BorderRadius.circular(14),
-                              border:
-                                  Border.all(color: AppColors.cardBorder),
+                              border: Border.all(color: AppColors.cardBorder),
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1464,9 +1508,12 @@ class _ProfileSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding =
+        MediaQuery.paddingOf(context).bottom + _kShellNavClearance;
+
     return ListView(
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding),
       children: const [
         SkeletonBox(height: 204, radius: 24),
         SizedBox(height: 16),

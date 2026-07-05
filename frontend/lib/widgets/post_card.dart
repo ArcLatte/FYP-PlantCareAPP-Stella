@@ -107,8 +107,8 @@ class _AuthorRow extends StatelessWidget {
   }
 }
 
-/// Tier-framed circular avatar showing the author's initial. Reused by the
-/// feed and post detail.
+/// Tier-framed circular avatar: the author's profile picture when set,
+/// otherwise their initial. Reused by the feed and post detail.
 class PostAvatar extends StatelessWidget {
   final PostAuthor author;
   final double size;
@@ -118,6 +118,7 @@ class PostAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = TierFrame.tierColor(author.tier);
+    final avatarUrl = author.avatarUrl;
     return TierFrame(
       tier: author.tier,
       size: size,
@@ -127,17 +128,28 @@ class PostAvatar extends StatelessWidget {
           color: color.withValues(alpha: 0.18),
         ),
         alignment: Alignment.center,
-        child: Text(
-          author.initial,
-          style: TextStyle(
-            color: color,
-            fontSize: size * 0.36,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        clipBehavior: Clip.antiAlias,
+        child: avatarUrl != null
+            ? Image.network(
+                avatarUrl,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (_, _, _) => _initial(color),
+              )
+            : _initial(color),
       ),
     );
   }
+
+  Widget _initial(Color color) => Text(
+        author.initial,
+        style: TextStyle(
+          color: color,
+          fontSize: size * 0.36,
+          fontWeight: FontWeight.w700,
+        ),
+      );
 }
 
 class _CommunityChip extends StatelessWidget {

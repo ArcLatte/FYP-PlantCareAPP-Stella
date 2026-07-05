@@ -40,6 +40,38 @@ class ApiService {
 
   // ─── Helpers ───────────────────────────────────────────────
 
+  static String _errorMessageFromResponse(
+    http.Response response,
+    String fallback,
+  ) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map) {
+        for (final key in ['error', 'detail', 'message', 'non_field_errors']) {
+          final message = _stringFromErrorValue(decoded[key]);
+          if (message != null) return message;
+        }
+        for (final value in decoded.values) {
+          final message = _stringFromErrorValue(value);
+          if (message != null) return message;
+        }
+      }
+      final message = _stringFromErrorValue(decoded);
+      if (message != null) return message;
+    } catch (_) {
+      // Fall through to the endpoint-specific fallback for non-JSON errors.
+    }
+    return fallback;
+  }
+
+  static String? _stringFromErrorValue(Object? value) {
+    if (value is String && value.trim().isNotEmpty) return value;
+    if (value is List && value.isNotEmpty) {
+      return _stringFromErrorValue(value.first);
+    }
+    return null;
+  }
+
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(AppConstants.tokenKey);
@@ -88,12 +120,14 @@ class ApiService {
       _captureXp(body);
       return User.fromJson(body);
     }
-    throw Exception(jsonDecode(response.body)['non_field_errors']?[0] ??
-        'Login failed');
+    throw Exception(_errorMessageFromResponse(response, 'Login failed'));
   }
 
   static Future<User> register(
-      String username, String email, String password) async {
+    String username,
+    String email,
+    String password,
+  ) async {
     final response = await http.post(
       Uri.parse(AppConstants.registerUrl),
       headers: {'Content-Type': 'application/json'},
@@ -106,8 +140,7 @@ class ApiService {
     if (response.statusCode == 201) {
       return User.fromJson(jsonDecode(response.body));
     }
-    final errors = jsonDecode(response.body);
-    throw Exception(errors.values.first[0] ?? 'Registration failed');
+    throw Exception(_errorMessageFromResponse(response, 'Registration failed'));
   }
 
   static Future<void> logout() async {
@@ -119,7 +152,9 @@ class ApiService {
   }
 
   static Future<void> changePassword(
-      String oldPassword, String newPassword) async {
+    String oldPassword,
+    String newPassword,
+  ) async {
     final headers = await _authHeaders();
     final response = await http.post(
       Uri.parse(AppConstants.changePasswordUrl),
@@ -227,12 +262,10 @@ class ApiService {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (location != null && location.isNotEmpty) 'location': location,
         if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
-        if (lastWatered != null)
-          'last_watered': lastWatered.toIso8601String(),
+        if (lastWatered != null) 'last_watered': lastWatered.toIso8601String(),
         if (lastFertilized != null)
           'last_fertilized': lastFertilized.toIso8601String(),
-        if (lastMisted != null)
-          'last_misted': lastMisted.toIso8601String(),
+        if (lastMisted != null) 'last_misted': lastMisted.toIso8601String(),
       }),
     );
     if (response.statusCode == 201) {
@@ -272,8 +305,7 @@ class ApiService {
       request.headers['Authorization'] = 'Token $token';
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
-      request.files
-          .add(await http.MultipartFile.fromPath('photo', photo.path));
+      request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
       response = await http.Response.fromStream(await request.send());
     } else {
       response = await http.post(
@@ -303,8 +335,7 @@ class ApiService {
     File? photo,
     bool removePhoto = false,
   }) async {
-    final url =
-        Uri.parse('${AppConstants.plantsUrl}$plantId/note/$logId/');
+    final url = Uri.parse('${AppConstants.plantsUrl}$plantId/note/$logId/');
     final http.Response response;
     if (photo != null) {
       final token = await _getToken();
@@ -312,8 +343,7 @@ class ApiService {
       request.headers['Authorization'] = 'Token $token';
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
-      request.files
-          .add(await http.MultipartFile.fromPath('photo', photo.path));
+      request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
       response = await http.Response.fromStream(await request.send());
     } else {
       response = await http.put(
@@ -360,7 +390,9 @@ class ApiService {
       _captureXp(body);
       return Plant.fromJson(body);
     }
-    throw Exception('Failed to $activity plant (status ${response.statusCode})');
+    throw Exception(
+      'Failed to $activity plant (status ${response.statusCode})',
+    );
   }
 
   static Future<Streak> getStreak() async {
@@ -369,6 +401,14 @@ class ApiService {
       return Streak.fromJson(jsonDecode(response.body));
     }
     throw Exception('Failed to load streak');
+  }
+
+  static Future<StreakCalendar> getStreakCalendar() async {
+    final response = await _authGet(AppConstants.streakCalendarUrl);
+    if (response.statusCode == 200) {
+      return StreakCalendar.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Failed to load streak calendar');
   }
 
   static Future<WeeklyChallenge> getWeeklyChallenge() async {
@@ -399,6 +439,73 @@ class ApiService {
     throw Exception('Failed to load profile');
   }
 
+  /// Update any subset of account fields (Settings screen). If [avatar] is
+  /// provided the request is multipart so the image rides along; pass
+  /// [removeAvatar] to clear the current picture. Returns the fresh profile.
+  static Future<UserProfile> updateProfile({
+    String? username,
+    String? email,
+    File? avatar,
+    bool removeAvatar = false,
+  }) async {
+    final url = Uri.parse(AppConstants.profileUrl);
+    final http.Response response;
+    if (avatar != null) {
+      final token = await _getToken();
+      final request = http.MultipartRequest('PATCH', url);
+      request.headers['Authorization'] = 'Token $token';
+      if (username != null) request.fields['username'] = username;
+      if (email != null) request.fields['email'] = email;
+      request.files.add(
+        await http.MultipartFile.fromPath('avatar', avatar.path),
+      );
+      response = await http.Response.fromStream(await request.send());
+    } else {
+      response = await http.patch(
+        url,
+        headers: await _authHeaders(),
+        body: jsonEncode({
+          'username': ?username,
+          'email': ?email,
+          if (removeAvatar) 'remove_avatar': true,
+        }),
+      );
+    }
+    if (response.statusCode == 200) {
+      final profile = UserProfile.fromJson(jsonDecode(response.body));
+      // Keep the cached username in sync — the feed compares against it to
+      // spot the viewer's own posts.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConstants.usernameKey, profile.username);
+      return profile;
+    }
+    throw Exception(
+      _errorMessageFromResponse(response, 'Failed to update profile'),
+    );
+  }
+
+  /// Permanently delete the account (password-confirmed), then clear local
+  /// credentials so the router guard bounces to /login.
+  static Future<void> deleteAccount(String password) async {
+    final headers = await _authHeaders();
+    final response = await http.post(
+      Uri.parse(AppConstants.deleteAccountUrl),
+      headers: headers,
+      body: jsonEncode({'password': password}),
+    );
+    if (response.statusCode != 200) {
+      final body = jsonDecode(response.body);
+      throw Exception(
+        (body is Map && body['error'] is String)
+            ? body['error'] as String
+            : 'Failed to delete account',
+      );
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.tokenKey);
+    await prefs.remove(AppConstants.usernameKey);
+  }
+
   static Future<List<Achievement>> getAchievements() async {
     final response = await _authGet(AppConstants.achievementsUrl);
     if (response.statusCode == 200) {
@@ -419,8 +526,7 @@ class ApiService {
     throw Exception('Failed to load shop');
   }
 
-  static Future<ShopState> buyCosmetic(String code) =>
-      _shopAction(code, 'buy');
+  static Future<ShopState> buyCosmetic(String code) => _shopAction(code, 'buy');
 
   /// Equip toggles: equipping the currently-equipped item unequips it.
   static Future<ShopState> equipCosmetic(String code) =>
@@ -454,7 +560,10 @@ class ApiService {
   static Future<Achievement> unpinAchievement(String code) =>
       _togglePin(code, pin: false);
 
-  static Future<Achievement> _togglePin(String code, {required bool pin}) async {
+  static Future<Achievement> _togglePin(
+    String code, {
+    required bool pin,
+  }) async {
     final headers = await _authHeaders();
     final action = pin ? 'pin' : 'unpin';
     final response = await http.post(
@@ -499,9 +608,7 @@ class ApiService {
       if (speciesId != null) {
         request.fields['species'] = speciesId.toString();
       }
-      request.files.add(
-        await http.MultipartFile.fromPath('photo', photo.path),
-      );
+      request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
       if (response.statusCode == 200) {
@@ -549,10 +656,9 @@ class ApiService {
     );
     request.headers['Authorization'] = 'Token $token';
     request.fields['plant_id'] = plantId.toString();
-    request.files.add(await http.MultipartFile.fromPath(
-      'image',
-      imageFile.path,
-    ));
+    request.files.add(
+      await http.MultipartFile.fromPath('image', imageFile.path),
+    );
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     if (response.statusCode == 201) {
@@ -564,7 +670,9 @@ class ApiService {
   }
 
   static Future<ScanResult> confirmDisease(
-      int scanId, String diseaseLabel) async {
+    int scanId,
+    String diseaseLabel,
+  ) async {
     final headers = await _authHeaders();
     final response = await http.put(
       Uri.parse('${AppConstants.scansUrl}$scanId/confirm/'),
@@ -590,8 +698,9 @@ class ApiService {
   /// Per-plant unified history: care events (water/fertilize/mist) merged with
   /// scans, reverse-chronological. Same payload shape as [getActivity].
   static Future<List<ActivityEvent>> getPlantActivity(int plantId) async {
-    final response =
-        await _authGet('${AppConstants.plantsUrl}$plantId/activity/');
+    final response = await _authGet(
+      '${AppConstants.plantsUrl}$plantId/activity/',
+    );
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List)
           .map((e) => ActivityEvent.fromJson(e))

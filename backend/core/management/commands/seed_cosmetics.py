@@ -3,10 +3,15 @@ rows by `code` rather than duplicating (same convention as the other seeds).
 
 Run: `python manage.py seed_cosmetics`
 
-v1 catalog is creature skins only — pure color tints applied to the streak
-companion through the ColorFilter channel it already has, so no art assets
-are needed. Keep `payload.amount` subtle (≤ 0.5) or the creature's own
-colors wash out.
+Catalog kinds (all code-drawn client-side, no art assets):
+- Creature skins: pure color tints applied to the streak companion through
+  the ColorFilter channel it already has. Keep `payload.amount` subtle
+  (≤ 0.5) or the creature's own colors wash out.
+- Pot styles: colors + pattern for the pot the companion sits in, drawn by
+  the client's pot painter. The default terracotta pot is built into the
+  client, not sold here.
+- Namecards: shop-exclusive profile-card scenes. `theme_id` must match a
+  theme id in the client's `kShopNamecardThemes` list.
 """
 
 from django.core.management.base import BaseCommand
@@ -74,6 +79,118 @@ COSMETICS = [
         cost_seeds=250,
         payload={'tint': '#FFD867', 'amount': 0.40},
         sort=60,
+    ),
+
+    # ─── Pot styles ─────────────────────────────────────────
+    dict(
+        code='pot_seafoam',
+        name='Seafoam Glaze',
+        description='A cool mint glaze, smooth as sea glass.',
+        kind=Cosmetic.Kind.POT_STYLE,
+        rarity=Cosmetic.Rarity.COMMON,
+        cost_seeds=90,
+        payload={
+            'body': '#A9D8C6', 'rim': '#7FB8A4',
+            'accent': '#EFFAF4', 'pattern': 'none',
+        },
+        sort=110,
+    ),
+    dict(
+        code='pot_sunny_stripes',
+        name='Sunny Stripes',
+        description='Cream ceramic with hand-painted marigold stripes.',
+        kind=Cosmetic.Kind.POT_STYLE,
+        rarity=Cosmetic.Rarity.COMMON,
+        cost_seeds=90,
+        payload={
+            'body': '#F4E6C6', 'rim': '#E2A24A',
+            'accent': '#E2A24A', 'pattern': 'stripes',
+        },
+        sort=120,
+    ),
+    dict(
+        code='pot_berry_dots',
+        name='Berry Dots',
+        description='Blueberry blue, speckled with cream polka dots.',
+        kind=Cosmetic.Kind.POT_STYLE,
+        rarity=Cosmetic.Rarity.COMMON,
+        cost_seeds=100,
+        payload={
+            'body': '#7FA6D8', 'rim': '#5E86B8',
+            'accent': '#F4F0E4', 'pattern': 'dots',
+        },
+        sort=130,
+    ),
+    dict(
+        code='pot_lavender_wave',
+        name='Lavender Wave',
+        description='Dusky lilac with a rolling wave of cream.',
+        kind=Cosmetic.Kind.POT_STYLE,
+        rarity=Cosmetic.Rarity.RARE,
+        cost_seeds=160,
+        payload={
+            'body': '#C3AEE6', 'rim': '#A48CD4',
+            'accent': '#F6F2FC', 'pattern': 'wave',
+        },
+        sort=140,
+    ),
+    dict(
+        code='pot_mossy_stone',
+        name='Mossy Stone',
+        description='Weathered grey stone, mossy at the rim.',
+        kind=Cosmetic.Kind.POT_STYLE,
+        rarity=Cosmetic.Rarity.RARE,
+        cost_seeds=180,
+        payload={
+            'body': '#A2A49A', 'rim': '#74927C',
+            'accent': '#8FAE84', 'pattern': 'dots',
+        },
+        sort=150,
+    ),
+    dict(
+        code='pot_gilded_emerald',
+        name='Gilded Emerald',
+        description='Deep emerald porcelain, banded in gold.',
+        kind=Cosmetic.Kind.POT_STYLE,
+        rarity=Cosmetic.Rarity.EPIC,
+        cost_seeds=280,
+        payload={
+            'body': '#2E6E4C', 'rim': '#E5C15A',
+            'accent': '#E5C15A', 'pattern': 'stripes',
+        },
+        sort=160,
+    ),
+
+    # ─── Namecards (shop-exclusive profile-card scenes) ─────
+    dict(
+        code='nc_sakura',
+        name='Sakura Drift',
+        description='Blossom petals adrift on a warm spring evening.',
+        kind=Cosmetic.Kind.NAMECARD,
+        rarity=Cosmetic.Rarity.RARE,
+        cost_seeds=200,
+        payload={'theme_id': 'nc_sakura'},
+        sort=210,
+    ),
+    dict(
+        code='nc_koi_pond',
+        name='Koi Pond',
+        description='Still water, lily pads, and a curious koi.',
+        kind=Cosmetic.Kind.NAMECARD,
+        rarity=Cosmetic.Rarity.RARE,
+        cost_seeds=200,
+        payload={'theme_id': 'nc_koi'},
+        sort=220,
+    ),
+    dict(
+        code='nc_aurora_peaks',
+        name='Aurora Peaks',
+        description='Ribbons of light over midnight mountains.',
+        kind=Cosmetic.Kind.NAMECARD,
+        rarity=Cosmetic.Rarity.EPIC,
+        cost_seeds=320,
+        payload={'theme_id': 'nc_aurora'},
+        sort=230,
     ),
 ]
 

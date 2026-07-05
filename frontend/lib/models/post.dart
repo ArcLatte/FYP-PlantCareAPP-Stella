@@ -67,11 +67,13 @@ class PostAuthor {
   final String username;
   final int level;
   final String tier;
+  final String? avatarUrl;
 
   PostAuthor({
     required this.username,
     this.level = 1,
     this.tier = 'Seedling',
+    this.avatarUrl,
   });
 
   /// First letter of the username, for the placeholder avatar.
@@ -83,6 +85,7 @@ class PostAuthor {
       username: json['username']?.toString() ?? '',
       level: (json['level'] as num?)?.toInt() ?? 1,
       tier: json['tier']?.toString() ?? 'Seedling',
+      avatarUrl: _absoluteUrl(json['avatar']),
     );
   }
 }

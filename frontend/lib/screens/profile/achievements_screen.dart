@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -82,13 +83,21 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                 children: [
                   _TotalHeader(earned: _earned, total: _total),
                   const SizedBox(height: 16),
-                  for (final c in _categories) ...[
-                    _CategoryBanner(
-                      category: c,
-                      onTap: () => _openCategory(c),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
+                  GridView.count(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 0.80,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      for (final c in _categories)
+                        _SeriesTile(
+                          category: c,
+                          onTap: () => _openCategory(c),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -151,12 +160,13 @@ class _TotalHeader extends StatelessWidget {
   }
 }
 
-/// One series banner: gold hex emblem, name + tagline, progress %, and
-/// the namecard reward preview (locked until 100%).
-class _CategoryBanner extends StatelessWidget {
+/// One series banner tile, Genshin-style: a cut-corner banner filled with
+/// the series' namecard illustration up top (its emblem glowing over the
+/// art), the name beneath, and a footer band with the completion bar.
+class _SeriesTile extends StatelessWidget {
   final MedalCategory category;
   final VoidCallback onTap;
-  const _CategoryBanner({required this.category, required this.onTap});
+  const _SeriesTile({required this.category, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -166,140 +176,235 @@ class _CategoryBanner extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
+      child: CustomPaint(
+        painter: _BannerShadowPainter(),
+        foregroundPainter: _BannerBorderPainter(completed: c.completed),
+        child: ClipPath(
+          clipper: _BannerClipper(),
+          child: Container(
             color: c.completed
-                ? _kGold.withValues(alpha: 0.65)
-                : AppColors.cardBorder,
-            width: c.completed ? 1.5 : 1,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 10,
-              offset: Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Hex emblem with the series icon.
-            SizedBox(
-              width: 56,
-              height: 56,
-              child: CustomPaint(
-                painter: _HexEmblemPainter(completed: c.completed),
-                child: Icon(
-                  c.spec.icon,
-                  color: c.completed ? Colors.white : _kGoldDark,
-                  size: 24,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    c.spec.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    c.spec.tagline,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
+                ? const Color(0xFFFDF6E3)
+                : const Color(0xFFFDFCF7),
+            child: Column(
+              children: [
+                // Illustration: the series' namecard scene with the big
+                // emblem shining over it.
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.none,
                     children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: c.fraction,
-                            minHeight: 6,
-                            backgroundColor: AppColors.divider,
-                            valueColor:
-                                const AlwaysStoppedAnimation(_kGold),
+                      // Illustration, softly blurred (scaled up a touch so
+                      // the blur doesn't fade the edges) and dimmed so the
+                      // emblem reads clearly on top.
+                      ImageFiltered(
+                        imageFilter:
+                            ui.ImageFilter.blur(sigmaX: 1.8, sigmaY: 1.8),
+                        child: Transform.scale(
+                          scale: 1.06,
+                          child: namecard != null
+                              ? CustomPaint(
+                                  painter:
+                                      ProfileCardScenePainter(namecard),
+                                )
+                              : const DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        AppColors.gradientSoftStart,
+                                        AppColors.gradientSoftEnd,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                      // Dimming scrim.
+                      ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.24),
+                      ),
+                      Center(
+                        child: Container(
+                          width: 84,
+                          height: 84,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color:
+                                    Colors.white.withValues(alpha: 0.75),
+                                blurRadius: 26,
+                                spreadRadius: 5,
+                              ),
+                            ],
+                          ),
+                          child: CustomPaint(
+                            painter:
+                                _HexEmblemPainter(completed: c.completed),
+                            child: Icon(
+                              c.spec.icon,
+                              color: c.completed
+                                  ? Colors.white
+                                  : _kGoldDark,
+                              size: 38,
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      if (c.completed)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: const BoxDecoration(
+                              color: _kGold,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.check_rounded,
+                                color: Colors.white, size: 13),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // Name plate.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
+                  child: SizedBox(
+                    height: 32,
+                    child: Center(
+                      child: Text(
+                        c.spec.name,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 12.5,
+                          height: 1.2,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Footer band with the completion bar + percent.
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 7, 14, 12),
+                  decoration: BoxDecoration(
+                    color: c.completed
+                        ? const Color(0xFFF6E8C4)
+                        : const Color(0xFFF5F0E2),
+                    border: Border(
+                      top: BorderSide(
+                        color: _kGold.withValues(alpha: 0.35),
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: c.fraction,
+                          minHeight: 5,
+                          backgroundColor:
+                              _kGold.withValues(alpha: 0.18),
+                          valueColor:
+                              const AlwaysStoppedAnimation(_kGold),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
                       Text(
                         '$pct%',
                         style: const TextStyle(
                           color: _kGoldDark,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            // Namecard reward preview.
-            if (namecard != null)
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 64,
-                    height: 38,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          CustomPaint(
-                            painter: ProfileCardScenePainter(namecard),
-                          ),
-                          if (!c.completed)
-                            Container(
-                              color: Colors.black.withValues(alpha: 0.40),
-                              child: const Icon(
-                                Icons.lock_rounded,
-                                color: Colors.white70,
-                                size: 15,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    c.completed ? 'Namecard ✓' : 'Namecard',
-                    style: TextStyle(
-                      color: c.completed ? _kGoldDark : AppColors.textMuted,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Shared banner silhouette: cut corners, deeper at the bottom — the
+/// Genshin series-card plaque.
+Path _bannerPath(Size size, {double inset = 0}) {
+  final w = size.width;
+  final h = size.height;
+  const cTop = 10.0;
+  const cBot = 16.0;
+  return Path()
+    ..moveTo(inset + cTop, inset)
+    ..lineTo(w - inset - cTop, inset)
+    ..lineTo(w - inset, inset + cTop)
+    ..lineTo(w - inset, h - inset - cBot)
+    ..lineTo(w - inset - cBot, h - inset)
+    ..lineTo(inset + cBot, h - inset)
+    ..lineTo(inset, h - inset - cBot)
+    ..lineTo(inset, inset + cTop)
+    ..close();
+}
+
+class _BannerClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) => _bannerPath(size);
+
+  @override
+  bool shouldReclip(_BannerClipper old) => false;
+}
+
+/// Drop shadow behind the banner (painted before the clipped content).
+class _BannerShadowPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawShadow(_bannerPath(size), const Color(0x40000000), 3, true);
+  }
+
+  @override
+  bool shouldRepaint(_BannerShadowPainter old) => false;
+}
+
+/// Double gold border on top of the banner content; brightens once the
+/// series is completed.
+class _BannerBorderPainter extends CustomPainter {
+  final bool completed;
+  const _BannerBorderPainter({required this.completed});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPath(
+      _bannerPath(size),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..color = _kGold.withValues(alpha: completed ? 0.9 : 0.5),
+    );
+    canvas.drawPath(
+      _bannerPath(size, inset: 4),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9
+        ..color = _kGold.withValues(alpha: completed ? 0.45 : 0.25),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BannerBorderPainter old) =>
+      old.completed != completed;
 }
 
 /// Gold hexagonal emblem plate behind the series icon; fills solid gold
@@ -384,8 +489,11 @@ class _CategoryDetailScreen extends StatelessWidget {
           if (namecard != null) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
+              // Matches the profile hero card's proportions — the scenes
+              // are composed for this frame; wider crops pull the
+              // elements apart.
               child: AspectRatio(
-                aspectRatio: 2.4,
+                aspectRatio: 1.75,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -631,18 +739,20 @@ class _BookSkeleton extends StatelessWidget {
     return ListView(
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      children: const [
-        SkeletonBox(height: 74, radius: 20),
-        SizedBox(height: 16),
-        SkeletonBox(height: 96, radius: 18),
-        SizedBox(height: 12),
-        SkeletonBox(height: 96, radius: 18),
-        SizedBox(height: 12),
-        SkeletonBox(height: 96, radius: 18),
-        SizedBox(height: 12),
-        SkeletonBox(height: 96, radius: 18),
-        SizedBox(height: 12),
-        SkeletonBox(height: 96, radius: 18),
+      children: [
+        const SkeletonBox(height: 74, radius: 20),
+        const SizedBox(height: 16),
+        GridView.count(
+          crossAxisCount: 2,
+          mainAxisSpacing: 14,
+          crossAxisSpacing: 14,
+          childAspectRatio: 0.80,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            for (int i = 0; i < 6; i++) const SkeletonBox(radius: 14),
+          ],
+        ),
       ],
     );
   }

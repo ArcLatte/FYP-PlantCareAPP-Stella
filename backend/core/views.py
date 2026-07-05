@@ -4,7 +4,11 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from django.contrib.auth.validators import UnicodeUsernameValidator
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.utils import timezone
+from datetime import timedelta
 from .models import (
     CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location, CareLog,
     Achievement, UserAchievement, Cosmetic, UserCosmetic,
@@ -170,6 +174,18 @@ def change_password(request):
     user.auth_token.delete()
 
     return Response({'message': 'Password changed. Please log in again.'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    """Permanently delete the account and everything cascaded from it
+    (plants, logs, posts, …). Requires the current password as confirmation."""
+    password = request.data.get('password') or ''
+    if not request.user.check_password(password):
+        return Response({'error': 'Password is incorrect.'}, status=400)
+    request.user.delete()
+    return Response({'message': 'Account deleted.'})
 
 
 @api_view(['GET', 'POST'])
@@ -390,22 +406,79 @@ def note_detail(request, pk, log_id):
 def streak(request):
     u = request.user
     today = timezone.localdate()
-    skin = (
+    # Equipped companion pot style. Creature skin tints are no longer shown or
+    # applied, but the response keeps `equipped_skin: null` for old clients.
+    pot = (
         UserCosmetic.objects
-        .filter(user=u, equipped=True, cosmetic__kind=Cosmetic.Kind.CREATURE_SKIN)
+        .filter(
+            user=u,
+            equipped=True,
+            cosmetic__kind=Cosmetic.Kind.POT_STYLE,
+        )
         .select_related('cosmetic')
         .first()
+    )
+    # Actual care days of the last week, so the day strip lights the days
+    # that were really cared for. Deriving them client-side from the streak
+    # count goes wrong once a save bridges a missed day (the count is
+    # smaller than the calendar span, so the chain shifts). The strip shows
+    # a rolling window centered on today (3 days back), so 7 days of
+    # history is plenty.
+    window_start = today - timedelta(days=6)
+    week_days = (
+        CareLog.objects
+        .filter(
+            user=u,
+            created_at__date__gte=window_start,
+            created_at__date__lte=today,  # never report a future care day
+        )
+        .exclude(activity=CareLog.Activity.NOTE)
+        .dates('created_at', 'day')
     )
     return Response({
         'current_streak': u.effective_streak,
         'longest_streak': u.longest_streak,
         'last_care_date': u.last_care_date,
         'active_today': u.last_care_date == today,
+        # Server's "today". Care days are dated on the server clock, so the
+        # strip must build its window around the server's today too —
+        # otherwise a device clock a day off pushes a just-logged care day
+        # into a "future" cell and it never lights.
+        'today': today.isoformat(),
         'freezes': u.streak_freezes,
         'freeze_active': u.freeze_active,
-        # Equipped creature-skin payload ({'tint': '#hex', 'amount': 0.x})
+        'recent_care_days': [d.isoformat() for d in week_days],
+        # Kept for old clients; tint skins are no longer applied.
         # or null — the Tasks scene applies it to the companion.
-        'equipped_skin': skin.cosmetic.payload if skin else None,
+        'equipped_skin': None,
+        # Equipped pot-style payload ({'body': '#hex', 'rim': '#hex', ...})
+        # or null — the client falls back to the default terracotta pot.
+        'equipped_pot': pot.cosmetic.payload if pot else None,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def streak_calendar(request):
+    """Full care-day history for the streak calendar: every calendar day with
+    at least one water/fertilize/mist action (notes don't count — they don't
+    advance the streak either), oldest first, plus the streak summary."""
+    u = request.user
+    today = timezone.localdate()
+    days = (
+        CareLog.objects
+        .filter(user=u)
+        .exclude(activity=CareLog.Activity.NOTE)
+        .dates('created_at', 'day')
+    )
+    return Response({
+        'care_dates': [d.isoformat() for d in days],
+        'current_streak': u.effective_streak,
+        'longest_streak': u.longest_streak,
+        'last_care_date': u.last_care_date,
+        'active_today': u.last_care_date == today,
+        'today': today.isoformat(),  # server date, so the calendar's "today"
+        'freeze_active': u.freeze_active,
     })
 
 
@@ -782,15 +855,15 @@ def disease_detail(request, label):
 
 # ─── Gamification: profile + achievements ───────────────────────
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def profile(request):
-    u = request.user
+def _profile_payload(u):
     unlocked = UserAchievement.objects.filter(user=u).count()
     total = Achievement.objects.count()
-    return Response({
+    return {
         'username': u.username,
         'email': u.email,
+        # Relative /media/ URL — the Flutter side absolutizes it (same
+        # convention as plant/post photos).
+        'avatar': u.avatar.url if u.avatar else None,
         'level': u.level,
         'tier': u.tier,
         'xp': u.xp,
@@ -802,7 +875,61 @@ def profile(request):
         'seeds': u.seeds,
         'achievements_unlocked': unlocked,
         'achievements_total': total,
-    })
+    }
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def profile(request):
+    """GET the profile summary, or PATCH account fields from Settings.
+
+    PATCH accepts any subset of `username`, `email`, `avatar` (multipart
+    file) and `remove_avatar`, and returns the fresh profile payload."""
+    u = request.user
+
+    if request.method == 'PATCH':
+        username = request.data.get('username')
+        if username is not None:
+            username = username.strip()
+            try:
+                UnicodeUsernameValidator()(username)
+            except DjangoValidationError:
+                return Response(
+                    {'error': 'Username may only contain letters, digits '
+                              'and @/./+/-/_.'},
+                    status=400,
+                )
+            if len(username) > 150:
+                return Response({'error': 'Username is too long.'}, status=400)
+            if (CustomUser.objects.exclude(pk=u.pk)
+                    .filter(username=username).exists()):
+                return Response({'error': 'Username already taken.'}, status=400)
+            u.username = username
+
+        email = request.data.get('email')
+        if email is not None:
+            email = email.strip()
+            try:
+                validate_email(email)
+            except DjangoValidationError:
+                return Response({'error': 'Enter a valid email address.'}, status=400)
+            if (CustomUser.objects.exclude(pk=u.pk)
+                    .filter(email=email).exists()):
+                return Response({'error': 'Email already registered.'}, status=400)
+            u.email = email
+
+        if 'avatar' in request.FILES:
+            if u.avatar:
+                u.avatar.delete(save=False)  # drop the old file from storage
+            u.avatar = request.FILES['avatar']
+        elif request.data.get('remove_avatar') in (True, 'true', 'True', '1', 1):
+            if u.avatar:
+                u.avatar.delete(save=False)
+            u.avatar = None
+
+        u.save()
+
+    return Response(_profile_payload(u))
 
 
 def _serialize_achievement(ach, user_view, snapshot=None):
@@ -917,7 +1044,7 @@ def shop(request):
         'seeds': request.user.seeds,
         'items': [
             _serialize_cosmetic(c, owned.get(c.id))
-            for c in Cosmetic.objects.all()
+            for c in Cosmetic.objects.exclude(kind=Cosmetic.Kind.CREATURE_SKIN)
         ],
     })
 

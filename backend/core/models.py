@@ -17,6 +17,9 @@ class CustomUser(AbstractUser):
     STARTER_SEEDS = 30
 
     email = models.EmailField(unique=True)
+    # Optional profile picture, uploaded from the Settings screen. Old files
+    # are deleted from storage on replace/remove (see the profile view).
+    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     current_streak = models.PositiveIntegerField(default=0)
     longest_streak = models.PositiveIntegerField(default=0)
     last_care_date = models.DateField(null=True, blank=True)
@@ -443,14 +446,21 @@ class Cosmetic(models.Model):
     """A purchasable cosmetic. Seeded via `seed_cosmetics` (catalog lives
     there), purchased with seeds, purely visual — never affects gameplay.
 
-    v1 ships creature skins only: `payload` holds a tint (`{"tint": "#hex",
-    "amount": 0.0-1.0}`) applied to the streak companion via the same
-    ColorFilter channel the time-of-day lighting uses, so no new art assets
-    are required. Later kinds (pot styles, scene backgrounds, profile
-    frames) add payload shapes without schema changes."""
+    Payload shape per kind (all code-drawn client-side, no art assets):
+    - creature_skin: `{"tint": "#hex", "amount": 0.0-1.0}` — tint applied to
+      the streak companion via the same ColorFilter channel the time-of-day
+      lighting uses.
+    - pot_style: `{"body": "#hex", "rim": "#hex", "accent": "#hex",
+      "pattern": "none|stripes|dots|wave"}` — colors for the pot the
+      companion sits in (drawn by the client's pot painter).
+    - namecard: `{"theme_id": "nc_..."}` — unlocks a profile-card scene in
+      the card picker. Buying is the only server-side action; which card is
+      shown stays a client-side choice alongside tier/achievement themes."""
 
     class Kind(models.TextChoices):
         CREATURE_SKIN = 'creature_skin', 'Creature skin'
+        POT_STYLE = 'pot_style', 'Pot style'
+        NAMECARD = 'namecard', 'Namecard'
 
     class Rarity(models.TextChoices):
         COMMON = 'common', 'Common'

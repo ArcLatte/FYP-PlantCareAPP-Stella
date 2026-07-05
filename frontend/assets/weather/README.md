@@ -7,7 +7,7 @@ they render reliably under `flutter_svg`.
 
 | File | Role |
 | --- | --- |
-| `sky_dawn.svg` / `sky_day.svg` / `sky_sunset.svg` / `sky_night.svg` | Full-bleed sky wash, picked by local time of day. Drawn with `BoxFit.cover`. |
+| `sky_dawn.svg` / `sky_day.svg` / `sky_rain.svg` / `sky_sunset.svg` / `sky_night.svg` | Full-bleed sky wash, picked by local time of day and weather condition. Drawn with `BoxFit.cover`. |
 | `sun.svg` | Daytime sun — layered amber washes + halo. Top-right. |
 | `moon.svg` | Night crescent moon + soft craters and glow. Top-right. |
 | `stars.svg` | Star field overlay for night/cloudy-night scenes. |

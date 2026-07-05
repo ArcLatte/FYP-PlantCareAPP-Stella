@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// A shop cosmetic + the user's ownership state, mirrored from
-/// `GET /api/shop/`. v1 items are creature skins: a tint color + strength
-/// applied to the streak companion.
+/// `GET /api/shop/`. Kinds: creature skins (a tint color + strength applied
+/// to the streak companion), pot styles (colors/pattern for the companion's
+/// pot), and namecards (shop-exclusive profile-card scenes).
 class Cosmetic {
   final String code;
   final String name;
@@ -41,6 +42,17 @@ class Cosmetic {
       equipped: json['equipped'] == true,
     );
   }
+
+  static const String kindSkin = 'creature_skin';
+  static const String kindPot = 'pot_style';
+  static const String kindNamecard = 'namecard';
+
+  bool get isSkin => kind == kindSkin;
+  bool get isPot => kind == kindPot;
+  bool get isNamecard => kind == kindNamecard;
+
+  /// The profile-card theme this namecard unlocks, if this is a namecard.
+  String? get themeId => payload['theme_id']?.toString();
 
   /// The skin's tint color, if this is a creature skin.
   Color? get tintColor => parseTint(payload);

@@ -561,9 +561,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final statusBarInset = MediaQuery.of(context).padding.top;
     // Gradient tracks time of day (dawn/day/sunset/night), nudged by the
     // weather icon's day/night flag once a report is loaded.
-    final gradientColors = WeatherBackdrop.gradientColors(
-      _weather?.iconCode ?? '01d',
-    );
+    final iconCode = _weather?.iconCode ?? '01d';
+    final weatherGroup = iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
+    final hour = DateTime.now().hour;
+    final isNight = iconCode.endsWith('n') || hour < 5 || hour >= 21;
+    final isWet =
+        weatherGroup == '09' || weatherGroup == '10' || weatherGroup == '11';
+    final gradientColors = WeatherBackdrop.gradientColors(iconCode);
+    final topScrimAlpha = isNight ? 0.24 : (isWet ? 0.16 : 0.12);
+    final midScrimAlpha = isNight ? 0.14 : (isWet ? 0.08 : 0.06);
+    final bottomScrimAlpha = isNight ? 0.16 : (isWet ? 0.12 : 0.08);
+    final statFill = const Color(
+      0xFF243A4D,
+    ).withValues(alpha: isNight ? 0.52 : 0.48);
+    final statBorder = Colors.white.withValues(alpha: isNight ? 0.14 : 0.22);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -598,8 +609,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.black.withValues(alpha: 0.34),
-                        Colors.black.withValues(alpha: 0.18),
+                        Colors.black.withValues(alpha: topScrimAlpha),
+                        Colors.black.withValues(alpha: midScrimAlpha),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.46, 1.0],
@@ -614,7 +625,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.18),
+                        Colors.black.withValues(alpha: bottomScrimAlpha),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.58],
@@ -787,11 +798,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF203052).withValues(alpha: 0.54),
+                        color: statFill,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12),
-                        ),
+                        border: Border.all(color: statBorder),
                       ),
                       child: Row(
                         children: [

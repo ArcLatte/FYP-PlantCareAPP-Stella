@@ -181,7 +181,7 @@ class PostAuthorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['username', 'level', 'tier']
+        fields = ['username', 'level', 'tier', 'avatar']
 
 
 class PostPlantSerializer(serializers.ModelSerializer):

@@ -28,10 +28,15 @@ class WeatherBackdrop extends StatefulWidget {
   static List<Color> gradientColors(String iconCode, [DateTime? when]) {
     final now = when ?? DateTime.now();
     final isNight = iconCode.endsWith('n');
+    final group = iconCode.length >= 2 ? iconCode.substring(0, 2) : '01';
     final h = now.hour;
     if (isNight || h < 5 || h >= 21) {
       // Night — deep indigo.
       return const [Color(0xFF2B3A67), Color(0xFF1B2845)];
+    }
+    if (group == '09' || group == '10' || group == '11') {
+      // Rain / storm: cooler grey-blue, so rainy scenes do not feel sunny.
+      return const [Color(0xFF8FAFC2), Color(0xFF5E7D93)];
     }
     if (h < 8) {
       // Dawn — peach into soft blue.
