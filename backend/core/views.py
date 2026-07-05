@@ -180,7 +180,7 @@ def change_password(request):
 @permission_classes([IsAuthenticated])
 def delete_account(request):
     """Permanently delete the account and everything cascaded from it
-    (plants, logs, posts, …). Requires the current password as confirmation."""
+    (plants, logs, scans, and profile data). Requires the current password as confirmation."""
     password = request.data.get('password') or ''
     if not request.user.check_password(password):
         return Response({'error': 'Password is incorrect.'}, status=400)
@@ -862,7 +862,7 @@ def _profile_payload(u):
         'username': u.username,
         'email': u.email,
         # Relative /media/ URL — the Flutter side absolutizes it (same
-        # convention as plant/post photos).
+        # convention as uploaded plant photos).
         'avatar': u.avatar.url if u.avatar else None,
         'level': u.level,
         'tier': u.tier,

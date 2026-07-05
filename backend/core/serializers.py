@@ -1,7 +1,7 @@
 from django.utils import timezone
 from rest_framework import serializers
 from .models import (
-    Plant, PlantSpecies, Location, Disease, CustomUser, Post, Community,
+    Plant, PlantSpecies, Location, Disease,
 )
 
 
@@ -170,47 +170,3 @@ class PlantSerializer(serializers.ModelSerializer):
             'treatment': d.treatment,
             'care_tips': d.care_tips,
         }
-
-
-# ─── Social ──────────────────────────────────────────────────────
-
-class PostAuthorSerializer(serializers.ModelSerializer):
-    """Minimal author identity embedded in a post: enough to render the
-    byline + tier-framed avatar without a separate profile fetch."""
-    tier = serializers.ReadOnlyField()  # CustomUser.tier property
-
-    class Meta:
-        model = CustomUser
-        fields = ['username', 'level', 'tier', 'avatar']
-
-
-class PostPlantSerializer(serializers.ModelSerializer):
-    """Lightweight summary of a tracked plant attached to a post (the chip)."""
-    species_name = serializers.CharField(source='species.name', read_only=True)
-
-    class Meta:
-        model = Plant
-        # `photo` is a relative /media/ URL — the Flutter side absolutizes it
-        # (same convention as PlantSerializer).
-        fields = ['id', 'name', 'species_name', 'photo']
-
-
-class PostCommunitySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Community
-        fields = ['id', 'name', 'slug', 'icon', 'color']
-
-
-class PostSerializer(serializers.ModelSerializer):
-    """Read serializer for the feed/detail. Writes go through the create view
-    (multipart, with text-or-image validation + owned-plant checks)."""
-    author = PostAuthorSerializer(read_only=True)
-    plant = PostPlantSerializer(read_only=True)
-    community = PostCommunitySerializer(read_only=True)
-
-    class Meta:
-        model = Post
-        fields = [
-            'id', 'body', 'image', 'author', 'plant', 'community',
-            'like_count', 'comment_count', 'created_at',
-        ]

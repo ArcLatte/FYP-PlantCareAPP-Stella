@@ -59,7 +59,7 @@ class UserProfile {
 }
 
 /// Absolutize a relative `/media/...` URL returned by Django (same convention
-/// as plant.dart / post.dart).
+/// as plant.dart).
 String? _absoluteUrl(dynamic raw) {
   if (raw == null) return null;
   final s = raw.toString();

@@ -270,14 +270,14 @@ class _StreakScenePalette {
         );
       case _StreakLightPhase.sunset:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFFFFD1A8), 0.12),
+          creatureFilter: _filter(const Color(0xFFD99572), 0.18),
           soilFilter: _filter(const Color(0xFFEFA36C), 0.18),
           groundBackFilter: _filter(const Color(0xFF9B9474), 0.14),
           groundFrontFilter: _filter(const Color(0xFF657C69), 0.22),
         );
       case _StreakLightPhase.night:
         return _StreakScenePalette(
-          creatureFilter: _filter(const Color(0xFFB7C8F1), 0.22),
+          creatureFilter: _filter(const Color(0xFF53688F), 0.32),
           soilFilter: _filter(const Color(0xFF7C88AA), 0.28),
           groundBackFilter: _filter(const Color(0xFF506982), 0.30),
           groundFrontFilter: _filter(const Color(0xFF3E5D67), 0.36),
@@ -287,7 +287,7 @@ class _StreakScenePalette {
 
   factory _StreakScenePalette.rainDay() {
     return _StreakScenePalette(
-      creatureFilter: _filter(const Color(0xFFD7E5EC), 0.10),
+      creatureFilter: _filter(const Color(0xFF78909A), 0.22),
       soilFilter: _filter(const Color(0xFFA9B8BC), 0.18),
       groundBackFilter: _filter(const Color(0xFF738C91), 0.18),
       groundFrontFilter: _filter(const Color(0xFF4D6E73), 0.24),
@@ -304,8 +304,14 @@ class _StreakScenePalette {
   }
 
   static ColorFilter _filter(Color target, double amount) {
-    final tint = Color.lerp(Colors.white, target, amount)!;
-    return ColorFilter.mode(tint, BlendMode.modulate);
+    final a = amount.clamp(0.0, 1.0);
+    final keep = 1 - a;
+    return ColorFilter.matrix(<double>[
+      keep, 0, 0, 0, target.r * 255 * a,
+      0, keep, 0, 0, target.g * 255 * a,
+      0, 0, keep, 0, target.b * 255 * a,
+      0, 0, 0, 1, 0,
+    ]);
   }
 }
 

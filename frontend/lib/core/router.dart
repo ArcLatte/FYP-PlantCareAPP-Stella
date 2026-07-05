@@ -16,9 +16,6 @@ import '../screens/library/library_screen.dart';
 import '../screens/library/species_detail_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
 import '../screens/tasks/task_detail_screen.dart';
-import '../screens/social/feed_screen.dart';
-import '../screens/social/create_post_screen.dart';
-import '../screens/social/post_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/profile/achievements_screen.dart';
 import '../screens/profile/settings_screen.dart';
@@ -143,19 +140,6 @@ final GoRouter appRouter = GoRouter(
         speciesId: int.parse(state.pathParameters['id']!),
       ),
     ),
-    // Compose + post detail push over the shell (no bottom nav), like the
-    // plant detail / scan flows.
-    GoRoute(
-      path: '/feed/compose',
-      builder: (context, state) => const CreatePostScreen(),
-    ),
-    GoRoute(
-      path: '/posts/:id',
-      builder: (context, state) {
-        final postId = int.parse(state.pathParameters['id']!);
-        return PostDetailScreen(postId: postId);
-      },
-    ),
     // History is a "look back" view, reached from the Tasks page header rather
     // than its own nav tab — so it pushes over the shell (no bottom nav), like
     // a detail screen.
@@ -239,15 +223,6 @@ final GoRouter appRouter = GoRouter(
                   ),
                 ),
               ],
-            ),
-          ],
-        ),
-        // Branch 4: Community — the social feed.
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/feed',
-              builder: (context, state) => const FeedScreen(),
             ),
           ],
         ),

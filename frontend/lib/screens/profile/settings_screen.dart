@@ -1032,7 +1032,7 @@ class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
                 const SizedBox(height: 8),
                 const Text(
                   'This permanently erases your account, plants, care '
-                  'history, achievements and posts. It cannot be undone.',
+                  'history and achievements. It cannot be undone.',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 13,

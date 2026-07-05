@@ -1,6 +1,5 @@
 from django.urls import path
 from . import views
-from . import social_views
 
 urlpatterns = [
     path('auth/register/', views.register),
@@ -39,8 +38,4 @@ urlpatterns = [
     path('scans/history/', views.all_scans),
     path('diseases/', views.diseases_list),
     path('diseases/<str:label>/', views.disease_detail),
-
-    # ─── Social ───
-    path('posts/', social_views.post_list),
-    path('posts/<int:pk>/', social_views.post_detail),
 ]

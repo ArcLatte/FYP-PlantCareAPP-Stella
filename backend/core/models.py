@@ -511,17 +511,3 @@ class UserCosmetic(models.Model):
     def __str__(self):
         return f"{self.user.username} owns {self.cosmetic.code}"
 
-
-# ─── Social layer ────────────────────────────────────────────────
-# Defined in social_models.py (FKs reference the models above by name) and
-# imported here so Django registers them under the `core` app. Keep at the
-# bottom: the social models' string FK refs resolve against the models defined
-# above.
-from .social_models import (  # noqa: E402,F401
-    Community,
-    CommunityMembership,
-    Post,
-    Follow,
-    PostLike,
-    Comment,
-)

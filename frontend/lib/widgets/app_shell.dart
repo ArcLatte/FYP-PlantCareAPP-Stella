@@ -4,7 +4,7 @@ import '../core/theme.dart';
 
 /// Scaffold wrapper rendered by `StatefulShellRoute.indexedStack` in
 /// `core/router.dart`. Hosts the persistent **floating pill bar** for the
-/// main tabs (Home, Tasks, Community, Library, Profile) plus a Scan cell that
+/// main tabs (Home, Tasks, Library, Profile) plus a Scan cell that
 /// pushes a modal route over the shell. (History isn't a tab — it's reached
 /// from the Tasks page header and pushed over the shell.)
 ///
@@ -45,12 +45,6 @@ class AppShellScaffold extends StatelessWidget {
       label: 'Library',
       inactiveIcon: Icons.menu_book_outlined,
       activeIcon: Icons.menu_book_rounded,
-    ),
-    _TabSpec(
-      branchIndex: 4,
-      label: 'Community',
-      inactiveIcon: Icons.forum_outlined,
-      activeIcon: Icons.forum_rounded,
     ),
   ];
 
@@ -103,11 +97,6 @@ class AppShellScaffold extends StatelessWidget {
                   spec: _scanSpec,
                   selected: false,
                   onTap: () => context.push('/scan'),
-                ),
-                _NavCell(
-                  spec: _tabs[4], // Community
-                  selected: navigationShell.currentIndex == 4,
-                  onTap: () => _goBranch(4),
                 ),
                 _NavCell(
                   spec: _tabs[3], // Library
