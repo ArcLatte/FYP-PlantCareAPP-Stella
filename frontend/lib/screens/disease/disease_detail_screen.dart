@@ -59,18 +59,64 @@ class _DiseaseDetailScreenState extends State<DiseaseDetailScreen> {
   }
 
   Future<void> _confirm() async {
+    // Capture the (root) messenger before the async gap so the confirmation
+    // snackbar survives the navigation to the plant page.
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _isConfirming = true);
     try {
-      await ApiService.confirmDisease(widget.scanId!, widget.label);
-      if (mounted) context.go('/result/${widget.scanId}');
+      final result = await ApiService.confirmDisease(widget.scanId!, widget.label);
+      if (!mounted) return;
+      final healthy = widget.label.toLowerCase().contains('healthy');
+      final name = result.diseaseName ?? _disease?.name ?? '';
+      messenger.showSnackBar(_savedSnack(
+        healthy
+            ? 'Marked healthy'
+            : 'Diagnosis saved${name.isNotEmpty ? ' — $name' : ''}',
+      ));
+      // One tap → straight to the plant page (which shows the confirmed
+      // diagnosis), rather than bouncing back through the result screen.
+      final plantId = result.plantId;
+      if (plantId != null) {
+        context.go('/plants/$plantId');
+      } else {
+        context.go('/home');
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _isConfirming = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
         );
       }
     }
+  }
+
+  SnackBar _savedSnack(String message) {
+    return SnackBar(
+      content: Row(
+        children: [
+          const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: AppColors.primary,
+      behavior: SnackBarBehavior.floating,
+      elevation: 4,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      duration: const Duration(seconds: 3),
+    );
   }
 
   Future<void> _openSource(String url) async {

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/theme.dart';
 import '../../models/user_profile.dart';
 import '../../services/api_service.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 
@@ -26,11 +27,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   UserProfile? _profile;
   bool _isLoading = true;
   bool _isUploadingAvatar = false;
+  TimeOfDay _reminderTime = const TimeOfDay(
+    hour: NotificationService.defaultReminderHour,
+    minute: NotificationService.defaultReminderMinute,
+  );
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadReminderTime();
   }
 
   Future<void> _load() async {
@@ -198,6 +204,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // ─── Notifications ─────────────────────────────────────────
+
+  Future<void> _loadReminderTime() async {
+    final (h, m) = await NotificationService.getReminderTime();
+    if (!mounted) return;
+    setState(() => _reminderTime = TimeOfDay(hour: h, minute: m));
+  }
+
+  /// Tap: pick the daily reminder time, persist it, and rebuild the schedule
+  /// so the change takes effect immediately (not just on the next home load).
+  Future<void> _pickReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _reminderTime,
+      helpText: 'Daily reminder time',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _reminderTime = picked);
+    await NotificationService.setReminderTime(picked.hour, picked.minute);
+    try {
+      final plants = await ApiService.getPlants();
+      await NotificationService.scheduleCareReminders(plants);
+    } catch (_) {
+      // Best-effort; the next home load reschedules at the new time anyway.
+    }
+    if (!mounted) return;
+    AppSnackBar.success(
+      context,
+      'Reminders set for ${picked.format(context)}',
+    );
+  }
+
+  /// Long-press: fire a test notification to confirm delivery works.
+  Future<void> _sendTestNotification() async {
+    final ok = await NotificationService.sendTestNotification();
+    if (!mounted) return;
+    if (ok) {
+      AppSnackBar.success(
+        context,
+        'Test sent — leave the app for ~10 seconds to see it',
+      );
+    } else {
+      AppSnackBar.error(
+        context,
+        'Couldn\'t send — enable notifications for Stella in system settings',
+      );
+    }
+  }
+
   Future<void> _openDeleteAccount() async {
     final deleted = await showModalBottomSheet<bool>(
       context: context,
@@ -276,6 +331,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+          const SizedBox(height: 24),
+          Text('Notifications', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          _SettingsCard(
+            children: [
+              _SettingsRow(
+                icon: Icons.schedule_rounded,
+                iconColor: AppColors.primary,
+                label: 'Reminder time',
+                sublabel: 'When daily watering reminders arrive · hold to test',
+                onTap: _pickReminderTime,
+                onLongPress: _sendTestNotification,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _reminderTime.format(context),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textMuted,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
           Text('About', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
@@ -596,6 +685,7 @@ class _SettingsRow extends StatelessWidget {
   final String? sublabel;
   final Color labelColor;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Widget? trailing;
   const _SettingsRow({
     required this.icon,
@@ -604,6 +694,7 @@ class _SettingsRow extends StatelessWidget {
     this.sublabel,
     this.labelColor = AppColors.textPrimary,
     this.onTap,
+    this.onLongPress,
     this.trailing,
   });
 
@@ -611,6 +702,7 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),

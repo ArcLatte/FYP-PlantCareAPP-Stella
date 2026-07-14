@@ -1,3 +1,5 @@
+import '../core/constants.dart';
+
 /// Structured care info for a plant species, mirrored from the backend
 /// `species_detail` payload (see backend/core/serializers.py).
 class SpeciesDetail {
@@ -14,6 +16,7 @@ class SpeciesDetail {
   final int? defaultFertilizerFreqDays;
   final int? defaultMistingFreqDays;
   final int? daysToHarvest;
+  final String? imageUrl; // self-hosted reference photo (absolutized)
 
   const SpeciesDetail({
     required this.id,
@@ -29,6 +32,7 @@ class SpeciesDetail {
     this.defaultFertilizerFreqDays,
     this.defaultMistingFreqDays,
     this.daysToHarvest,
+    this.imageUrl,
   });
 
   factory SpeciesDetail.fromJson(Map<String, dynamic> json) {
@@ -49,6 +53,7 @@ class SpeciesDetail {
       defaultMistingFreqDays:
           (json['default_misting_freq_days'] as num?)?.toInt(),
       daysToHarvest: (json['days_to_harvest'] as num?)?.toInt(),
+      imageUrl: _absolutePhotoUrl(json['image_url']),
     );
   }
 
@@ -86,4 +91,14 @@ class SpeciesDetail {
     if (temperatureMinC == null || temperatureMaxC == null) return null;
     return '$temperatureMinC–$temperatureMaxC°C';
   }
+}
+
+/// See plant.dart — absolutizes site-relative image refs against the API host.
+String? _absolutePhotoUrl(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString();
+  if (s.isEmpty) return null;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  if (s.startsWith('/')) return '${AppConstants.mediaHost}$s';
+  return '${AppConstants.mediaHost}/$s';
 }

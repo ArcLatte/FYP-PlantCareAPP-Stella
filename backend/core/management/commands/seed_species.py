@@ -20,6 +20,8 @@ SPECIES = [
     dict(
         name='Tomato',
         scientific_name='Solanum lycopersicum',
+        # image: https://commons.wikimedia.org/wiki/File:Tomato_je.jpg
+        image_path='library/species/tomato.jpg',
         # Sources:
         #   https://perenual.com/  (watering, sunlight)
         #   https://www.rhs.org.uk/vegetables/tomatoes/grow-your-own
@@ -45,6 +47,8 @@ SPECIES = [
     dict(
         name='Potato',
         scientific_name='Solanum tuberosum',
+        # image: https://commons.wikimedia.org/wiki/File:Potato_plant_(Solanum_tuberosum).jpg
+        image_path='library/species/potato.jpg',
         # Sources:
         #   https://perenual.com/
         #   https://extension.psu.edu/potato-production
@@ -69,6 +73,8 @@ SPECIES = [
     dict(
         name='Bell Pepper',
         scientific_name='Capsicum annuum',
+        # image: https://commons.wikimedia.org/wiki/File:Green-Bell-Peppers.jpg
+        image_path='library/species/bell_pepper.jpg',
         # Sources:
         #   https://perenual.com/
         #   https://extension.umn.edu/vegetables/growing-peppers
@@ -93,6 +99,8 @@ SPECIES = [
     dict(
         name='Corn (Maize)',
         scientific_name='Zea mays',
+        # image: https://commons.wikimedia.org/wiki/File:Zea_mays_-_K%C3%B6hler%E2%80%93s_Medizinal-Pflanzen-283.jpg (replaced at download time with a field photo)
+        image_path='library/species/corn_maize.jpg',
         # Sources:
         #   https://perenual.com/
         #   https://extension.psu.edu/sweet-corn
@@ -117,6 +125,8 @@ SPECIES = [
     dict(
         name='Strawberry',
         scientific_name='Fragaria × ananassa',
+        # image: https://commons.wikimedia.org/wiki/File:Garden_strawberry_(Fragaria_%C3%97_ananassa)_single2.jpg
+        image_path='library/species/strawberry.jpg',
         # Sources:
         #   https://perenual.com/
         #   https://www.rhs.org.uk/fruit/strawberries/grow-your-own
@@ -149,10 +159,12 @@ class Command(BaseCommand):
         created = 0
         updated = 0
         for spec in SPECIES:
-            name = spec.pop('name')
+            # Don't pop() — that would mutate the module-level dict and break
+            # a second handle() call in the same process (e.g. from tests).
+            defaults = {k: v for k, v in spec.items() if k != 'name'}
             obj, was_created = PlantSpecies.objects.update_or_create(
-                name=name,
-                defaults=spec,
+                name=spec['name'],
+                defaults=defaults,
             )
             if was_created:
                 created += 1

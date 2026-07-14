@@ -67,16 +67,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         .toList();
   }
 
-  List<Disease> get _filteredDiseases {
-    final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _diseases;
-    return _diseases
-        .where((d) =>
-            d.name.toLowerCase().contains(q) ||
-            (d.speciesName ?? '').toLowerCase().contains(q))
-        .toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -116,7 +106,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ),
                         _DiseasesTab(
                           isLoading: _isLoading,
-                          diseases: _filteredDiseases,
+                          query: _query,
+                          allDiseases: _diseases,
+                          allSpecies: _species,
                         ),
                       ],
                     ),
@@ -247,23 +239,15 @@ class _SpeciesCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image area. Species carry no photo, so we show the SAME
-            // soft-mint + leaf placeholder the home grid uses for a plant
-            // whose photo is missing — keeping the placeholder consistent.
+            // Image area. Uses the self-hosted species photo, falling back to
+            // the same soft-mint + leaf placeholder the home grid uses when a
+            // photo is missing — keeping the placeholder consistent.
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(18),
                 ),
-                child: Container(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.local_florist_rounded,
-                    color: AppColors.primary,
-                    size: 40,
-                  ),
-                ),
+                child: SpeciesImage(imageUrl: species.imageUrl),
               ),
             ),
             // Text area.
@@ -328,114 +312,204 @@ class _SpeciesCard extends StatelessWidget {
   }
 }
 
-// ─── Diseases tab (grouped by plant species) ──────────────────────
+// ─── Diseases tab (species-first) ─────────────────────────────────
 
+/// Species-first browse: a grid of species cards (photo + disease count).
+/// Tapping a card opens that species' disease grid. When a search query is
+/// active it switches to a flat grid of the matching diseases (skipping the
+/// species level), so a direct name search jumps straight to results.
 class _DiseasesTab extends StatelessWidget {
   final bool isLoading;
-  final List<Disease> diseases;
+  final String query;
+  final List<Disease> allDiseases;
+  final List<SpeciesDetail> allSpecies;
 
-  const _DiseasesTab({required this.isLoading, required this.diseases});
+  const _DiseasesTab({
+    required this.isLoading,
+    required this.query,
+    required this.allDiseases,
+    required this.allSpecies,
+  });
 
-  /// Bucket diseases under the plant they affect, sorted alphabetically with
-  /// any species-less entries collected last under "Other".
-  List<MapEntry<String, List<Disease>>> _grouped() {
-    const otherKey = 'Other';
-    final groups = <String, List<Disease>>{};
-    for (final d in diseases) {
-      final name = (d.speciesName ?? '').trim();
-      groups.putIfAbsent(name.isEmpty ? otherKey : name, () => []).add(d);
-    }
-    final entries = groups.entries.toList()
-      ..sort((a, b) {
-        // Keep "Other" at the bottom; everything else alphabetical.
-        if (a.key == otherKey) return 1;
-        if (b.key == otherKey) return -1;
-        return a.key.toLowerCase().compareTo(b.key.toLowerCase());
-      });
-    return entries;
+  List<Disease> get _matchingDiseases {
+    final q = query.trim().toLowerCase();
+    return allDiseases
+        .where((d) =>
+            d.name.toLowerCase().contains(q) ||
+            (d.speciesName ?? '').toLowerCase().contains(q))
+        .toList();
   }
+
+  /// Species with at least one disease, paired with the count and sorted by
+  /// name — joins the disease list (by speciesName) to the species list.
+  List<({SpeciesDetail species, int count})> _speciesWithDiseases() {
+    final counts = <String, int>{};
+    for (final d in allDiseases) {
+      final key = (d.speciesName ?? '').toLowerCase();
+      if (key.isEmpty) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    final out = <({SpeciesDetail species, int count})>[];
+    for (final s in allSpecies) {
+      final c = counts[s.name.toLowerCase()];
+      if (c != null && c > 0) out.add((species: s, count: c));
+    }
+    out.sort((a, b) =>
+        a.species.name.toLowerCase().compareTo(b.species.name.toLowerCase()));
+    return out;
+  }
+
+  static const _grid = SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: 2,
+    mainAxisSpacing: 14,
+    crossAxisSpacing: 14,
+    childAspectRatio: 0.72,
+  );
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return ListView(
+      return GridView.count(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-        children: [
-          for (int i = 0; i < 5; i++)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: SkeletonBox(height: 80, radius: 16),
-            ),
+        crossAxisCount: 2,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        childAspectRatio: 0.72,
+        children: const [
+          PlantCardSkeleton(),
+          PlantCardSkeleton(),
+          PlantCardSkeleton(),
+          PlantCardSkeleton(),
         ],
       );
     }
-    if (diseases.isEmpty) {
-      return const _EmptyState(
-        icon: Icons.coronavirus_outlined,
-        title: 'No diseases found',
-        message: 'Try a different search.',
+
+    // Search override: skip the species level and show the matching diseases
+    // directly as a flat grid.
+    if (query.trim().isNotEmpty) {
+      final matches = _matchingDiseases;
+      if (matches.isEmpty) {
+        return const _EmptyState(
+          icon: Icons.coronavirus_outlined,
+          title: 'No diseases found',
+          message: 'Try a different search.',
+        );
+      }
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+        gridDelegate: _grid,
+        itemCount: matches.length,
+        itemBuilder: (context, i) => DiseaseGridCard(disease: matches[i]),
       );
     }
 
-    final children = <Widget>[];
-    for (final group in _grouped()) {
-      children.add(_DiseaseGroupHeader(
-        species: group.key,
-        count: group.value.length,
-      ));
-      for (final d in group.value) {
-        children.add(Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _DiseaseCard(disease: d),
-        ));
-      }
-      children.add(const SizedBox(height: 8));
+    final groups = _speciesWithDiseases();
+    if (groups.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.coronavirus_outlined,
+        title: 'No diseases found',
+        message: 'Disease references will appear here.',
+      );
     }
-    return ListView(
+    return GridView.builder(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-      children: children,
+      gridDelegate: _grid,
+      itemCount: groups.length,
+      itemBuilder: (context, i) => _SpeciesDiseaseCard(
+        species: groups[i].species,
+        count: groups[i].count,
+      ),
     );
   }
 }
 
-/// Section header introducing the diseases that affect one plant species.
-class _DiseaseGroupHeader extends StatelessWidget {
-  final String species;
+/// A species card for the Diseases tab: species photo, name, and a chip with
+/// the number of diseases catalogued for it. Opens that species' disease grid.
+class _SpeciesDiseaseCard extends StatelessWidget {
+  final SpeciesDetail species;
   final int count;
 
-  const _DiseaseGroupHeader({required this.species, required this.count});
+  const _SpeciesDiseaseCard({required this.species, required this.count});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 6, 2, 10),
+    return GestureDetector(
+      onTap: () => context.push('/library/diseases/${species.id}'),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.cardShadow,
+              blurRadius: 14,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(18)),
+                child: SpeciesImage(imageUrl: species.imageUrl),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    species.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _CountChip(count: count),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small pill showing how many diseases a species has catalogued.
+class _CountChip extends StatelessWidget {
+  final int count;
+
+  const _CountChip({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.local_florist_rounded,
-                color: AppColors.primary, size: 16),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              species,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-          const SizedBox(width: 8),
+          const Icon(Icons.coronavirus_rounded,
+              size: 13, color: AppColors.primary),
+          const SizedBox(width: 5),
           Text(
-            '$count',
+            '$count ${count == 1 ? 'disease' : 'diseases'}',
             style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 13,
+              color: AppColors.primary,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -445,59 +519,100 @@ class _DiseaseGroupHeader extends StatelessWidget {
   }
 }
 
-class _DiseaseCard extends StatelessWidget {
+/// Species reference photo filling its parent, with the app's soft-mint + leaf
+/// placeholder as the fallback (missing URL, load error, or while loading).
+class SpeciesImage extends StatelessWidget {
+  final String? imageUrl;
+
+  const SpeciesImage({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      color: AppColors.primary.withValues(alpha: 0.08),
+      alignment: Alignment.center,
+      child: const Icon(Icons.local_florist_rounded,
+          color: AppColors.primary, size: 40),
+    );
+    if (imageUrl == null || imageUrl!.isEmpty) return placeholder;
+    return CachedNetworkImage(
+      imageUrl: imageUrl!,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      placeholder: (c, _) => Container(color: AppColors.surfaceLight),
+      errorWidget: (c, _, _) => placeholder,
+    );
+  }
+}
+
+/// A disease card for a 2-column grid: reference photo on top, name, and a
+/// severity chip. Opens the disease knowledge-base page. Shared by the search
+/// override here and by the species disease grid.
+class DiseaseGridCard extends StatelessWidget {
   final Disease disease;
 
-  const _DiseaseCard({required this.disease});
+  const DiseaseGridCard({super.key, required this.disease});
 
   @override
   Widget build(BuildContext context) {
     final images = disease.allImages;
+    final placeholder = Container(
+      color: AppColors.surfaceLight,
+      alignment: Alignment.center,
+      child: const Icon(Icons.coronavirus_rounded,
+          color: AppColors.textMuted, size: 34),
+    );
     return GestureDetector(
       onTap: () =>
           context.push('/disease/${Uri.encodeComponent(disease.label)}'),
       child: Container(
-        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBorder),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: const [
             BoxShadow(
               color: AppColors.cardShadow,
-              blurRadius: 12,
-              offset: Offset(0, 2),
+              blurRadius: 14,
+              offset: Offset(0, 4),
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: 60,
-                height: 60,
+            Expanded(
+              child: ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(18)),
                 child: images.isNotEmpty
                     ? CachedNetworkImage(
                         imageUrl: images.first,
                         fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
                         placeholder: (c, _) =>
                             Container(color: AppColors.surfaceLight),
-                        errorWidget: (c, _, _) => const _DiseaseThumbFallback(),
+                        errorWidget: (c, _, _) => placeholder,
                       )
-                    : const _DiseaseThumbFallback(),
+                    : placeholder,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     disease.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                   if (disease.severity.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -506,22 +621,9 @@ class _DiseaseCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _DiseaseThumbFallback extends StatelessWidget {
-  const _DiseaseThumbFallback();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.surfaceLight,
-      child: const Icon(Icons.coronavirus_rounded, color: AppColors.textMuted),
     );
   }
 }

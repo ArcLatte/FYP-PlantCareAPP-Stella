@@ -57,36 +57,64 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Future<void> _confirmDisease(String label) async {
+    // Capture the (root) messenger before the async gap so the confirmation
+    // snackbar survives the navigation to the plant page.
+    final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _isConfirming = true;
       _errorMessage = null;
     });
     try {
       final updated = await ApiService.confirmDisease(widget.scanId, label);
-      setState(() {
-        // The confirm endpoint doesn't echo predictions/image, so keep the
-        // ones we already loaded and merge in the confirmed diagnosis + care.
-        _scan = ScanResult(
-          id: updated.id,
-          plantId: updated.plantId ?? _scan?.plantId,
-          plantName: _scan?.plantName,
-          imageUrl: updated.imageUrl ?? _scan?.imageUrl,
-          predictions: _scan?.predictions ?? const [],
-          confirmedDisease: updated.confirmedDisease ?? label,
-          diseaseName: updated.diseaseName,
-          treatment: updated.treatment,
-          careTips: updated.careTips,
-          createdAt: _scan?.createdAt ?? updated.createdAt,
-        );
-        _selectedLabel = updated.confirmedDisease ?? label;
-        _isConfirming = false;
-      });
+      if (!mounted) return;
+      final plantId = updated.plantId ?? _scan?.plantId;
+      final healthy = label.toLowerCase().contains('healthy');
+      final name = updated.diseaseName ?? _formatLabel(label);
+      messenger.showSnackBar(
+        _savedSnack(healthy ? 'Marked healthy' : 'Diagnosis saved — $name'),
+      );
+      // One tap → straight to the plant page, which already shows the
+      // confirmed diagnosis with treatment / care tips (latest_disease).
+      if (plantId != null) {
+        context.go('/plants/$plantId');
+      } else {
+        context.go('/home');
+      }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
         _isConfirming = false;
       });
     }
+  }
+
+  SnackBar _savedSnack(String message) {
+    return SnackBar(
+      content: Row(
+        children: [
+          const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: AppColors.primary,
+      behavior: SnackBarBehavior.floating,
+      elevation: 4,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      duration: const Duration(seconds: 3),
+    );
   }
 
   void _goBack() {
@@ -159,7 +187,11 @@ class _ResultScreenState extends State<ResultScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Select the correct diagnosis, then confirm below.',
+                          scan.alternativesLocked
+                              ? 'High-confidence result — other candidates are '
+                                  'shown for reference only.'
+                              : 'Select the correct diagnosis, then confirm '
+                                  'below.',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         const SizedBox(height: 16),
@@ -186,21 +218,28 @@ class _ResultScreenState extends State<ResultScreen> {
                         ...scan.predictions.asMap().entries.map((entry) {
                           final index = entry.key;
                           final prediction = entry.value;
+                          final rank = index + 1;
+                          // High-confidence scans lock every candidate below
+                          // the top one: they can't be selected or confirmed.
+                          final locked = scan.alternativesLocked && rank > 1;
                           return _PredictionTile(
-                            rank: index + 1,
+                            rank: rank,
                             name: prediction.name ??
                                 _formatLabel(prediction.label),
                             imageUrl: prediction.imageUrl,
                             confidence: prediction.confidence,
                             color: _confidenceColor(prediction.confidence),
                             selected: _selectedLabel == prediction.label,
-                            onTap: _isConfirming
+                            locked: locked,
+                            onTap: (_isConfirming || locked)
                                 ? null
                                 : () => setState(
                                     () => _selectedLabel = prediction.label),
+                            // Only offer "confirm from detail" for a label that
+                            // is actually confirmable (drop scanId when locked).
                             onReadMore: () => context.push(
                               '/disease/${Uri.encodeComponent(prediction.label)}'
-                              '?scanId=${widget.scanId}',
+                              '${locked ? '' : '?scanId=${widget.scanId}'}',
                             ),
                           );
                         }),
@@ -216,8 +255,10 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildBottomBar() {
-    // Once the selected label is the confirmed one, the work is done.
-    final isDone = _isConfirmed && _selectedLabel == _scan!.confirmedDisease;
+    // When reopened on an already-confirmed scan and the selection still
+    // matches the confirmed label, there's nothing to submit — just go back.
+    final backToPlant =
+        _isConfirmed && _selectedLabel == _scan!.confirmedDisease;
     return SafeArea(
       top: false,
       minimum: const EdgeInsets.only(bottom: 12),
@@ -238,26 +279,26 @@ class _ResultScreenState extends State<ResultScreen> {
             ],
           ),
           child: _isConfirming
-            ? const SizedBox(
-                height: 52,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : isDone
-                ? ElevatedButton.icon(
-                    onPressed: _goBack,
-                    icon: const Icon(Icons.check_rounded),
-                    label: const Text('Done'),
-                  )
-                : ElevatedButton(
-                    onPressed: _selectedLabel == null
-                        ? null
-                        : () => _confirmDisease(_selectedLabel!),
-                    child: Text(
-                      _isConfirmed
-                          ? 'Update diagnosis'
-                          : 'Confirm diagnosis',
+              ? const SizedBox(
+                  height: 52,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : backToPlant
+                  ? ElevatedButton.icon(
+                      onPressed: _goBack,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      label: const Text('Back to plant'),
+                    )
+                  : ElevatedButton(
+                      onPressed: _selectedLabel == null
+                          ? null
+                          : () => _confirmDisease(_selectedLabel!),
+                      child: Text(
+                        _isConfirmed
+                            ? 'Update diagnosis'
+                            : 'Confirm diagnosis',
+                      ),
                     ),
-                  ),
         ),
       ),
     );
@@ -322,8 +363,10 @@ class _ResultScreenState extends State<ResultScreen> {
 
         const SizedBox(height: 16),
         OutlinedButton.icon(
+          // Already confirmed — the detail page opens in read-only mode (no
+          // scanId, so no confirm bar).
           onPressed: () => context.push(
-            '/disease/${Uri.encodeComponent(label)}?scanId=${widget.scanId}',
+            '/disease/${Uri.encodeComponent(label)}',
           ),
           icon: const Icon(Icons.menu_book_rounded, size: 18),
           label: const Text('Read more about this'),
@@ -407,6 +450,7 @@ class _PredictionTile extends StatelessWidget {
   final double confidence;
   final Color color;
   final bool selected;
+  final bool locked;
   final VoidCallback? onTap;
   final VoidCallback onReadMore;
 
@@ -417,6 +461,7 @@ class _PredictionTile extends StatelessWidget {
     required this.confidence,
     required this.color,
     required this.selected,
+    required this.locked,
     required this.onTap,
     required this.onReadMore,
   });
@@ -424,22 +469,26 @@ class _PredictionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isTop = rank == 1;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary.withValues(alpha: 0.08)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.cardBorder,
-            width: selected ? 2 : 1,
+    // Locked alternatives are dimmed and non-selectable, but still show their
+    // photo / confidence and keep the "Read more" link working.
+    return Opacity(
+      opacity: locked ? 0.55 : 1.0,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.primary.withValues(alpha: 0.08)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.cardBorder,
+              width: selected ? 2 : 1,
+            ),
           ),
-        ),
-        child: Row(
+          child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Example reference photo with a rank badge.
@@ -467,14 +516,21 @@ class _PredictionTile extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Icon(
-                        selected
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        color:
-                            selected ? AppColors.primary : AppColors.textMuted,
-                        size: 22,
-                      ),
+                      locked
+                          ? const Icon(
+                              Icons.lock_rounded,
+                              color: AppColors.textMuted,
+                              size: 20,
+                            )
+                          : Icon(
+                              selected
+                                  ? Icons.radio_button_checked_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              color: selected
+                                  ? AppColors.primary
+                                  : AppColors.textMuted,
+                              size: 22,
+                            ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -506,6 +562,7 @@ class _PredictionTile extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );

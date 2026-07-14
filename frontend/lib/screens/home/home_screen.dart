@@ -181,6 +181,161 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _fertilizePlant(Plant plant) async {
+    try {
+      final updated = await ApiService.fertilizePlant(plant.id);
+      if (!mounted) return;
+      setState(() {
+        final i = _plants.indexWhere((p) => p.id == updated.id);
+        if (i != -1) _plants[i] = updated;
+      });
+      AppSnackBar.success(context, '${plant.name} fertilized');
+      XpToast.flush(context);
+      NotificationService.scheduleCareReminders(_plants);
+    } catch (e) {
+      if (mounted) AppSnackBar.error(context, 'Failed to fertilize: $e');
+    }
+  }
+
+  Future<void> _mistPlant(Plant plant) async {
+    try {
+      final updated = await ApiService.mistPlant(plant.id);
+      if (!mounted) return;
+      setState(() {
+        final i = _plants.indexWhere((p) => p.id == updated.id);
+        if (i != -1) _plants[i] = updated;
+      });
+      AppSnackBar.success(context, '${plant.name} misted');
+      XpToast.flush(context);
+      NotificationService.scheduleCareReminders(_plants);
+    } catch (e) {
+      if (mounted) AppSnackBar.error(context, 'Failed to mist: $e');
+    }
+  }
+
+  /// Long-press a plant tile for quick care. Mirrors the detail page's "Log
+  /// care" sheet — Water always, Fertilize / Mist only when the species
+  /// schedules them — plus a shortcut into a health scan.
+  Future<void> _openQuickActions(Plant plant) async {
+    HapticFeedback.mediumImpact();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final rows = <Widget>[
+          _CareActionRow(
+            icon: Icons.water_drop_rounded,
+            color: const Color(0xFF4F9FD9),
+            label: 'Water',
+            subtitle:
+                'Next ${_careNext(plant.daysUntilWater)} · Last ${_careLast(plant.lastWatered)}',
+            overdue: (plant.daysUntilWater ?? 1) <= 0,
+            onTap: () {
+              Navigator.pop(ctx);
+              _waterPlant(plant);
+            },
+          ),
+        ];
+        if (plant.daysUntilFertilizer != null) {
+          rows.add(_CareActionRow(
+            icon: Icons.compost_rounded,
+            color: AppColors.amber,
+            label: 'Fertilize',
+            subtitle:
+                'Next ${_careNext(plant.daysUntilFertilizer)} · Last ${_careLast(plant.lastFertilized)}',
+            overdue: plant.daysUntilFertilizer! <= 0,
+            onTap: () {
+              Navigator.pop(ctx);
+              _fertilizePlant(plant);
+            },
+          ));
+        }
+        if (plant.daysUntilMisting != null) {
+          rows.add(_CareActionRow(
+            icon: Icons.cloud_rounded,
+            color: const Color(0xFF26A69A),
+            label: 'Mist',
+            subtitle:
+                'Next ${_careNext(plant.daysUntilMisting)} · Last ${_careLast(plant.lastMisted)}',
+            overdue: plant.daysUntilMisting! <= 0,
+            onTap: () {
+              Navigator.pop(ctx);
+              _mistPlant(plant);
+            },
+          ));
+        }
+        rows.add(_CareActionRow(
+          icon: Icons.center_focus_strong_rounded,
+          color: const Color(0xFF7C6CD6),
+          label: 'Scan health',
+          subtitle: 'Check leaves for disease',
+          overdue: false,
+          isNav: true,
+          onTap: () {
+            Navigator.pop(ctx);
+            context.push('/scan/${plant.id}').then((_) {
+              if (mounted) _loadPlants();
+            });
+          },
+        ));
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    plant.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(ctx).textTheme.titleLarge,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final row in rows) row,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// "in 3d" / "tomorrow" / "due now" for a care countdown.
+  String _careNext(int? days) {
+    if (days == null) return '—';
+    if (days <= 0) return 'due now';
+    if (days == 1) return 'tomorrow';
+    return 'in ${days}d';
+  }
+
+  /// "today" / "yesterday" / "5d ago" / "never" for a last-care timestamp.
+  String _careLast(DateTime? dt) {
+    if (dt == null) return 'never';
+    final days = DateTime.now().difference(dt).inDays;
+    if (days <= 0) return 'today';
+    if (days == 1) return 'yesterday';
+    return '${days}d ago';
+  }
+
   Future<void> _openAddPlant() async {
     await context.push('/plants/add');
     if (!mounted) return;
@@ -529,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           await context.push('/plants/${plant.id}');
                           _loadPlants();
                         },
-                        onWater: () => _waterPlant(plant),
+                        onLongPress: () => _openQuickActions(plant),
                       );
                     }, childCount: filtered.length),
                   ),
@@ -1125,24 +1280,26 @@ class _WeatherStat extends StatelessWidget {
 class _PlantGridCard extends StatelessWidget {
   final Plant plant;
   final VoidCallback onTap;
-  final VoidCallback onWater;
+  final VoidCallback onLongPress;
   const _PlantGridCard({
     required this.plant,
     required this.onTap,
-    required this.onWater,
+    required this.onLongPress,
   });
 
-  String _statusLine() {
-    if (plant.latestHealth == 'diseased') return 'Needs treatment';
-    if (plant.needsWater) return 'Needs water today';
-    if (plant.latestHealth == 'healthy') return 'Doing great';
-    return plant.species;
+  /// "Species · Location" under the name — whichever parts exist.
+  String _speciesLocation() {
+    final parts = [plant.species, plant.location]
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+    return parts.join(' · ');
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface,
@@ -1225,9 +1382,10 @@ class _PlantGridCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Text area
+            // Text area — species + location under the name, then the plant's
+            // current status where the care icons used to sit.
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -1244,43 +1402,17 @@ class _PlantGridCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _statusLine(),
+                    _speciesLocation(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: plant.needsWater
-                          ? const Color(0xFF4F9FD9)
-                          : (plant.latestHealth == 'diseased'
-                                ? AppColors.amber
-                                : AppColors.textSecondary),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _ActionIcon(
-                        icon: Icons.water_drop_outlined,
-                        color: plant.needsWater
-                            ? const Color(0xFF4F9FD9)
-                            : AppColors.textMuted,
-                        onTap: onWater,
-                      ),
-                      const SizedBox(width: 8),
-                      const _ActionIcon(
-                        icon: Icons.wb_sunny_outlined,
-                        color: AppColors.amber,
-                        onTap: null,
-                      ),
-                      const Spacer(),
-                      _ActionIcon(
-                        icon: Icons.add_rounded,
-                        color: AppColors.primary,
-                        onTap: onTap,
-                      ),
-                    ],
-                  ),
+                  _PlantStatusChip(plant: plant),
                 ],
               ),
             ),
@@ -1332,28 +1464,151 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-class _ActionIcon extends StatelessWidget {
+/// The plant's current status, shown as a tinted pill under the species line.
+/// Priority: treatment > water > healthy, so a diseased-and-thirsty plant
+/// reads "Needs treatment" (amber) rather than a misleading blue.
+class _PlantStatusChip extends StatelessWidget {
+  final Plant plant;
+  const _PlantStatusChip({required this.plant});
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData icon;
+    final String text;
+    final Color color;
+    if (plant.latestHealth == 'diseased') {
+      icon = Icons.warning_amber_rounded;
+      text = 'Needs treatment';
+      color = AppColors.amber;
+    } else if (plant.needsWater) {
+      icon = Icons.water_drop_rounded;
+      text = 'Needs water';
+      color = const Color(0xFF4F9FD9);
+    } else if (plant.latestHealth == 'healthy') {
+      icon = Icons.check_circle_rounded;
+      text = 'Healthy';
+      color = AppColors.primary;
+    } else {
+      icon = Icons.check_circle_rounded;
+      text = 'All good';
+      color = AppColors.primary;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A row in the long-press quick-actions sheet, styled to match the detail
+/// page's "Log care" sheet: tinted icon tile, label + subtitle, and a trailing
+/// affordance — a coloured `+` for care actions, or a chevron when [isNav].
+class _CareActionRow extends StatelessWidget {
   final IconData icon;
   final Color color;
-  final VoidCallback? onTap;
-  const _ActionIcon({
+  final String label;
+  final String subtitle;
+  final bool overdue;
+  final bool isNav;
+  final VoidCallback onTap;
+
+  const _CareActionRow({
     required this.icon,
     required this.color,
+    required this.label,
+    required this.subtitle,
+    required this.overdue,
     required this.onTap,
+    this.isNav = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: overdue ? AppColors.amber : AppColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isNav)
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textMuted,
+                size: 24,
+              )
+            else
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+          ],
         ),
-        child: Icon(icon, color: color, size: 16),
       ),
     );
   }

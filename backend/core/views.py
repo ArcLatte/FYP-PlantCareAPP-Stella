@@ -17,7 +17,7 @@ from .achievements import check_achievements, progress_snapshot, PROGRESS
 from .weekly import challenge_state, check_weekly_challenge
 from .serializers import (
     PlantSerializer, PlantSpeciesSerializer, LocationSerializer,
-    DiseaseSerializer,
+    DiseaseSerializer, image_ref_to_url,
 )
 import torch
 import torchvision.transforms as transforms
@@ -27,36 +27,110 @@ import json
 import os
 
 
-# Load model once at startup
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ml', 'tomato_model.pth')
+# ── Disease-classification models ────────────────────────────────
+# Each species has its own fine-tuned ConvNeXt-Tiny. The full set is too big
+# to keep resident in RAM at once, so models are loaded on demand per request
+# and freed immediately after inference (see run_inference). Model files live
+# in MODELS_DIR — locally the repo's ml/ dir, in production a mounted volume.
+import threading
 
-CLASS_NAMES = [
-    'Tomato_Bacterial_spot',
-    'Tomato_Early_blight',
-    'Tomato_Late_blight',
-    'Tomato_Leaf_Mold',
-    'Tomato_Septoria_leaf_spot',
-    'Tomato_Spider_mites_Two_spotted_spider_mite',
-    'Tomato__Target_Spot',
-    'Tomato__Tomato_YellowLeaf__Curl_Virus',
-    'Tomato__Tomato_mosaic_virus',
-    'Tomato_healthy',
-]
+# Model files live in backend/ml/ (shipped via Git LFS), so the default works
+# both locally and on the server. MODELS_DIR can override it (e.g. a volume).
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.getenv('MODELS_DIR', os.path.join(_BACKEND_DIR, 'ml'))
 
-def load_model():
-    model = models.efficientnet_b0(weights=None)
-    model.classifier[1] = torch.nn.Linear(model.classifier[1].in_features, len(CLASS_NAMES))
-    model.load_state_dict(torch.load(MODEL_PATH, map_location='cpu'))
-    model.eval()
-    return model
-
-ml_model = load_model()
+# Keyed by PlantSpecies.name. Class order MUST match training (alphabetical /
+# ImageFolder order) or predictions will be mislabelled.
+SPECIES_MODELS = {
+    'Tomato': {
+        'file': 'tomato_convnext_plantdoc_v3.pth',
+        'classes': [
+            'Tomato_Bacterial_spot',
+            'Tomato_Early_blight',
+            'Tomato_Late_blight',
+            'Tomato_Leaf_Mold',
+            'Tomato_Septoria_leaf_spot',
+            'Tomato_Spider_mites_Two_spotted_spider_mite',
+            'Tomato__Target_Spot',
+            'Tomato__Tomato_YellowLeaf__Curl_Virus',
+            'Tomato__Tomato_mosaic_virus',
+            'Tomato_healthy',
+        ],
+    },
+    'Potato': {
+        'file': 'potato_convnext_plantdoc.pth',
+        'classes': [
+            'Potato___Early_blight',
+            'Potato___Late_blight',
+            'Potato___healthy',
+        ],
+    },
+    'Bell Pepper': {
+        'file': 'pepper_convnext_plantdoc.pth',
+        'classes': [
+            'Pepper__bell___Bacterial_spot',
+            'Pepper__bell___healthy',
+        ],
+    },
+}
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
+
+# Above this top-1 confidence the model is treated as sure: the scan response
+# flags the lower-ranked candidates as locked and scan_confirm rejects them.
+CONFIRM_LOCK_THRESHOLD = 0.70
+
+
+def _alternatives_locked(preds):
+    """True when the top prediction is confident enough that only it may be
+    confirmed. `preds` is a top3_predictions list ([{label, confidence}, ...])."""
+    if not preds:
+        return False
+    try:
+        return float(preds[0].get('confidence', 0)) >= CONFIRM_LOCK_THRESHOLD
+    except (TypeError, AttributeError):
+        return False
+
+# Serialize inference so at most one model is resident in RAM at a time.
+# Fine for a low-traffic demo; bounds peak memory to a single model.
+_inference_lock = threading.Lock()
+
+
+def run_inference(species_name, image):
+    """Load the model for `species_name`, run inference on a PIL image, then
+    free the model. Returns a top-k predictions list, or None if the species
+    has no configured model."""
+    cfg = SPECIES_MODELS.get(species_name)
+    if cfg is None:
+        return None
+
+    tensor = transform(image).unsqueeze(0)
+    with _inference_lock:
+        model = models.convnext_tiny(weights=None)
+        model.classifier[2] = torch.nn.Linear(
+            model.classifier[2].in_features, len(cfg['classes'])
+        )
+        model.load_state_dict(
+            torch.load(os.path.join(MODELS_DIR, cfg['file']), map_location='cpu')
+        )
+        model.eval()
+        try:
+            with torch.no_grad():
+                probabilities = torch.nn.functional.softmax(model(tensor)[0], dim=0)
+        finally:
+            del model  # release ~115 MB before the lock is dropped
+
+    k = min(3, len(cfg['classes']))
+    top = torch.topk(probabilities, k)
+    return [
+        {'label': cfg['classes'][top.indices[i].item()],
+         'confidence': round(top.values[i].item(), 4)}
+        for i in range(k)
+    ]
 
 
 # ─── Gamification helper ─────────────────────────────────────────
@@ -622,7 +696,9 @@ def _enrich_predictions(preds):
         if d:
             item['name'] = d.name
             imgs = d.image_urls or []
-            item['image'] = imgs[0] if imgs else (d.image_url or None)
+            item['image'] = image_ref_to_url(
+                imgs[0] if imgs else (d.image_url or None)
+            )
         enriched.append(item)
     return enriched
 
@@ -641,19 +717,15 @@ def scan(request):
     except Plant.DoesNotExist:
         return Response({'error': 'Plant not found.'}, status=404)
 
-    # Run inference
+    # Run inference (model chosen by the plant's species; loaded on demand)
     image = Image.open(image_file).convert('RGB')
-    tensor = transform(image).unsqueeze(0)
+    top3_predictions = run_inference(plant.species.name, image)
 
-    with torch.no_grad():
-        outputs = ml_model(tensor)
-        probabilities = torch.nn.functional.softmax(outputs[0], dim=0)
-
-    top3 = torch.topk(probabilities, 3)
-    top3_predictions = [
-        {'label': CLASS_NAMES[top3.indices[i].item()], 'confidence': round(top3.values[i].item(), 4)}
-        for i in range(3)
-    ]
+    if top3_predictions is None:
+        return Response(
+            {'error': f'Disease detection is not available for {plant.species.name} yet.'},
+            status=400,
+        )
 
     top_label = top3_predictions[0]['label']
     top_confidence = top3_predictions[0]['confidence']
@@ -674,6 +746,7 @@ def scan(request):
         'top3': _enrich_predictions(top3_predictions),
         'predicted_label': top_label,
         'confidence': top_confidence,
+        'alternatives_locked': _alternatives_locked(top3_predictions),
         **xp,
     }, status=201)
     
@@ -688,6 +761,15 @@ def scan_confirm(request, pk):
 
     label = request.data.get('label')
 
+    # High-confidence scans may only be confirmed as the top prediction — the
+    # same rule the result screen enforces by locking the alternative cards.
+    preds = scan_result.top3_predictions or []
+    if _alternatives_locked(preds) and label != preds[0].get('label'):
+        return Response(
+            {'error': 'High-confidence result — only the top prediction can be confirmed.'},
+            status=400,
+        )
+
     try:
         disease = Disease.objects.get(label=label)
     except Disease.DoesNotExist:
@@ -698,6 +780,7 @@ def scan_confirm(request, pk):
 
     return Response({
         'scan_id': scan_result.id,
+        'plant_id': scan_result.plant_id,
         'image': request.build_absolute_uri(scan_result.image.url) if scan_result.image else None,
         'top3': scan_result.top3_predictions,
         'disease': disease.label,
@@ -796,6 +879,7 @@ def scan_detail(request, pk):
             'top3': _enrich_predictions(scan.top3_predictions),
             'predicted_label': scan.top3_predictions[0]['label'] if scan.top3_predictions else None,
             'confidence': scan.confidence_score,
+            'alternatives_locked': _alternatives_locked(scan.top3_predictions),
             'disease': scan.disease.label if scan.disease else None,
             'disease_name': scan.disease.name if scan.disease else None,
             'treatment': scan.disease.treatment if scan.disease else None,

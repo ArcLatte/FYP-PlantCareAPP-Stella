@@ -1,3 +1,5 @@
+import '../core/constants.dart';
+
 class Prediction {
   final String label;
   final double confidence;
@@ -16,7 +18,10 @@ class Prediction {
       label: json['label'].toString(),
       confidence: (json['confidence'] as num).toDouble(),
       name: json['name']?.toString(),
-      imageUrl: json['image']?.toString(),
+      // Backend now sends site-relative /static/ paths (self-hosted library
+      // images); absolutize so CachedNetworkImage can load them. Legacy
+      // absolute http(s) URLs pass through unchanged.
+      imageUrl: _absolutePhotoUrl(json['image']),
     );
   }
 }
@@ -27,6 +32,9 @@ class ScanResult {
   final String? plantName;
   final String? imageUrl;
   final List<Prediction> predictions;
+  // When true (top-1 confidence ≥ backend threshold) only the top prediction
+  // may be confirmed; the result screen locks the lower-ranked alternatives.
+  final bool alternativesLocked;
   final String? confirmedDisease;
   final String? diseaseName;
   final String? treatment;
@@ -39,6 +47,7 @@ class ScanResult {
     this.plantName,
     this.imageUrl,
     required this.predictions,
+    this.alternativesLocked = false,
     this.confirmedDisease,
     this.diseaseName,
     this.treatment,
@@ -71,10 +80,11 @@ class ScanResult {
       id: ((json['scan_id'] ?? json['id']) as num).toInt(),
       plantId: plantId,
       plantName: plantName,
-      imageUrl: json['image']?.toString(),
+      imageUrl: _absolutePhotoUrl(json['image']),
       predictions: predictionsList
           .map((p) => Prediction.fromJson(p as Map<String, dynamic>))
           .toList(),
+      alternativesLocked: json['alternatives_locked'] == true,
       confirmedDisease: (json['disease'] ??
               json['confirmed_disease'] ??
               json['confirmed_label'])
@@ -85,4 +95,16 @@ class ScanResult {
       createdAt: (json['created_at'] ?? '').toString(),
     );
   }
+}
+
+/// Turn a backend image reference into a loadable URL. Absolute http(s) URLs
+/// pass through; site-relative paths (uploaded media or /static/ library
+/// images) get the API host prepended. Mirrors the helper in plant.dart.
+String? _absolutePhotoUrl(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString();
+  if (s.isEmpty) return null;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  if (s.startsWith('/')) return '${AppConstants.mediaHost}$s';
+  return '${AppConstants.mediaHost}/$s';
 }

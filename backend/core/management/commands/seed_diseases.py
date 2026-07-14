@@ -1,8 +1,16 @@
-"""Seed the Disease knowledge base for the 10 tomato classes the model predicts.
+"""Seed the Disease knowledge base for the classes the ML models predict.
+
+Covers all three species with a configured model in core/views.py:
+Tomato (10 classes), Potato (3) and Bell Pepper (2). `label` values mirror
+exactly the CLASS_NAMES lists the models output, and are the join key.
 
 Idempotent: re-running updates existing rows (keyed on `label`) rather than
-duplicating. The `label` values mirror exactly the CLASS_NAMES list the ML
-model outputs in core/views.py.
+duplicating.
+
+Reference photos are shipped as bundled static files under
+core/static/library/diseases/<label>.jpg (curated from Wikimedia Commons — see
+the `# image:` attribution comment on each entry). `image_urls` therefore holds
+static-relative paths; the serializer resolves them to /static/ URLs.
 
 Data sources (consulted at authoring time, not at runtime):
   - PlantVillage — https://plantvillage.psu.edu/
@@ -12,26 +20,36 @@ Data sources (consulted at authoring time, not at runtime):
   - Wikipedia — general descriptions / pathogen names.
 
 Run: python manage.py seed_diseases
-(Requires the Tomato species to exist — run seed_species first.)
+(Requires the species to exist — run seed_species first.)
 """
 
 from django.core.management.base import BaseCommand
 from core.models import Disease, PlantSpecies
 
 
-# One entry per CLASS_NAMES value in core/views.py. `label` is the join key.
+# One entry per class the models predict. `label` is the join key; `species`
+# is the PlantSpecies.name it belongs to (resolved to a row in handle()).
 DISEASES = [
+    # ─── Tomato ──────────────────────────────────────────────────
     dict(
         label='Tomato_Bacterial_spot',
+        species='Tomato',
         name='Bacterial Spot',
         severity=Disease.Severity.HIGH,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/e/e2/Bacterial_leaf_spot_on_pepper.jpg',
-        ],
+        # No suitable free tomato bacterial-spot photo exists on Wikimedia
+        # Commons (the bacterial-spot image there is on pepper, and belongs to
+        # the Pepper entry). Left imageless — the app shows a placeholder.
+        image_urls=[],
         description=(
-            'A common, fast-spreading bacterial disease that attacks leaves, '
-            'stems and fruit in warm, wet weather, reducing yield and making '
-            'fruit unmarketable.'
+            'Bacterial spot is a common, fast-spreading disease that attacks '
+            'the leaves, stems and fruit of tomatoes in warm, wet weather. It '
+            'is carried on infected seed and transplants and moves from plant '
+            'to plant through rain splash, overhead watering and handling. '
+            'Left unchecked it causes leaves to yellow and drop and leaves '
+            'scabby lesions on fruit, cutting yield and making fruit '
+            'unmarketable. Caught early and managed with sanitation and copper '
+            'sprays plants can still crop, but the bacterium is very hard to '
+            'eradicate once established.'
         ),
         symptoms=(
             'Small, water-soaked spots on leaves that turn dark brown to black '
@@ -62,15 +80,20 @@ DISEASES = [
     ),
     dict(
         label='Tomato_Early_blight',
+        species='Tomato',
         name='Early Blight',
         severity=Disease.Severity.MEDIUM,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/0/04/Alternaria_solani_-_leaf_lesions.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Alternaria_solani_-_leaf_lesions.jpg
+        image_urls=['library/diseases/Tomato_Early_blight.jpg'],
         description=(
-            'A widespread fungal disease that usually starts on older, lower '
-            'leaves and works upward, weakening the plant and exposing fruit '
-            'to sunscald.'
+            'Early blight is a widespread fungal disease that usually begins '
+            'on the oldest, lowest leaves and works its way up the plant. The '
+            'fungus survives in soil and plant debris and spreads by wind, '
+            'water splash and tools, especially in warm, humid spells. As the '
+            'lower leaves die back the fruit loses its canopy and becomes '
+            'prone to sunscald, steadily weakening the plant. It rarely kills '
+            'a tomato outright, and prompt leaf removal plus fungicide keeps '
+            'it manageable through the season.'
         ),
         symptoms=(
             'Brown spots with concentric rings ("target" or bullseye pattern) '
@@ -98,18 +121,24 @@ DISEASES = [
             'varieties. Remove volunteer tomatoes and nightshade weeds.'
         ),
         source_name='University of Minnesota Extension',
-        source_url='https://extension.umn.edu/disease-management/early-blight-tomato',
+        source_url='https://extension.umn.edu/disease-management/early-blight-tomato-and-potato',
     ),
     dict(
         label='Tomato_Late_blight',
+        species='Tomato',
         name='Late Blight',
         severity=Disease.Severity.HIGH,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/a/aa/Late_blight_on_potato_leaf_2.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Late_blight_on_potato_leaf_2.jpg
+        image_urls=['library/diseases/Tomato_Late_blight.jpg'],
         description=(
-            'An aggressive, destructive disease (the cause of the Irish potato '
-            'famine) that can kill plants within days in cool, wet weather.'
+            'Late blight is an aggressive, fast-moving disease — the same one '
+            'behind the Irish potato famine — that can destroy a tomato crop '
+            'within days. Its spores travel long distances on wind and rain, '
+            'so an outbreak nearby can reach your garden quickly in cool, wet '
+            'weather. Infected leaves and fruit rot rapidly, and heavily hit '
+            'plants seldom recover. Because it spreads so fast, success '
+            'depends on early detection, removing infected plants immediately '
+            'and protecting healthy ones before symptoms appear.'
         ),
         symptoms=(
             'Large, greasy-looking grey-green blotches on leaves that quickly '
@@ -140,14 +169,19 @@ DISEASES = [
     ),
     dict(
         label='Tomato_Leaf_Mold',
+        species='Tomato',
         name='Leaf Mold',
         severity=Disease.Severity.MEDIUM,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/5/54/TomateBlattOberseiteSamtfleckenCladosporiumfulvum.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:TomateBlattOberseiteSamtfleckenCladosporiumfulvum.jpg
+        image_urls=['library/diseases/Tomato_Leaf_Mold.jpg'],
         description=(
-            'A fungal disease most common in humid greenhouses and high tunnels '
-            'where air is still and moisture lingers on foliage.'
+            'Leaf mold is a fungal disease that thrives where air is still and '
+            'humidity stays high, so it is most common in greenhouses, high '
+            'tunnels and crowded plantings. Spores spread easily on air '
+            'currents, tools and clothing whenever leaves stay damp. Infected '
+            'foliage yellows, curls and drops, and the loss of leaves reduces '
+            'fruit set and size. It is rarely fatal and responds well to '
+            'better ventilation, lower humidity and early leaf removal.'
         ),
         symptoms=(
             'Pale green to yellow spots on the upper leaf surface, with olive-'
@@ -177,16 +211,20 @@ DISEASES = [
     ),
     dict(
         label='Tomato_Septoria_leaf_spot',
+        species='Tomato',
         name='Septoria Leaf Spot',
         severity=Disease.Severity.MEDIUM,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/7/76/Septoria_lycopersici_malagutii_leaf_spot_on_tomato_leaf.jpg',
-            'https://upload.wikimedia.org/wikipedia/commons/8/86/Septoria_leaf_spot_symptoms_on_tomato_leaf_%28Septoria_lycopersici_on_Solanum_lycopersicum_leaf%29.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Septoria_lycopersici_malagutii_leaf_spot_on_tomato_leaf.jpg
+        image_urls=['library/diseases/Tomato_Septoria_leaf_spot.jpg'],
         description=(
-            'A very common leaf disease that causes heavy defoliation but does '
-            'not infect the fruit directly; losses come from sunscald on '
-            'exposed fruit and weakened plants.'
+            'Septoria leaf spot is one of the most common tomato leaf '
+            'diseases, causing heavy defoliation but not infecting the fruit '
+            'directly. The fungus overwinters in debris and on weeds and '
+            'spreads by splashing water during warm, wet weather, starting low '
+            'on the plant and climbing. As leaves are stripped away the '
+            'exposed fruit is prone to sunscald and the plant weakens. '
+            'Removing affected leaves early and keeping foliage dry usually '
+            'keeps it in check for the rest of the season.'
         ),
         symptoms=(
             'Many small, circular spots with dark brown borders and tan-grey '
@@ -216,14 +254,20 @@ DISEASES = [
     ),
     dict(
         label='Tomato_Spider_mites_Two_spotted_spider_mite',
+        species='Tomato',
         name='Two-Spotted Spider Mites',
         severity=Disease.Severity.MEDIUM,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/5/52/Tetranychus_urticae_%284883560779%29.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Tetranychus_urticae_(4883560779).jpg
+        image_urls=['library/diseases/Tomato_Spider_mites_Two_spotted_spider_mite.jpg'],
         description=(
-            'A sap-sucking pest (not a disease) that builds up fast in hot, dry '
-            'conditions and can quickly stunt or kill plants.'
+            'Two-spotted spider mites are tiny sap-sucking pests, not a '
+            'disease, that multiply explosively in hot, dry conditions. They '
+            'colonise the undersides of leaves and can build from a few mites '
+            'to a damaging infestation in just days. Their feeding gives '
+            'leaves a bronzed, dusty, stippled look and, in bad cases, fine '
+            'webbing before leaves dry out and drop. Rinsing plants, raising '
+            'humidity and treating early with soap or oil usually brings them '
+            'under control before they stunt the plant.'
         ),
         symptoms=(
             'Fine yellow or white stippling (tiny dots) on leaves, giving a '
@@ -253,14 +297,19 @@ DISEASES = [
     ),
     dict(
         label='Tomato__Target_Spot',
+        species='Tomato',
         name='Target Spot',
         severity=Disease.Severity.MEDIUM,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/2/22/Corynespora_cassiicola_Ring-Spot_Symptoms_in_Tomato_Leaves.png',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Corynespora_cassiicola_Ring-Spot_Symptoms_in_Tomato_Leaves.png
+        image_urls=['library/diseases/Tomato__Target_Spot.jpg'],
         description=(
-            'A fungal disease of leaves, stems and fruit, common in warm, humid '
-            'and tropical climates, that can cause significant fruit loss.'
+            'Target spot is a fungal disease of the leaves, stems and fruit '
+            'that is most damaging in warm, humid and tropical climates. The '
+            'fungus spreads by wind and water splash and is favoured by long '
+            'periods of leaf wetness. Spots enlarge into ringed lesions that '
+            'merge and defoliate the plant, while sunken cracks on the fruit '
+            'can cause significant losses. Improving airflow and applying '
+            'protective fungicide early keeps the disease from taking hold.'
         ),
         symptoms=(
             'Small brown spots that enlarge into lesions with concentric rings '
@@ -289,14 +338,21 @@ DISEASES = [
     ),
     dict(
         label='Tomato__Tomato_YellowLeaf__Curl_Virus',
+        species='Tomato',
         name='Tomato Yellow Leaf Curl Virus',
         severity=Disease.Severity.HIGH,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/1/19/Yellow_curl_leaf_disease_Pj_IMG_3162.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Yellow_curl_leaf_disease_Pj_IMG_3162.jpg
+        image_urls=['library/diseases/Tomato__Tomato_YellowLeaf__Curl_Virus.jpg'],
         description=(
-            'A serious viral disease, spread by whiteflies, that can devastate '
-            'a crop, especially when plants are infected while young.'
+            'Tomato yellow leaf curl virus is a serious viral disease spread '
+            'by whiteflies that can devastate a crop, especially when plants '
+            'are infected while young. The virus itself does not spread by '
+            'seed or simple touch — it moves only when whiteflies feed — so '
+            'controlling the insect is central to managing it. Infected plants '
+            'become stunted and bushy with upward-curling, yellow-edged leaves '
+            'and drop most of their flowers, setting little or no fruit. There '
+            'is no cure once a plant is infected, so prevention through '
+            'whitefly control and resistant varieties is essential.'
         ),
         symptoms=(
             'Upward curling and cupping of leaves, yellowing of leaf margins, '
@@ -328,14 +384,21 @@ DISEASES = [
     ),
     dict(
         label='Tomato__Tomato_mosaic_virus',
+        species='Tomato',
         name='Tomato Mosaic Virus',
         severity=Disease.Severity.MEDIUM,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/12985_2016_676_Fig4_HTML.webp/640px-12985_2016_676_Fig4_HTML.webp.png',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Leaf_with_ToMV.jpg
+        image_urls=['library/diseases/Tomato__Tomato_mosaic_virus.jpg'],
         description=(
-            'A highly contagious and very stable virus that spreads easily by '
-            'touch, on tools, and on hands, reducing vigour and fruit quality.'
+            'Tomato mosaic virus is a highly contagious and unusually stable '
+            'virus that spreads by touch, on tools and on hands rather than by '
+            'insects. It can survive for long periods on surfaces, in debris '
+            'and in seed, so it moves easily from plant to plant during '
+            'routine handling. Infected plants show mottled leaves, distorted '
+            'growth and reduced vigour, and fruit quality and yield suffer. '
+            'There is no cure, but strict sanitation — clean hands, '
+            'disinfected tools and prompt removal of infected plants — reliably '
+            'stops it spreading.'
         ),
         symptoms=(
             'Mottled light- and dark-green (mosaic) patterns on leaves, leaf '
@@ -366,14 +429,19 @@ DISEASES = [
     ),
     dict(
         label='Tomato_healthy',
+        species='Tomato',
         name='Healthy',
         severity=Disease.Severity.LOW,
-        image_urls=[
-            'https://upload.wikimedia.org/wikipedia/commons/8/89/Tomato_je.jpg',
-        ],
+        # image: commons.wikimedia.org/wiki/File:Tomato_je.jpg
+        image_urls=['library/diseases/Tomato_healthy.jpg'],
         description=(
-            'No disease detected. The leaf appears healthy, with normal colour '
-            'and shape and no signs of spots, mould, curling or pests.'
+            'No disease was detected — the leaf looks healthy, with normal '
+            'colour and shape and no signs of spots, mould, curling or pests. '
+            'A healthy tomato reflects good growing conditions: steady water, '
+            'balanced feeding, full sun and open airflow. Keeping up a '
+            'consistent care routine is the best way to keep plants resilient. '
+            'Continue checking leaf undersides each week so any early problem '
+            'is caught before it spreads.'
         ),
         symptoms=(
             'Uniform green leaves, firm stems, and steady new growth, with no '
@@ -399,28 +467,264 @@ DISEASES = [
         source_name='University of Minnesota Extension',
         source_url='https://extension.umn.edu/vegetables/growing-tomatoes',
     ),
+
+    # ─── Potato ──────────────────────────────────────────────────
+    dict(
+        label='Potato___Early_blight',
+        species='Potato',
+        name='Early Blight',
+        severity=Disease.Severity.MEDIUM,
+        # image: commons.wikimedia.org/wiki/File:Alternaria_solani_IMG_1661.jpg
+        image_urls=['library/diseases/Potato___Early_blight.jpg'],
+        description=(
+            'Early blight is a common fungal disease of potatoes that '
+            'typically appears first on the older, lower leaves as the plant '
+            'matures. The fungus overwinters in soil and crop debris and '
+            'spreads by wind and water splash during warm, humid weather. '
+            'Severe infections defoliate the plant, reducing tuber size and '
+            'yield, and the fungus can also cause dry, sunken lesions on '
+            'tubers. Potatoes that are well fed and watered tolerate it '
+            'better, and early leaf removal with timely fungicide keeps losses '
+            'low.'
+        ),
+        symptoms=(
+            'Dark brown spots with concentric rings (a "target" pattern) '
+            'surrounded by yellowing, mostly on older lower leaves. Spots '
+            'enlarge and merge until leaves die and drop. Tubers may develop '
+            'dark, sunken, corky lesions.'
+        ),
+        cause=(
+            'The fungus Alternaria solani, which survives in soil and infected '
+            'debris. Spread by wind, splashing water and tools, and favoured '
+            'by warm temperatures, dew and ageing or stressed plants.'
+        ),
+        treatment=(
+            'Remove and destroy affected leaves as symptoms begin. Apply a '
+            'protective fungicide (chlorothalonil or mancozeb) on a schedule '
+            'in warm, humid weather. Keep plants vigorous with adequate water '
+            'and nitrogen to slow the disease.'
+        ),
+        care_tips=(
+            'Hill soil over tubers to protect them, water at the base early in '
+            'the day, and avoid working among wet plants. Cure and store only '
+            'sound, undamaged tubers.'
+        ),
+        prevention=(
+            'Rotate away from potatoes and tomatoes for 2-3 years, use '
+            'certified seed potatoes, space plants for airflow, and clean up '
+            'all debris after harvest.'
+        ),
+        source_name='University of Minnesota Extension',
+        source_url='https://extension.umn.edu/disease-management/early-blight-tomato-and-potato',
+    ),
+    dict(
+        label='Potato___Late_blight',
+        species='Potato',
+        name='Late Blight',
+        severity=Disease.Severity.HIGH,
+        # image: commons.wikimedia.org/wiki/File:Potato_Late_Blight.JPG
+        image_urls=['library/diseases/Potato___Late_blight.jpg'],
+        description=(
+            'Late blight is the most destructive disease of potatoes — the '
+            'cause of the Irish potato famine — and can wipe out a crop within '
+            'days in cool, wet weather. The pathogen spreads rapidly on wind '
+            'and rain over long distances, so regional outbreaks reach gardens '
+            'fast. It rots foliage and produces a reddish-brown dry rot in '
+            'tubers that keeps spreading in storage. Because it moves so '
+            'quickly, control depends on early detection, destroying infected '
+            'plants and protecting healthy foliage before symptoms show.'
+        ),
+        symptoms=(
+            'Large, dark, greasy-looking blotches on leaves and stems that '
+            'rapidly turn brown, often with a ring of white mould on leaf '
+            'undersides in humid conditions. Tubers develop a reddish-brown, '
+            'granular dry rot beneath the skin.'
+        ),
+        cause=(
+            'The water mould Phytophthora infestans, spread rapidly by '
+            'wind-blown spores and rain. Thrives in cool (10-24C), wet, humid '
+            'weather and survives between seasons in infected tubers and cull '
+            'piles.'
+        ),
+        treatment=(
+            'Act immediately: remove and bag infected plants to stop spread, '
+            'and never compost them. Protective fungicides (chlorothalonil or '
+            'copper) shield nearby healthy plants but cannot cure infected '
+            'ones. Kill off foliage before harvest so tubers are not infected '
+            'at lifting.'
+        ),
+        care_tips=(
+            'Hill tubers well so spores cannot wash down to them, improve '
+            'airflow, and inspect daily in cool, damp spells. Store only dry, '
+            'sound tubers and check them regularly.'
+        ),
+        prevention=(
+            'Plant certified disease-free seed potatoes and resistant '
+            'varieties, destroy cull piles and volunteers, avoid overhead '
+            'watering, and monitor regional blight alerts.'
+        ),
+        source_name='University of Minnesota Extension',
+        source_url='https://extension.umn.edu/disease-management/late-blight',
+    ),
+    dict(
+        label='Potato___healthy',
+        species='Potato',
+        name='Healthy',
+        severity=Disease.Severity.LOW,
+        # image: commons.wikimedia.org/wiki/File:20210731_Hortus_botanicus_Leiden_-_Solanum_tuberosum.jpg
+        image_urls=['library/diseases/Potato___healthy.jpg'],
+        description=(
+            'No disease was detected — the potato foliage looks healthy, with '
+            'uniform green leaves and no spots, mould, wilting or pest damage. '
+            'Healthy plants reflect good growing conditions: loose, '
+            'well-drained soil, steady moisture, full sun and proper hilling. '
+            'A vigorous canopy feeds the developing tubers and shrugs off '
+            'minor stress. Keep up a consistent routine and scout regularly so '
+            'any problem is caught early.'
+        ),
+        symptoms=(
+            'Uniform green leaves, sturdy upright stems and steady new growth, '
+            'with no spots, yellowing, wilting or leaf curling.'
+        ),
+        cause=(
+            'A healthy potato reflects good conditions: fertile, well-drained '
+            'soil, consistent watering, full sun, adequate hilling and '
+            'pest-free foliage.'
+        ),
+        treatment=(
+            'No treatment needed. Continue your normal watering, feeding and '
+            'hilling routine and keep monitoring for early signs of trouble.'
+        ),
+        care_tips=(
+            'Hill soil around stems as they grow to protect tubers from light '
+            'and disease, water evenly to prevent cracking, and stop watering '
+            'as foliage yellows so skins can set.'
+        ),
+        prevention=(
+            'Use certified seed potatoes, rotate crops, space plants for '
+            'airflow, and clear debris at season end to keep plants resilient.'
+        ),
+        source_name='University of Minnesota Extension',
+        source_url='https://extension.umn.edu/vegetables/growing-potatoes',
+    ),
+
+    # ─── Bell Pepper ─────────────────────────────────────────────
+    dict(
+        label='Pepper__bell___Bacterial_spot',
+        species='Bell Pepper',
+        name='Bacterial Spot',
+        severity=Disease.Severity.HIGH,
+        # image: commons.wikimedia.org/wiki/File:Bacterial_leaf_spot_on_pepper.jpg
+        image_urls=['library/diseases/Pepper__bell___Bacterial_spot.jpg'],
+        description=(
+            'Bacterial spot is the most serious bacterial disease of peppers, '
+            'attacking the leaves and fruit in warm, wet weather. It arrives '
+            'on infected seed and transplants and spreads plant to plant '
+            'through rain splash, overhead irrigation and handling. Heavy '
+            'infection causes leaves to yellow and drop, exposing fruit to '
+            'sunscald and leaving raised, scabby spots that make peppers '
+            'unmarketable. It cannot be cured once established, so early '
+            'sanitation, copper sprays and clean seed are the keys to keeping '
+            'a crop.'
+        ),
+        symptoms=(
+            'Small, water-soaked spots on leaves that turn dark brown to black, '
+            'sometimes with a yellow halo; badly spotted leaves yellow and '
+            'drop. Raised, scabby, corky spots develop on the fruit.'
+        ),
+        cause=(
+            'Bacteria in the Xanthomonas group, spread by rain splash, '
+            'overhead watering, handling and infected seed or transplants. '
+            'Favoured by temperatures of 24-30C and high humidity.'
+        ),
+        treatment=(
+            'Remove and destroy infected leaves and fruit. Copper-based sprays '
+            'can slow spread when applied early and repeatedly but do not cure '
+            'infected tissue. Avoid working among wet plants.'
+        ),
+        care_tips=(
+            'Water at the base in the morning so foliage dries quickly, space '
+            'plants for airflow, and rotate away from peppers and tomatoes for '
+            '2-3 years. Start with certified disease-free seed and transplants.'
+        ),
+        prevention=(
+            'Use disease-free seed, rotate crops, avoid overhead watering, and '
+            'sanitise tools and hands after handling infected plants.'
+        ),
+        source_name='University of Minnesota Extension',
+        source_url='https://extension.umn.edu/disease-management/bacterial-spot-tomato-and-pepper',
+    ),
+    dict(
+        label='Pepper__bell___healthy',
+        species='Bell Pepper',
+        name='Healthy',
+        severity=Disease.Severity.LOW,
+        # image: commons.wikimedia.org/wiki/File:Bell_Pepper_Plant_from_Senegal_03.jpg
+        image_urls=['library/diseases/Pepper__bell___healthy.jpg'],
+        description=(
+            'No disease was detected — the pepper plant looks healthy, with '
+            'firm green leaves and no spots, wilting, curling or pest damage. '
+            'Healthy peppers reflect warm conditions, full sun, steady water '
+            'and balanced feeding. A strong plant sets and ripens thick-walled '
+            'fruit and resists most problems. Keep up a consistent routine and '
+            'check leaf undersides weekly so any issue is caught early.'
+        ),
+        symptoms=(
+            'Firm, uniform green leaves, sturdy branching stems and steady '
+            'flowering and fruit set, with no spots, yellowing, wilting or '
+            'distortion.'
+        ),
+        cause=(
+            'A healthy pepper reflects good conditions: warmth, full sun, '
+            'consistent watering, balanced feeding and pest-free foliage.'
+        ),
+        treatment=(
+            'No treatment needed. Continue steady watering and feeding through '
+            'the warm season and keep monitoring for early signs of trouble.'
+        ),
+        care_tips=(
+            'Water evenly to prevent blossom-end rot, feed during fruiting, '
+            'stake heavy plants, and pick the first fruits early to boost '
+            'overall yield.'
+        ),
+        prevention=(
+            'Rotate crops, space plants for airflow, use clean seed and '
+            'transplants, and clear debris at season end to keep plants '
+            'resilient.'
+        ),
+        source_name='University of Minnesota Extension',
+        source_url='https://extension.umn.edu/vegetables/growing-peppers',
+    ),
 ]
 
 
 class Command(BaseCommand):
-    help = 'Seed the Disease knowledge base for the 10 tomato model classes (idempotent).'
+    help = 'Seed the Disease knowledge base for all model classes (idempotent).'
 
     def handle(self, *args, **options):
-        try:
-            tomato = PlantSpecies.objects.get(name='Tomato')
-        except PlantSpecies.DoesNotExist:
+        species_by_name = {s.name: s for s in PlantSpecies.objects.all()}
+        needed = {spec['species'] for spec in DISEASES}
+        missing = needed - set(species_by_name)
+        if missing:
             self.stderr.write(self.style.ERROR(
-                'Tomato species not found. Run `python manage.py seed_species` first.'
+                f'Missing species {sorted(missing)}. '
+                'Run `python manage.py seed_species` first.'
             ))
             return
 
         created = 0
         updated = 0
         for spec in DISEASES:
-            label = spec.pop('label')
+            # Copy (don't pop) so re-running in the same process — e.g. from
+            # tests — doesn't mutate the module-level dicts.
+            defaults = {
+                k: v for k, v in spec.items()
+                if k not in ('label', 'species')
+            }
+            defaults['species'] = species_by_name[spec['species']]
             obj, was_created = Disease.objects.update_or_create(
-                label=label,
-                defaults={**spec, 'species': tomato},
+                label=spec['label'],
+                defaults=defaults,
             )
             if was_created:
                 created += 1

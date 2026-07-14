@@ -1,3 +1,5 @@
+import '../core/constants.dart';
+
 /// A disease knowledge-base entry, fetched from `GET /diseases/<label>/`.
 /// Powers the in-app disease detail ("read more") page. Content is curated
 /// on the backend (seeded once), not retrieved live per request.
@@ -58,13 +60,26 @@ class Disease {
       severity: json['severity']?.toString() ?? '',
       sourceName: json['source_name']?.toString() ?? '',
       sourceUrl: json['source_url']?.toString() ?? '',
-      imageUrl: json['image_url']?.toString() ?? '',
+      // Backend sends site-relative /static/ paths for self-hosted library
+      // images; absolutize so they load. Absolute http(s) URLs (legacy
+      // hotlinks) pass through unchanged.
+      imageUrl: _absolutePhotoUrl(json['image_url']) ?? '',
       imageUrls: json['image_urls'] is List
           ? (json['image_urls'] as List)
-              .map((e) => e.toString())
-              .where((e) => e.isNotEmpty)
+              .map((e) => _absolutePhotoUrl(e))
+              .whereType<String>()
               .toList()
           : const [],
     );
   }
+}
+
+/// See plant.dart — absolutizes site-relative image refs against the API host.
+String? _absolutePhotoUrl(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString();
+  if (s.isEmpty) return null;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  if (s.startsWith('/')) return '${AppConstants.mediaHost}$s';
+  return '${AppConstants.mediaHost}/$s';
 }

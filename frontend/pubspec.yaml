@@ -67,6 +67,26 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # Generate launcher/adaptive icons and the splash screen from the source
+  # images in branding/ (the Material eco_rounded leaf, the app's plant motif).
+  # Regenerate with: dart run flutter_launcher_icons && dart run flutter_native_splash:create
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.3
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "branding/app_icon.png"
+  adaptive_icon_background: "#4CAF7D"
+  adaptive_icon_foreground: "branding/adaptive_foreground.png"
+
+flutter_native_splash:
+  color: "#F5F7F5"
+  image: "branding/splash.png"
+  android_12:
+    color: "#F5F7F5"
+    image: "branding/splash.png"
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

@@ -14,6 +14,7 @@ import '../screens/history/history_screen.dart';
 import '../screens/history/history_detail_screen.dart';
 import '../screens/library/library_screen.dart';
 import '../screens/library/species_detail_screen.dart';
+import '../screens/library/species_diseases_screen.dart';
 import '../screens/tasks/tasks_screen.dart';
 import '../screens/tasks/task_detail_screen.dart';
 import '../screens/profile/profile_screen.dart';
@@ -220,6 +221,15 @@ final GoRouter appRouter = GoRouter(
                   path: 'species/:id',
                   builder: (context, state) => SpeciesDetailScreen(
                     speciesId: int.parse(state.pathParameters['id']!),
+                  ),
+                ),
+                GoRoute(
+                  // /library/diseases/:speciesId — the disease grid for one
+                  // species (species-first Diseases tab drill-in).
+                  path: 'diseases/:speciesId',
+                  builder: (context, state) => SpeciesDiseasesScreen(
+                    speciesId:
+                        int.parse(state.pathParameters['speciesId']!),
                   ),
                 ),
               ],

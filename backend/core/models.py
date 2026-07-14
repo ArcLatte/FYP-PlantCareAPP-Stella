@@ -211,6 +211,11 @@ class PlantSpecies(models.Model):
     # Growth (vegetables / annuals)
     days_to_harvest = models.PositiveIntegerField(null=True, blank=True)
 
+    # Reference photo shipped as a bundled static asset, stored as a path
+    # relative to the static root, e.g. 'library/species/tomato.jpg'.
+    # Serialized as a site-relative /static/ URL; the app prepends its host.
+    image_path = models.CharField(max_length=200, blank=True, default='')
+
     class Meta:
         verbose_name_plural = 'Plant Species'
 
@@ -248,7 +253,8 @@ class Disease(models.Model):
     source_url = models.URLField(blank=True)
     image_url = models.URLField(blank=True)      # illustrative reference photo
     # Multiple reference photos for the detail-page carousel + scan-card
-    # thumbnails. List of absolute image URLs.
+    # thumbnails. Entries are static paths relative to the static root
+    # ('library/diseases/<label>.jpg') or, legacy, absolute http(s) URLs.
     image_urls = models.JSONField(default=list, blank=True)
 
     def __str__(self):

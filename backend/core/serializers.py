@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.templatetags.static import static
 from django.utils import timezone
 from rest_framework import serializers
 from .models import (
@@ -5,7 +7,27 @@ from .models import (
 )
 
 
+def image_ref_to_url(ref):
+    """Resolve a stored library-image reference to a servable URL. Absolute
+    http(s) URLs pass through (legacy hotlinks); anything else is a static
+    path ('library/diseases/x.jpg') resolved through the staticfiles storage
+    into a site-relative /static/ URL (hashed name in production). The app
+    prepends its API host to relative URLs."""
+    if not ref:
+        return ref
+    if ref.startswith('http://') or ref.startswith('https://'):
+        return ref
+    try:
+        return static(ref)
+    except ValueError:
+        # Manifest storage raises for uncollected files — emit the plain URL
+        # (a broken image beats a 500 on the whole payload).
+        return settings.STATIC_URL + ref
+
+
 class PlantSpeciesSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PlantSpecies
         fields = [
@@ -16,11 +38,17 @@ class PlantSpeciesSerializer(serializers.ModelSerializer):
             'default_fertilizer_freq_days',
             'default_misting_freq_days',
             'days_to_harvest',
+            'image_url',
         ]
+
+    def get_image_url(self, obj):
+        return image_ref_to_url(obj.image_path) or ''
 
 
 class DiseaseSerializer(serializers.ModelSerializer):
     species_name = serializers.CharField(source='species.name', read_only=True)
+    image_url = serializers.SerializerMethodField()
+    image_urls = serializers.SerializerMethodField()
 
     class Meta:
         model = Disease
@@ -30,6 +58,12 @@ class DiseaseSerializer(serializers.ModelSerializer):
             'treatment', 'care_tips', 'prevention',
             'severity', 'source_name', 'source_url', 'image_url', 'image_urls',
         ]
+
+    def get_image_url(self, obj):
+        return image_ref_to_url(obj.image_url) or ''
+
+    def get_image_urls(self, obj):
+        return [image_ref_to_url(u) for u in (obj.image_urls or []) if u]
 
 
 class LocationSerializer(serializers.ModelSerializer):

@@ -6,7 +6,7 @@ import '../../models/species.dart';
 import '../../services/api_service.dart';
 import '../../widgets/skeleton.dart';
 import '../tasks/care_activity.dart';
-import 'library_screen.dart' show SeverityChip;
+import 'library_screen.dart' show SeverityChip, SpeciesImage;
 
 /// Full reference page for one plant species, opened from the Library
 /// (`/library/species/:id`). Lays out what the plant is, its recommended
@@ -145,15 +145,13 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
         // Header: leaf badge + name + scientific name.
         Row(
           children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                width: 52,
+                height: 52,
+                child: SpeciesImage(imageUrl: s.imageUrl),
               ),
-              child: const Icon(Icons.local_florist_rounded,
-                  color: AppColors.primary, size: 26),
             ),
             const SizedBox(width: 14),
             Expanded(

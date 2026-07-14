@@ -16,10 +16,13 @@ venv/
 db.sqlite3
 db.sqlite3-journal
 media/
+staticfiles/
 
-# ML models
+# ML models — ignored everywhere EXCEPT the deploy models in backend/ml,
+# which ship to the server via Git LFS.
 *.pth
 *.pt
+!backend/ml/*.pth
 
 # Jupyter
 .ipynb_checkpoints/
@@ -33,5 +36,5 @@ media/
 Thumbs.db
 desktop.ini
 
-ml/
+/ml/
 diagram/
