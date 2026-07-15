@@ -20,6 +20,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   List<ActivityEvent> _events = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -28,16 +29,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
     try {
       final events = await ApiService.getActivity();
       if (!mounted) return;
       setState(() {
         _events = events;
         _isLoading = false;
+        _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Could not load your activity. Please try again.';
+      });
     }
   }
 
@@ -78,7 +89,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       byKey[key]!.add(e);
     }
-    return [for (final k in keyOrder) _ActivityGroup(key: k, events: byKey[k]!)];
+    return [
+      for (final k in keyOrder) _ActivityGroup(key: k, events: byKey[k]!),
+    ];
   }
 
   // ─── Per-group styling ──────────────────────────────────────
@@ -129,33 +142,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final days = _days;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('History'),
-      ),
+      appBar: AppBar(title: const Text('History')),
       body: _isLoading
           ? const _LandingSkeleton()
-          : days.isEmpty
-          ? _buildEmpty()
-          : RefreshIndicator(
-              onRefresh: _load,
-              color: AppColors.primary,
-              backgroundColor: AppColors.surface,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                children: [
-                  for (final day in days) ...[
-                    DateHeader(label: dateBucket(day.date)),
-                    for (int i = 0; i < day.groups.length; i++)
-                      _buildTile(
-                        day,
-                        day.groups[i],
-                        isFirst: i == 0,
-                        isLast: i == day.groups.length - 1,
+          : _errorMessage != null
+              ? _buildError()
+              : days.isEmpty
+                  ? _buildEmpty()
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      color: AppColors.primary,
+                      backgroundColor: AppColors.surface,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                        children: [
+                          for (final day in days) ...[
+                            DateHeader(label: dateBucket(day.date)),
+                            for (int i = 0; i < day.groups.length; i++)
+                              _buildTile(
+                                day,
+                                day.groups[i],
+                                isFirst: i == 0,
+                                isLast: i == day.groups.length - 1,
+                              ),
+                          ],
+                        ],
                       ),
-                  ],
-                ],
-              ),
-            ),
+                    ),
     );
   }
 
@@ -204,6 +217,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 48,
+              color: AppColors.textMuted,
+            ),
+            const SizedBox(height: 16),
+            Text(_errorMessage!, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -152,3 +152,21 @@ AUTH_USER_MODEL = 'core.CustomUser'
 # volume so uploads survive redeploys; locally it defaults to the repo dir.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.getenv('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
+
+# Scan image-quality gate. These conservative defaults reject clearly unusable
+# photos while allowing ordinary phone-camera variation. Override the values in
+# production after calibration against real user scans.
+SCAN_MIN_IMAGE_DIMENSION = int(os.getenv('SCAN_MIN_IMAGE_DIMENSION', '224'))
+SCAN_BLUR_THRESHOLD = float(os.getenv('SCAN_BLUR_THRESHOLD', '25'))
+SCAN_DARK_MEAN_THRESHOLD = float(os.getenv('SCAN_DARK_MEAN_THRESHOLD', '30'))
+SCAN_DARK_PIXEL_RATIO = float(os.getenv('SCAN_DARK_PIXEL_RATIO', '0.80'))
+SCAN_BRIGHT_MEAN_THRESHOLD = float(os.getenv('SCAN_BRIGHT_MEAN_THRESHOLD', '225'))
+SCAN_BRIGHT_PIXEL_RATIO = float(os.getenv('SCAN_BRIGHT_PIXEL_RATIO', '0.85'))
+
+# Shared binary ConvNeXt leaf/not-leaf gate. Its class-1 probability is the
+# calibrated leaf score; 0.99 was selected on category-disjoint validation.
+SCAN_LEAF_GATE_THRESHOLD = float(os.getenv('SCAN_LEAF_GATE_THRESHOLD', '0.99'))
+SCAN_LEAF_GATE_MODEL_PATH = os.getenv(
+    'SCAN_LEAF_GATE_MODEL_PATH',
+    os.path.join(BASE_DIR, 'ml', 'convnext_tiny_binary_leaf_gate.pth'),
+)

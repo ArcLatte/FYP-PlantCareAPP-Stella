@@ -157,16 +157,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final displayedSeries = {
       for (final code in _slots.whereType<String>()) _seriesForCode(code)?.id,
     };
-    final available =
-        _series
-            .where(
-              (s) =>
-                  s.anyUnlocked &&
-                  s.current != null &&
-                  !displayedSeries.contains(s.id),
-            )
-            .toList()
-          ..sort((a, b) => b.metal.index.compareTo(a.metal.index));
+    final available = _series
+        .where(
+          (s) =>
+              s.anyUnlocked &&
+              s.current != null &&
+              !displayedSeries.contains(s.id),
+        )
+        .toList()
+      ..sort((a, b) => b.metal.index.compareTo(a.metal.index));
 
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -202,7 +201,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _load(); // re-sync pinned state
     } catch (e) {
       if (!mounted) return;
-      AppSnackBar.error(context, e.toString().replaceFirst('Exception: ', ''));
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not update your profile. Please try again.',
+      );
     }
   }
 
@@ -221,14 +224,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final tierIdx = TierFrame.tierIndex(profile.tier);
 
     Widget grid(List<Widget> tiles) => GridView.count(
-      crossAxisCount: 2,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.9,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: tiles,
-    );
+          crossAxisCount: 2,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.9,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: tiles,
+        );
 
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -471,13 +474,13 @@ class _CompanionCardState extends State<_CompanionCard>
   }
 
   static Widget _avatarInitial(UserProfile profile) => Text(
-    profile.username.isEmpty ? '?' : profile.username[0].toUpperCase(),
-    style: const TextStyle(
-      color: Colors.white,
-      fontSize: 24,
-      fontWeight: FontWeight.w800,
-    ),
-  );
+        profile.username.isEmpty ? '?' : profile.username[0].toUpperCase(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 24,
+          fontWeight: FontWeight.w800,
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {

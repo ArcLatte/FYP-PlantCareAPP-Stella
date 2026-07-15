@@ -35,6 +35,10 @@ class AppConstants {
   static const String usernameKey = 'username';
   static const String weatherCacheKey = 'cached_weather';
   static const String weatherCacheTimeKey = 'cached_weather_time';
+  static const String weatherCacheLatKey = 'cached_weather_lat';
+  static const String weatherCacheLonKey = 'cached_weather_lon';
+  static const String locationTimezoneOffsetKey =
+      'location_timezone_offset_minutes';
   static const String lastLatKey = 'last_lat';
   static const String lastLonKey = 'last_lon';
 

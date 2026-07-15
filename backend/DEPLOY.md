@@ -1,8 +1,8 @@
 # Deploying the Stella backend to Railway
 
-The backend (Django + 3 ConvNeXt disease models + PostgreSQL) runs on a single
-Railway service (~$5/mo, 1 GB RAM). Models load **per request** and are freed
-after, so peak memory stays ~600–700 MB.
+The backend (Django + a shared ConvNeXt leaf gate + 3 disease models) runs on a single
+Railway service (~$5/mo, 1 GB RAM). The leaf gate remains cached; disease
+models load **per request** and are freed after inference.
 
 The Flutter app then just points at the Railway URL, and you distribute the APK
 separately (GitHub Releases or a static page).
@@ -11,7 +11,7 @@ separately (GitHub Releases or a static page).
 
 ## 0. One-time: put the models in Git LFS
 
-The 3 model files are 107 MB each — GitHub rejects normal files over 100 MB, so
+The 4 production model files are about 107 MB each — GitHub rejects normal files over 100 MB, so
 they go through Git LFS. They stay **private** in your private repo.
 
 ```bash
@@ -19,7 +19,8 @@ they go through Git LFS. They stay **private** in your private repo.
 git lfs install
 git lfs track "backend/ml/*.pth"
 git add .gitattributes
-git add backend/ml/tomato_convnext_plantdoc_v3.pth \
+git add backend/ml/convnext_tiny_binary_leaf_gate.pth \
+        backend/ml/tomato_convnext_tiny_v1.pth \
         backend/ml/potato_convnext_plantdoc.pth \
         backend/ml/pepper_convnext_plantdoc.pth
 git add backend/ .gitignore
@@ -30,7 +31,7 @@ git push
 > Make sure the GitHub repo is **Private** (Settings → General → Danger Zone) so
 > the models aren't public.
 
-Free GitHub LFS = 1 GB storage + 1 GB/month bandwidth. Your 3 files are ~320 MB,
+Free GitHub LFS = 1 GB storage + 1 GB/month bandwidth. These 4 files are ~425 MB,
 and each Railway build downloads them once — fine for a few deploys a month.
 
 ---

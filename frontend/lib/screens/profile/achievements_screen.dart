@@ -40,14 +40,19 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       final list = await ApiService.getAchievements();
       if (!mounted) return;
       setState(() {
-        _categories =
-            MedalCategory.fromSeries(MedalSeries.fromAchievements(list));
+        _categories = MedalCategory.fromSeries(
+          MedalSeries.fromAchievements(list),
+        );
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      AppSnackBar.error(context, 'Failed to load: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not load achievements. Please try again.',
+      );
     }
   }
 
@@ -92,10 +97,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     children: [
                       for (final c in _categories)
-                        _SeriesTile(
-                          category: c,
-                          onTap: () => _openCategory(c),
-                        ),
+                        _SeriesTile(category: c, onTap: () => _openCategory(c)),
                     ],
                   ),
                 ],
@@ -126,8 +128,7 @@ class _TotalHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.emoji_events_rounded,
-              color: Colors.white, size: 30),
+          const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 30),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -182,9 +183,8 @@ class _SeriesTile extends StatelessWidget {
         child: ClipPath(
           clipper: _BannerClipper(),
           child: Container(
-            color: c.completed
-                ? const Color(0xFFFDF6E3)
-                : const Color(0xFFFDFCF7),
+            color:
+                c.completed ? const Color(0xFFFDF6E3) : const Color(0xFFFDFCF7),
             child: Column(
               children: [
                 // Illustration: the series' namecard scene with the big
@@ -198,14 +198,15 @@ class _SeriesTile extends StatelessWidget {
                       // the blur doesn't fade the edges) and dimmed so the
                       // emblem reads clearly on top.
                       ImageFiltered(
-                        imageFilter:
-                            ui.ImageFilter.blur(sigmaX: 1.8, sigmaY: 1.8),
+                        imageFilter: ui.ImageFilter.blur(
+                          sigmaX: 1.8,
+                          sigmaY: 1.8,
+                        ),
                         child: Transform.scale(
                           scale: 1.06,
                           child: namecard != null
                               ? CustomPaint(
-                                  painter:
-                                      ProfileCardScenePainter(namecard),
+                                  painter: ProfileCardScenePainter(namecard),
                                 )
                               : const DecoratedBox(
                                   decoration: BoxDecoration(
@@ -222,9 +223,7 @@ class _SeriesTile extends StatelessWidget {
                         ),
                       ),
                       // Dimming scrim.
-                      ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.24),
-                      ),
+                      ColoredBox(color: Colors.black.withValues(alpha: 0.24)),
                       Center(
                         child: Container(
                           width: 84,
@@ -233,21 +232,17 @@ class _SeriesTile extends StatelessWidget {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    Colors.white.withValues(alpha: 0.75),
+                                color: Colors.white.withValues(alpha: 0.75),
                                 blurRadius: 26,
                                 spreadRadius: 5,
                               ),
                             ],
                           ),
                           child: CustomPaint(
-                            painter:
-                                _HexEmblemPainter(completed: c.completed),
+                            painter: _HexEmblemPainter(completed: c.completed),
                             child: Icon(
                               c.spec.icon,
-                              color: c.completed
-                                  ? Colors.white
-                                  : _kGoldDark,
+                              color: c.completed ? Colors.white : _kGoldDark,
                               size: 38,
                             ),
                           ),
@@ -264,8 +259,11 @@ class _SeriesTile extends StatelessWidget {
                               color: _kGold,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.check_rounded,
-                                color: Colors.white, size: 13),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 13,
+                            ),
                           ),
                         ),
                     ],
@@ -300,9 +298,7 @@ class _SeriesTile extends StatelessWidget {
                         ? const Color(0xFFF6E8C4)
                         : const Color(0xFFF5F0E2),
                     border: Border(
-                      top: BorderSide(
-                        color: _kGold.withValues(alpha: 0.35),
-                      ),
+                      top: BorderSide(color: _kGold.withValues(alpha: 0.35)),
                     ),
                   ),
                   child: Column(
@@ -312,10 +308,8 @@ class _SeriesTile extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: c.fraction,
                           minHeight: 5,
-                          backgroundColor:
-                              _kGold.withValues(alpha: 0.18),
-                          valueColor:
-                              const AlwaysStoppedAnimation(_kGold),
+                          backgroundColor: _kGold.withValues(alpha: 0.18),
+                          valueColor: const AlwaysStoppedAnimation(_kGold),
                         ),
                       ),
                       const SizedBox(height: 5),
@@ -403,8 +397,7 @@ class _BannerBorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_BannerBorderPainter old) =>
-      old.completed != completed;
+  bool shouldRepaint(_BannerBorderPainter old) => old.completed != completed;
 }
 
 /// Gold hexagonal emblem plate behind the series icon; fills solid gold
@@ -440,10 +433,7 @@ class _HexEmblemPainter extends CustomPainter {
           ).createShader(Offset.zero & size),
       );
     } else {
-      canvas.drawPath(
-        hex(r),
-        Paint()..color = _kGold.withValues(alpha: 0.10),
-      );
+      canvas.drawPath(hex(r), Paint()..color = _kGold.withValues(alpha: 0.10));
     }
     canvas.drawPath(
       hex(r),
@@ -505,8 +495,11 @@ class _CategoryDetailScreen extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.lock_rounded,
-                                color: Colors.white, size: 26),
+                            const Icon(
+                              Icons.lock_rounded,
+                              color: Colors.white,
+                              size: 26,
+                            ),
                             const SizedBox(height: 6),
                             Text(
                               'Complete all achievements to unlock the '
@@ -527,7 +520,9 @@ class _CategoryDetailScreen extends StatelessWidget {
                         right: 10,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: _kGold,
                             borderRadius: BorderRadius.circular(20),
@@ -675,7 +670,8 @@ class _AchievementRow extends StatelessWidget {
                             minHeight: 5,
                             backgroundColor: AppColors.divider,
                             valueColor: AlwaysStoppedAnimation(
-                                s.anyUnlocked ? s.metal.color : _kGold),
+                              s.anyUnlocked ? s.metal.color : _kGold,
+                            ),
                           ),
                         ),
                       ),
@@ -705,13 +701,15 @@ class _AchievementRow extends StatelessWidget {
                   colors: [Color(0xFFF7D774), Color(0xFFC9971C)],
                 ),
               ),
-              child: const Icon(Icons.check_rounded,
-                  color: Colors.white, size: 18),
+              child: const Icon(
+                Icons.check_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             )
           else
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: _kGold.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
@@ -749,9 +747,7 @@ class _BookSkeleton extends StatelessWidget {
           childAspectRatio: 0.80,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          children: [
-            for (int i = 0; i < 6; i++) const SkeletonBox(radius: 14),
-          ],
+          children: [for (int i = 0; i < 6; i++) const SkeletonBox(radius: 14)],
         ),
       ],
     );

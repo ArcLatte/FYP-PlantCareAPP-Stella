@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,7 @@ class Weather {
   final int? weatherId;
   final double? rain1h;
   final String? cityName;
+  final int? timezoneOffsetSeconds;
 
   const Weather({
     required this.tempC,
@@ -23,6 +25,7 @@ class Weather {
     this.weatherId,
     this.rain1h,
     this.cityName,
+    this.timezoneOffsetSeconds,
   });
 
   Map<String, dynamic> toJson() => {
@@ -34,6 +37,7 @@ class Weather {
     'weatherId': weatherId,
     'rain1h': rain1h,
     'cityName': cityName,
+    'timezoneOffsetSeconds': timezoneOffsetSeconds,
   };
 
   factory Weather.fromJson(Map<String, dynamic> json) => Weather(
@@ -45,6 +49,7 @@ class Weather {
     weatherId: (json['weatherId'] as num?)?.toInt(),
     rain1h: (json['rain1h'] as num?)?.toDouble(),
     cityName: json['cityName'] as String?,
+    timezoneOffsetSeconds: (json['timezoneOffsetSeconds'] as num?)?.toInt(),
   );
 
   String get tempDisplay => '${tempC.floor()}°C';
@@ -117,10 +122,19 @@ class Weather {
 
 class WeatherService {
   static const _cacheMaxAge = Duration(minutes: 30);
+  static const _cacheLocationToleranceKm = 5.0;
 
   /// Reads the weather cached by Home/Tasks without requiring a location lookup.
-  static Future<Weather?> getCachedWeather({bool ignoreAge = false}) {
-    return _readCache(ignoreAge: ignoreAge);
+  static Future<Weather?> getCachedWeather({
+    bool ignoreAge = false,
+    double? lat,
+    double? lon,
+  }) {
+    return _readCache(
+      ignoreAge: ignoreAge,
+      expectedLat: lat,
+      expectedLon: lon,
+    );
   }
 
   /// Returns weather for the given coords, hitting the cache when possible.
@@ -131,14 +145,18 @@ class WeatherService {
     bool forceRefresh = false,
   }) async {
     if (!forceRefresh) {
-      final cached = await _readCache();
+      final cached = await _readCache(expectedLat: lat, expectedLon: lon);
       if (cached != null) {
         return cached;
       }
     }
 
     if (AppConstants.openWeatherApiKey.isEmpty) {
-      return _readCache(ignoreAge: true);
+      return _readCache(
+        ignoreAge: true,
+        expectedLat: lat,
+        expectedLon: lon,
+      );
     }
 
     try {
@@ -155,7 +173,11 @@ class WeatherService {
 
       final currentResp = await http.get(currentUri);
       if (currentResp.statusCode != 200) {
-        return _readCache(ignoreAge: true);
+        return _readCache(
+          ignoreAge: true,
+          expectedLat: lat,
+          expectedLon: lon,
+        );
       }
       final c = jsonDecode(currentResp.body) as Map<String, dynamic>;
 
@@ -208,19 +230,37 @@ class WeatherService {
         weatherId: (firstWeather['id'] as num?)?.toInt(),
         rain1h: (rain['1h'] as num?)?.toDouble(),
         cityName: geoName ?? c['name']?.toString(),
+        timezoneOffsetSeconds: (c['timezone'] as num?)?.toInt(),
       );
-      await _writeCache(weather);
+      await _writeCache(weather, lat: lat, lon: lon);
       return weather;
     } catch (_) {
-      return _readCache(ignoreAge: true);
+      return _readCache(
+        ignoreAge: true,
+        expectedLat: lat,
+        expectedLon: lon,
+      );
     }
   }
 
-  static Future<Weather?> _readCache({bool ignoreAge = false}) async {
+  static Future<Weather?> _readCache({
+    bool ignoreAge = false,
+    double? expectedLat,
+    double? expectedLon,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(AppConstants.weatherCacheKey);
     final ts = prefs.getInt(AppConstants.weatherCacheTimeKey);
     if (raw == null || ts == null) return null;
+    if (expectedLat != null && expectedLon != null) {
+      final cachedLat = prefs.getDouble(AppConstants.weatherCacheLatKey);
+      final cachedLon = prefs.getDouble(AppConstants.weatherCacheLonKey);
+      if (cachedLat == null || cachedLon == null) return null;
+      if (distanceKm(expectedLat, expectedLon, cachedLat, cachedLon) >
+          _cacheLocationToleranceKm) {
+        return null;
+      }
+    }
     if (!ignoreAge) {
       final age = DateTime.now().millisecondsSinceEpoch - ts;
       if (age > _cacheMaxAge.inMilliseconds) return null;
@@ -232,12 +272,46 @@ class WeatherService {
     }
   }
 
-  static Future<void> _writeCache(Weather w) async {
+  static Future<void> _writeCache(
+    Weather w, {
+    required double lat,
+    required double lon,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(AppConstants.weatherCacheKey, jsonEncode(w.toJson()));
     await prefs.setInt(
       AppConstants.weatherCacheTimeKey,
       DateTime.now().millisecondsSinceEpoch,
     );
+    await prefs.setDouble(AppConstants.weatherCacheLatKey, lat);
+    await prefs.setDouble(AppConstants.weatherCacheLonKey, lon);
+    final offsetSeconds = w.timezoneOffsetSeconds;
+    if (offsetSeconds != null) {
+      await prefs.setInt(
+        AppConstants.locationTimezoneOffsetKey,
+        offsetSeconds ~/ 60,
+      );
+    }
   }
+
+  /// Great-circle distance used to ensure cached weather still belongs to the
+  /// user's current area. Public so the cache rule can be unit-tested.
+  static double distanceKm(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const earthRadiusKm = 6371.0;
+    final dLat = _radians(lat2 - lat1);
+    final dLon = _radians(lon2 - lon1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_radians(lat1)) *
+            math.cos(_radians(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  static double _radians(double degrees) => degrees * math.pi / 180;
 }

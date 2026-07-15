@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/app_error.dart';
 import '../core/constants.dart';
 import '../models/user.dart';
 import '../models/plant.dart';
@@ -82,11 +83,25 @@ class ApiService {
   }
 
   static Future<Map<String, String>> _authHeaders() async {
-    final token = await _getToken();
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(AppConstants.tokenKey);
+    final timezoneOffset = _timezoneOffsetMinutes(prefs);
     return {
       'Content-Type': 'application/json',
       'Authorization': 'Token $token',
+      'X-Timezone-Offset-Minutes': '$timezoneOffset',
     };
+  }
+
+  static int _timezoneOffsetMinutes(SharedPreferences prefs) {
+    return prefs.getInt(AppConstants.locationTimezoneOffsetKey) ??
+        DateTime.now().timeZoneOffset.inMinutes;
+  }
+
+  static Future<void> _addTimezoneHeader(Map<String, String> headers) async {
+    final prefs = await SharedPreferences.getInstance();
+    headers['X-Timezone-Offset-Minutes'] =
+        '${_timezoneOffsetMinutes(prefs)}';
   }
 
   /// Authed GET with expired-session handling: a 401 clears the stored
@@ -99,7 +114,10 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(AppConstants.tokenKey);
       await prefs.remove(AppConstants.usernameKey);
-      throw Exception('Session expired — please log in again');
+      throw const AppException(
+        'Session expired — please log in again',
+        code: 'session_expired',
+      );
     }
     return response;
   }
@@ -107,17 +125,22 @@ class ApiService {
   // ─── Auth ───────────────────────────────────────────────────
 
   static Future<User> login(String username, String password) async {
+    final prefs = await SharedPreferences.getInstance();
     final response = await http.post(
       Uri.parse(AppConstants.loginUrl),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'username': username, 'password': password}),
+      body: jsonEncode({
+        'username': username,
+        'password': password,
+        'timezone_offset_minutes': _timezoneOffsetMinutes(prefs),
+      }),
     );
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       _captureXp(body);
       return User.fromJson(body);
     }
-    throw Exception(_errorMessageFromResponse(response, 'Login failed'));
+    throw AppException(_errorMessageFromResponse(response, 'Login failed'));
   }
 
   static Future<User> register(
@@ -125,6 +148,7 @@ class ApiService {
     String email,
     String password,
   ) async {
+    final prefs = await SharedPreferences.getInstance();
     final response = await http.post(
       Uri.parse(AppConstants.registerUrl),
       headers: {'Content-Type': 'application/json'},
@@ -132,12 +156,15 @@ class ApiService {
         'username': username,
         'email': email,
         'password': password,
+        'timezone_offset_minutes': _timezoneOffsetMinutes(prefs),
       }),
     );
     if (response.statusCode == 201) {
       return User.fromJson(jsonDecode(response.body));
     }
-    throw Exception(_errorMessageFromResponse(response, 'Registration failed'));
+    throw AppException(
+      _errorMessageFromResponse(response, 'Registration failed'),
+    );
   }
 
   static Future<void> logout() async {
@@ -162,7 +189,7 @@ class ApiService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception(jsonDecode(response.body)['error'] ?? 'Failed');
+      throw AppException(jsonDecode(response.body)['error'] ?? 'Failed');
     }
   }
 
@@ -173,7 +200,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return List<Map<String, dynamic>>.from(jsonDecode(response.body));
     }
-    throw Exception('Failed to load species');
+    throw const AppException('Failed to load species');
   }
 
   /// Full reference entry for one species (Library species page).
@@ -182,7 +209,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return SpeciesDetail.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load species');
+    throw const AppException('Failed to load species');
   }
 
   // ─── Locations ──────────────────────────────────────────────
@@ -192,7 +219,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return List<Map<String, dynamic>>.from(jsonDecode(response.body));
     }
-    throw Exception('Failed to load locations');
+    throw const AppException('Failed to load locations');
   }
 
   static Future<Map<String, dynamic>> createLocation(String name) async {
@@ -205,7 +232,7 @@ class ApiService {
     if (response.statusCode == 201 || response.statusCode == 200) {
       return Map<String, dynamic>.from(jsonDecode(response.body));
     }
-    throw Exception('Failed to create location');
+    throw const AppException('Failed to create location');
   }
 
   static Future<void> deleteLocation(int id) async {
@@ -215,7 +242,7 @@ class ApiService {
       headers: headers,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Failed to delete location');
+      throw const AppException('Failed to delete location');
     }
   }
 
@@ -228,7 +255,7 @@ class ApiService {
           .map((p) => Plant.fromJson(p))
           .toList();
     }
-    throw Exception('Failed to load plants');
+    throw const AppException('Failed to load plants');
   }
 
   static Future<Plant> getPlant(int id) async {
@@ -236,7 +263,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return Plant.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load plant');
+    throw const AppException('Failed to load plant');
   }
 
   static Future<Plant> createPlant(
@@ -270,7 +297,7 @@ class ApiService {
       _captureXp(body);
       return Plant.fromJson(body);
     }
-    throw Exception('Failed to create plant');
+    throw const AppException('Failed to create plant');
   }
 
   static Future<Plant> waterPlant(int id) async {
@@ -300,6 +327,7 @@ class ApiService {
       final token = await _getToken();
       final request = http.MultipartRequest('POST', url);
       request.headers['Authorization'] = 'Token $token';
+      await _addTimezoneHeader(request.headers);
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
       request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
@@ -315,7 +343,7 @@ class ApiService {
       return ActivityEvent.fromJson(jsonDecode(response.body));
     }
     final decoded = jsonDecode(response.body);
-    throw Exception(
+    throw AppException(
       (decoded is Map && decoded['error'] is String)
           ? decoded['error'] as String
           : 'Failed to add note',
@@ -338,6 +366,7 @@ class ApiService {
       final token = await _getToken();
       final request = http.MultipartRequest('PUT', url);
       request.headers['Authorization'] = 'Token $token';
+      await _addTimezoneHeader(request.headers);
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
       request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
@@ -357,7 +386,7 @@ class ApiService {
       return ActivityEvent.fromJson(jsonDecode(response.body));
     }
     final decoded = jsonDecode(response.body);
-    throw Exception(
+    throw AppException(
       (decoded is Map && decoded['error'] is String)
           ? decoded['error'] as String
           : 'Failed to update note',
@@ -371,7 +400,7 @@ class ApiService {
       headers: await _authHeaders(),
     );
     if (response.statusCode != 204 && response.statusCode != 200) {
-      throw Exception('Failed to delete note (status ${response.statusCode})');
+      throw const AppException('Could not delete the note. Please try again.');
     }
   }
 
@@ -387,8 +416,8 @@ class ApiService {
       _captureXp(body);
       return Plant.fromJson(body);
     }
-    throw Exception(
-      'Failed to $activity plant (status ${response.statusCode})',
+    throw AppException(
+      _errorMessageFromResponse(response, 'Could not log this care activity.'),
     );
   }
 
@@ -397,7 +426,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return Streak.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load streak');
+    throw const AppException('Failed to load streak');
   }
 
   static Future<StreakCalendar> getStreakCalendar() async {
@@ -405,7 +434,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return StreakCalendar.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load streak calendar');
+    throw const AppException('Failed to load streak calendar');
   }
 
   static Future<WeeklyChallenge> getWeeklyChallenge() async {
@@ -413,7 +442,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return WeeklyChallenge.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load weekly challenge');
+    throw const AppException('Failed to load weekly challenge');
   }
 
   static Future<List<ActivityEvent>> getActivity() async {
@@ -423,7 +452,7 @@ class ApiService {
           .map((e) => ActivityEvent.fromJson(e))
           .toList();
     }
-    throw Exception('Failed to load activity');
+    throw const AppException('Failed to load activity');
   }
 
   // ─── Profile + achievements ────────────────────────────────
@@ -433,7 +462,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return UserProfile.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load profile');
+    throw const AppException('Failed to load profile');
   }
 
   /// Update any subset of account fields (Settings screen). If [avatar] is
@@ -451,6 +480,7 @@ class ApiService {
       final token = await _getToken();
       final request = http.MultipartRequest('PATCH', url);
       request.headers['Authorization'] = 'Token $token';
+      await _addTimezoneHeader(request.headers);
       if (username != null) request.fields['username'] = username;
       if (email != null) request.fields['email'] = email;
       request.files.add(
@@ -474,7 +504,7 @@ class ApiService {
       await prefs.setString(AppConstants.usernameKey, profile.username);
       return profile;
     }
-    throw Exception(
+    throw AppException(
       _errorMessageFromResponse(response, 'Failed to update profile'),
     );
   }
@@ -490,7 +520,7 @@ class ApiService {
     );
     if (response.statusCode != 200) {
       final body = jsonDecode(response.body);
-      throw Exception(
+      throw AppException(
         (body is Map && body['error'] is String)
             ? body['error'] as String
             : 'Failed to delete account',
@@ -508,7 +538,7 @@ class ApiService {
           .map((e) => Achievement.fromJson(e as Map<String, dynamic>))
           .toList();
     }
-    throw Exception('Failed to load achievements');
+    throw const AppException('Failed to load achievements');
   }
 
   // ─── Seed shop ─────────────────────────────────────────────
@@ -518,7 +548,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return ShopState.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load shop');
+    throw const AppException('Failed to load shop');
   }
 
   static Future<ShopState> buyCosmetic(String code) => _shopAction(code, 'buy');
@@ -543,7 +573,7 @@ class ApiService {
         items: [Cosmetic.fromJson(body['item'] as Map<String, dynamic>)],
       );
     }
-    throw Exception(
+    throw AppException(
       (body is Map && body['error'] is String)
           ? body['error'] as String
           : 'Failed to $action item',
@@ -569,7 +599,7 @@ class ApiService {
       return Achievement.fromJson(jsonDecode(response.body));
     }
     final body = jsonDecode(response.body);
-    throw Exception(
+    throw AppException(
       (body is Map && body['error'] is String)
           ? body['error'] as String
           : 'Failed to $action achievement',
@@ -594,6 +624,7 @@ class ApiService {
       final token = await _getToken();
       final request = http.MultipartRequest('PUT', url);
       request.headers['Authorization'] = 'Token $token';
+      await _addTimezoneHeader(request.headers);
       if (name != null) request.fields['name'] = name;
       if (notes != null) request.fields['notes'] = notes;
       if (location != null) request.fields['location'] = location;
@@ -609,7 +640,9 @@ class ApiService {
       if (response.statusCode == 200) {
         return Plant.fromJson(jsonDecode(response.body));
       }
-      throw Exception('Failed to update plant (status ${response.statusCode})');
+      throw AppException(
+        _errorMessageFromResponse(response, 'Could not update the plant.'),
+      );
     }
 
     final headers = await _authHeaders();
@@ -627,7 +660,9 @@ class ApiService {
     if (response.statusCode == 200) {
       return Plant.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to update plant');
+    throw AppException(
+      _errorMessageFromResponse(response, 'Could not update the plant.'),
+    );
   }
 
   static Future<void> deletePlant(int id) async {
@@ -637,7 +672,9 @@ class ApiService {
       headers: headers,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Failed to delete plant (status ${response.statusCode})');
+      throw AppException(
+        _errorMessageFromResponse(response, 'Could not delete the plant.'),
+      );
     }
   }
 
@@ -650,6 +687,7 @@ class ApiService {
       Uri.parse(AppConstants.scansUrl),
     );
     request.headers['Authorization'] = 'Token $token';
+    await _addTimezoneHeader(request.headers);
     request.fields['plant_id'] = plantId.toString();
     request.files.add(
       await http.MultipartFile.fromPath('image', imageFile.path),
@@ -661,7 +699,7 @@ class ApiService {
       _captureXp(body);
       return ScanResult.fromJson(body);
     }
-    throw Exception('Scan failed');
+    throw AppException(_errorMessageFromResponse(response, 'Scan failed'));
   }
 
   static Future<ScanResult> confirmDisease(
@@ -677,7 +715,9 @@ class ApiService {
     if (response.statusCode == 200) {
       return ScanResult.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to confirm disease');
+    throw AppException(
+      _errorMessageFromResponse(response, 'Could not save the diagnosis.'),
+    );
   }
 
   static Future<List<ScanResult>> getPlantScans(int plantId) async {
@@ -687,7 +727,7 @@ class ApiService {
           .map((s) => ScanResult.fromJson(s))
           .toList();
     }
-    throw Exception('Failed to load scans');
+    throw const AppException('Failed to load scans');
   }
 
   /// Per-plant unified history: care events (water/fertilize/mist) merged with
@@ -701,7 +741,7 @@ class ApiService {
           .map((e) => ActivityEvent.fromJson(e))
           .toList();
     }
-    throw Exception('Failed to load plant activity');
+    throw const AppException('Failed to load plant activity');
   }
 
   static Future<List<ScanResult>> getAllScans() async {
@@ -711,7 +751,7 @@ class ApiService {
           .map((s) => ScanResult.fromJson(s))
           .toList();
     }
-    throw Exception('Failed to load history');
+    throw const AppException('Failed to load history');
   }
 
   static Future<ScanResult> getScan(int scanId) async {
@@ -719,7 +759,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return ScanResult.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load scan');
+    throw const AppException('Failed to load scan');
   }
 
   static Future<void> deleteScan(int scanId) async {
@@ -739,7 +779,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return Disease.fromJson(jsonDecode(response.body));
     }
-    throw Exception('Failed to load disease');
+    throw const AppException('Failed to load disease');
   }
 
   /// All diseases for the Library browse list (backend already drops the
@@ -752,9 +792,8 @@ class ApiService {
           .map((e) => Disease.fromJson(e as Map<String, dynamic>))
           .toList();
     }
-    throw Exception('Failed to load diseases');
+    throw const AppException('Failed to load diseases');
   }
 
   // ─── Social ─────────────────────────────────────────────────
-
 }

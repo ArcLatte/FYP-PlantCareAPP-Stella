@@ -48,7 +48,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      AppSnackBar.error(context, 'Failed to load: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not load this task. Please try again.',
+      );
     }
   }
 
@@ -68,7 +72,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy.remove(plant.id));
-      AppSnackBar.error(context, 'Failed: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not update this task. Please try again.',
+      );
     }
   }
 
@@ -176,10 +184,7 @@ class _TaskPlantRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  dueLabel,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                Text(dueLabel, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
@@ -248,8 +253,11 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.primary.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.celebration_rounded,
-                  color: AppColors.primary, size: 40),
+              child: const Icon(
+                Icons.celebration_rounded,
+                color: AppColors.primary,
+                size: 40,
+              ),
             ),
             const SizedBox(height: 16),
             Text(

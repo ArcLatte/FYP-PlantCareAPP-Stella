@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../models/user_profile.dart';
 import '../../services/api_service.dart';
@@ -50,7 +51,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      AppSnackBar.error(context, 'Failed to load profile: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not load your profile. Please try again.',
+      );
     }
   }
 
@@ -94,7 +99,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (picked == null) return;
       await _saveAvatar(file: File(picked.path));
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Could not pick image: $e');
+      if (mounted) {
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not open that image. Please try again.',
+        );
+      }
     }
   }
 
@@ -115,7 +126,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         AppSnackBar.error(
           context,
-          e.toString().replaceFirst('Exception: ', ''),
+          e,
+          fallback: 'Could not update your profile picture. Please try again.',
         );
       }
     } finally {
@@ -230,10 +242,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Best-effort; the next home load reschedules at the new time anyway.
     }
     if (!mounted) return;
-    AppSnackBar.success(
-      context,
-      'Reminders set for ${picked.format(context)}',
-    );
+    AppSnackBar.success(context, 'Reminders set for ${picked.format(context)}');
   }
 
   /// Long-press: fire a test notification to confirm delivery works.
@@ -811,7 +820,10 @@ class _EditFieldSheetState extends State<_EditFieldSheet> {
       if (mounted) {
         setState(() {
           _isSaving = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = AppErrorMessages.message(
+            e,
+            fallback: 'Could not update your username. Please try again.',
+          );
         });
       }
     }
@@ -937,7 +949,10 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
       if (mounted) {
         setState(() {
           _isSaving = false;
-          _error = e.toString().replaceAll('Exception: ', '');
+          _error = AppErrorMessages.message(
+            e,
+            fallback: 'Could not update your email. Please try again.',
+          );
         });
       }
     }
@@ -1085,7 +1100,10 @@ class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
       if (mounted) {
         setState(() {
           _isDeleting = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = AppErrorMessages.message(
+            e,
+            fallback: 'Could not delete your account. Please try again.',
+          );
         });
       }
     }

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../models/disease.dart';
 import '../../services/api_service.dart';
+import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 
 /// Full knowledge-base page for a disease ("read more"). Reached from the scan
@@ -84,8 +85,10 @@ class _DiseaseDetailScreenState extends State<DiseaseDetailScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isConfirming = false);
-        messenger.showSnackBar(
-          SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not save the diagnosis. Please try again.',
         );
       }
     }

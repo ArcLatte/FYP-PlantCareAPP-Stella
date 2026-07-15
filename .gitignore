@@ -36,5 +36,7 @@ staticfiles/
 Thumbs.db
 desktop.ini
 
-/ml/
+ml/
 diagram/
+report/
+weights/

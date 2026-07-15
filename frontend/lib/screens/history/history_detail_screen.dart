@@ -26,6 +26,7 @@ class HistoryDetailScreen extends StatefulWidget {
 class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   List<ActivityEvent> _events = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -34,16 +35,26 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   }
 
   Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
     try {
       final all = await ApiService.getActivity();
       if (!mounted) return;
       setState(() {
         _events = all.where(_matches).toList();
         _isLoading = false;
+        _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Could not load this activity. Please try again.';
+      });
     }
   }
 
@@ -122,36 +133,64 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       ),
       body: _isLoading
           ? const _DetailSkeleton()
-          : _events.isEmpty
-          ? Center(
-              child: Text(
-                'Nothing on this day',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _load,
-              color: AppColors.primary,
-              backgroundColor: AppColors.surface,
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                itemCount: _events.length,
-                itemBuilder: (context, i) {
-                  final e = _events[i];
-                  final s = _styleFor(e);
-                  return TimelineTile(
-                    isFirst: i == 0,
-                    isLast: i == _events.length - 1,
-                    color: s.color,
-                    icon: s.icon,
-                    title: s.title,
-                    subtitle: timeLabel(e.createdAt),
-                    showChevron: e.isScan,
-                    onTap: () => _onTap(e),
-                  );
-                },
-              ),
+          : _errorMessage != null
+              ? _buildError()
+              : _events.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Nothing on this day',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      color: AppColors.primary,
+                      backgroundColor: AppColors.surface,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                        itemCount: _events.length,
+                        itemBuilder: (context, i) {
+                          final e = _events[i];
+                          final s = _styleFor(e);
+                          return TimelineTile(
+                            isFirst: i == 0,
+                            isLast: i == _events.length - 1,
+                            color: s.color,
+                            icon: s.icon,
+                            title: s.title,
+                            subtitle: timeLabel(e.createdAt),
+                            showChevron: e.isScan,
+                            onTap: () => _onTap(e),
+                          );
+                        },
+                      ),
+                    ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 48,
+              color: AppColors.textMuted,
             ),
+            const SizedBox(height: 16),
+            Text(_errorMessage!, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

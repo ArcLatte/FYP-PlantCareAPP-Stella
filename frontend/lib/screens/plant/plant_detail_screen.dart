@@ -35,8 +35,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
   bool _isFertilizing = false;
   bool _isMisting = false;
 
-  late final TabController _tabController =
-      TabController(length: 3, vsync: this);
+  late final TabController _tabController = TabController(
+    length: 3,
+    vsync: this,
+  );
 
   @override
   void dispose() {
@@ -56,7 +58,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       _refreshActivity();
     } catch (e) {
       if (mounted) {
-        AppSnackBar.error(context, 'Failed to water: $e');
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not log watering. Please try again.',
+        );
       }
     } finally {
       if (mounted) setState(() => _isWatering = false);
@@ -74,7 +80,13 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       XpToast.flush(context);
       _refreshActivity();
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Failed to fertilize: $e');
+      if (mounted) {
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not log fertilizing. Please try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _isFertilizing = false);
     }
@@ -91,7 +103,13 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       XpToast.flush(context);
       _refreshActivity();
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Failed to mist: $e');
+      if (mounted) {
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not log misting. Please try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _isMisting = false);
     }
@@ -130,8 +148,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
 
   // ───────── Notes ─────────
 
-  List<ActivityEvent> get _notes =>
-      _activity.where((e) => e.isNote).toList();
+  List<ActivityEvent> get _notes => _activity.where((e) => e.isNote).toList();
 
   /// History = care actions + scans only. Journal notes live in their own tab.
   List<ActivityEvent> get _logEvents =>
@@ -171,20 +188,23 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
     if (result == null || !mounted) return;
     if (result.deleted) {
       if (existing == null) return;
-      setState(() => _activity = _activity
-          .where((e) => !(e.isNote && e.careLogId == existing.careLogId))
-          .toList());
+      setState(
+        () => _activity = _activity
+            .where((e) => !(e.isNote && e.careLogId == existing.careLogId))
+            .toList(),
+      );
       return;
     }
     final saved = result.saved;
     if (saved == null) return;
     setState(() {
-      final exists =
-          _activity.any((e) => e.isNote && e.careLogId == saved.careLogId);
+      final exists = _activity.any(
+        (e) => e.isNote && e.careLogId == saved.careLogId,
+      );
       _activity = exists
           ? [
               for (final e in _activity)
-                if (e.isNote && e.careLogId == saved.careLogId) saved else e
+                if (e.isNote && e.careLogId == saved.careLogId) saved else e,
             ]
           : [saved, ..._activity];
     });
@@ -231,7 +251,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
-        AppSnackBar.error(context, 'Failed to delete plant: $e');
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not delete the plant. Please try again.',
+        );
       }
     }
   }
@@ -260,8 +284,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
         ),
         child: Row(
           children: [
-            const Icon(Icons.favorite_rounded,
-                color: AppColors.success, size: 22),
+            const Icon(
+              Icons.favorite_rounded,
+              color: AppColors.success,
+              size: 22,
+            ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
@@ -278,8 +305,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                 foregroundColor: AppColors.success,
                 minimumSize: const Size(0, 44),
               ),
-              onPressed: () => context
-                  .push('/disease/${Uri.encodeComponent(disease.label)}'),
+              onPressed: () => context.push(
+                '/disease/${Uri.encodeComponent(disease.label)}',
+              ),
               child: const Text('Read more'),
             ),
           ],
@@ -311,8 +339,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                   color: accent.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.warning_amber_rounded,
-                    color: accent, size: 24),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: accent,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -371,8 +402,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 minimumSize: const Size(0, 44),
               ),
-              onPressed: () => context
-                  .push('/disease/${Uri.encodeComponent(disease.label)}'),
+              onPressed: () => context.push(
+                '/disease/${Uri.encodeComponent(disease.label)}',
+              ),
               icon: const Icon(Icons.menu_book_rounded, size: 18),
               label: const Text('Read more about this disease'),
             ),
@@ -421,26 +453,30 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       ),
     ];
     if (plant.daysUntilFertilizer != null) {
-      rows.add(_CareRow(
-        icon: Icons.compost_rounded,
-        color: AppColors.amber,
-        label: 'Fertilize',
-        everyDays: s?.defaultFertilizerFreqDays,
-        next: _nextLabel(plant.daysUntilFertilizer),
-        last: _lastLabel(plant.lastFertilized),
-        overdue: (plant.daysUntilFertilizer ?? 1) <= 0,
-      ));
+      rows.add(
+        _CareRow(
+          icon: Icons.compost_rounded,
+          color: AppColors.amber,
+          label: 'Fertilize',
+          everyDays: s?.defaultFertilizerFreqDays,
+          next: _nextLabel(plant.daysUntilFertilizer),
+          last: _lastLabel(plant.lastFertilized),
+          overdue: (plant.daysUntilFertilizer ?? 1) <= 0,
+        ),
+      );
     }
     if (plant.daysUntilMisting != null) {
-      rows.add(_CareRow(
-        icon: Icons.cloud_rounded,
-        color: _kMistColor,
-        label: 'Mist',
-        everyDays: s?.defaultMistingFreqDays,
-        next: _nextLabel(plant.daysUntilMisting),
-        last: _lastLabel(plant.lastMisted),
-        overdue: (plant.daysUntilMisting ?? 1) <= 0,
-      ));
+      rows.add(
+        _CareRow(
+          icon: Icons.cloud_rounded,
+          color: _kMistColor,
+          label: 'Mist',
+          everyDays: s?.defaultMistingFreqDays,
+          next: _nextLabel(plant.daysUntilMisting),
+          last: _lastLabel(plant.lastMisted),
+          overdue: (plant.daysUntilMisting ?? 1) <= 0,
+        ),
+      );
     }
     return rows;
   }
@@ -471,32 +507,36 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
           ),
         ];
         if (plant.daysUntilFertilizer != null) {
-          rows.add(_CareSheetRow(
-            icon: Icons.compost_rounded,
-            color: AppColors.amber,
-            label: 'Fertilize',
-            subtitle:
-                'Next ${_nextLabel(plant.daysUntilFertilizer)} · Last ${_lastLabel(plant.lastFertilized)}',
-            overdue: plant.daysUntilFertilizer! <= 0,
-            onTap: () {
-              Navigator.pop(ctx);
-              _fertilizeNow();
-            },
-          ));
+          rows.add(
+            _CareSheetRow(
+              icon: Icons.compost_rounded,
+              color: AppColors.amber,
+              label: 'Fertilize',
+              subtitle:
+                  'Next ${_nextLabel(plant.daysUntilFertilizer)} · Last ${_lastLabel(plant.lastFertilized)}',
+              overdue: plant.daysUntilFertilizer! <= 0,
+              onTap: () {
+                Navigator.pop(ctx);
+                _fertilizeNow();
+              },
+            ),
+          );
         }
         if (plant.daysUntilMisting != null) {
-          rows.add(_CareSheetRow(
-            icon: Icons.cloud_rounded,
-            color: _kMistColor,
-            label: 'Mist',
-            subtitle:
-                'Next ${_nextLabel(plant.daysUntilMisting)} · Last ${_lastLabel(plant.lastMisted)}',
-            overdue: plant.daysUntilMisting! <= 0,
-            onTap: () {
-              Navigator.pop(ctx);
-              _mistNow();
-            },
-          ));
+          rows.add(
+            _CareSheetRow(
+              icon: Icons.cloud_rounded,
+              color: _kMistColor,
+              label: 'Mist',
+              subtitle:
+                  'Next ${_nextLabel(plant.daysUntilMisting)} · Last ${_lastLabel(plant.lastMisted)}',
+              overdue: plant.daysUntilMisting! <= 0,
+              onTap: () {
+                Navigator.pop(ctx);
+                _mistNow();
+              },
+            ),
+          );
         }
 
         return SafeArea(
@@ -519,8 +559,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                 const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('Log care',
-                      style: Theme.of(ctx).textTheme.titleLarge),
+                  child: Text(
+                    'Log care',
+                    style: Theme.of(ctx).textTheme.titleLarge,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 for (final row in rows) row,
@@ -535,8 +577,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
   /// True when any applicable care activity is due today or overdue.
   bool _anyCareOverdue(Plant plant) {
     if ((plant.daysUntilWater ?? 1) <= 0) return true;
-    if (plant.daysUntilFertilizer != null &&
-        plant.daysUntilFertilizer! <= 0) {
+    if (plant.daysUntilFertilizer != null && plant.daysUntilFertilizer! <= 0) {
       return true;
     }
     if (plant.daysUntilMisting != null && plant.daysUntilMisting! <= 0) {
@@ -574,8 +615,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
             onSelected: (value) async {
               switch (value) {
                 case 'edit':
-                  final changed = await context
-                      .push<bool>('/plants/${widget.plantId}/edit');
+                  final changed = await context.push<bool>(
+                    '/plants/${widget.plantId}/edit',
+                  );
                   if (changed == true && mounted) _loadData();
                 case 'delete':
                   _deletePlant();
@@ -586,11 +628,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                 value: 'edit',
                 child: Row(
                   children: [
-                    Icon(Icons.edit_outlined,
-                        color: AppColors.textPrimary, size: 20),
+                    Icon(
+                      Icons.edit_outlined,
+                      color: AppColors.textPrimary,
+                      size: 20,
+                    ),
                     SizedBox(width: 12),
-                    Text('Edit plant',
-                        style: TextStyle(color: AppColors.textPrimary)),
+                    Text(
+                      'Edit plant',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
                   ],
                 ),
               ),
@@ -598,11 +645,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                 value: 'delete',
                 child: Row(
                   children: [
-                    Icon(Icons.delete_outline_rounded,
-                        color: AppColors.error, size: 20),
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppColors.error,
+                      size: 20,
+                    ),
                     SizedBox(width: 12),
-                    Text('Delete plant',
-                        style: TextStyle(color: AppColors.error)),
+                    Text(
+                      'Delete plant',
+                      style: TextStyle(color: AppColors.error),
+                    ),
                   ],
                 ),
               ),
@@ -614,8 +666,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
           ? const _PlantDetailSkeleton()
           : plant == null
               ? const Center(
-                  child: Text('Plant not found',
-                      style: TextStyle(color: AppColors.textSecondary)))
+                  child: Text(
+                    'Plant not found',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                )
               : RefreshIndicator(
                   onRefresh: _loadData,
                   color: AppColors.primary,
@@ -633,13 +688,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                         child: Column(
                           children: [
                             Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                               child: _PlantHero(plant: plant),
                             ),
                             Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                               child: _buildCareCard(context, plant),
                             ),
                           ],
@@ -647,9 +700,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                       ),
                       // Tab pills pin to the top once scrolled up to.
                       SliverOverlapAbsorber(
-                        handle:
-                            NestedScrollView.sliverOverlapAbsorberHandleFor(
-                                context),
+                        handle: NestedScrollView.sliverOverlapAbsorberHandleFor(
+                          context,
+                        ),
                         sliver: SliverPersistentHeader(
                           pinned: true,
                           delegate: _TabBarDelegate(
@@ -710,8 +763,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            textStyle:
-                                const TextStyle(fontWeight: FontWeight.w700),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
@@ -729,8 +783,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            textStyle:
-                                const TextStyle(fontWeight: FontWeight.w700),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
@@ -789,8 +844,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
         children: [
           Row(
             children: [
-              Text('Care schedule',
-                  style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Care schedule',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               if (_anyCareOverdue(plant)) ...[
                 const Spacer(),
                 const _AttentionPill(),
@@ -811,8 +868,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              Icon(Icons.eco_rounded,
-                  color: AppColors.primary.withValues(alpha: 0.9), size: 16),
+              Icon(
+                Icons.eco_rounded,
+                color: AppColors.primary.withValues(alpha: 0.9),
+                size: 16,
+              ),
               const SizedBox(width: 6),
               Text(
                 stage.name,
@@ -826,7 +886,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
               Text(
                 caption,
                 style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 12),
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -852,10 +914,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
     return _TabScroll(
       storageKey: 'tab-health',
       children: [
-        if (healthCard != null) ...[
-          healthCard,
-          const SizedBox(height: 16),
-        ],
+        if (healthCard != null) ...[healthCard, const SizedBox(height: 16)],
         if (plant.speciesDetail != null)
           _ConditionsCard(
             speciesName: plant.species,
@@ -895,8 +954,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
             padding: const EdgeInsets.only(top: 40),
             child: Column(
               children: [
-                const Icon(Icons.menu_book_outlined,
-                    size: 48, color: AppColors.textMuted),
+                const Icon(
+                  Icons.menu_book_outlined,
+                  size: 48,
+                  color: AppColors.textMuted,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'No notes yet',
@@ -906,8 +968,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                 const Text(
                   'Write down how your plant is doing — add a photo to\nwatch it change over time.',
                   textAlign: TextAlign.center,
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
@@ -933,11 +997,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
             padding: const EdgeInsets.only(top: 40),
             child: Column(
               children: [
-                const Icon(Icons.history_rounded,
-                    size: 48, color: AppColors.textMuted),
+                const Icon(
+                  Icons.history_rounded,
+                  size: 48,
+                  color: AppColors.textMuted,
+                ),
                 const SizedBox(height: 12),
-                Text('No history yet',
-                    style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  'No history yet',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ],
             ),
           )
@@ -985,10 +1054,7 @@ class _TabScroll extends StatelessWidget {
   final String storageKey;
   final List<Widget> children;
 
-  const _TabScroll({
-    required this.storageKey,
-    required this.children,
-  });
+  const _TabScroll({required this.storageKey, required this.children});
 
   @override
   Widget build(BuildContext context) {
@@ -1003,14 +1069,11 @@ class _TabScroll extends StatelessWidget {
           ),
           slivers: [
             SliverOverlapInjector(
-              handle:
-                  NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate(children),
-              ),
+              sliver: SliverList(delegate: SliverChildListDelegate(children)),
             ),
           ],
         );
@@ -1035,13 +1098,15 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Container(color: AppColors.background, child: child);
   }
 
   @override
-  bool shouldRebuild(_TabBarDelegate oldDelegate) =>
-      oldDelegate.child != child;
+  bool shouldRebuild(_TabBarDelegate oldDelegate) => oldDelegate.child != child;
 }
 
 /// Hero photo with a bottom gradient scrim and the plant's identity overlaid:
@@ -1061,41 +1126,48 @@ class _PlantHero extends StatelessWidget {
     // species · location subtitle pieces.
     final subtitleParts = <Widget>[];
     if (plant.species.isNotEmpty) {
-      subtitleParts.add(Flexible(
-        child: Text(
-          plant.species,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+      subtitleParts.add(
+        Flexible(
+          child: Text(
+            plant.species,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-      ));
+      );
     }
     if (plant.location.isNotEmpty) {
       if (subtitleParts.isNotEmpty) {
-        subtitleParts.add(const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 6),
-          child: Text('·', style: TextStyle(color: Colors.white54)),
-        ));
+        subtitleParts.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6),
+            child: Text('·', style: TextStyle(color: Colors.white54)),
+          ),
+        );
       }
-      subtitleParts.add(const Icon(Icons.place_rounded,
-          color: Colors.white70, size: 14));
+      subtitleParts.add(
+        const Icon(Icons.place_rounded, color: Colors.white70, size: 14),
+      );
       subtitleParts.add(const SizedBox(width: 3));
-      subtitleParts.add(Flexible(
-        child: Text(
-          plant.location,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+      subtitleParts.add(
+        Flexible(
+          child: Text(
+            plant.location,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-      ));
+      );
     }
 
     return ClipRRect(
@@ -1231,10 +1303,11 @@ class _TabPills extends StatelessWidget {
         ),
         labelColor: Colors.white,
         unselectedLabelColor: AppColors.textSecondary,
-        labelStyle:
-            const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-        unselectedLabelStyle:
-            const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
         tabs: [
           Tab(
             height: 38,
@@ -1288,34 +1361,42 @@ class _ConditionsCard extends StatelessWidget {
 
     final rows = <Widget>[];
     if (s.sunlightLabel.isNotEmpty) {
-      rows.add(_ConditionRow(
-        icon: Icons.wb_sunny_rounded,
-        color: AppColors.amber,
-        label: 'Sunlight',
-        value: s.sunlightLabel,
-      ));
+      rows.add(
+        _ConditionRow(
+          icon: Icons.wb_sunny_rounded,
+          color: AppColors.amber,
+          label: 'Sunlight',
+          value: s.sunlightLabel,
+        ),
+      );
     }
     if (s.temperatureRange != null) {
-      rows.add(_ConditionRow(
-        icon: Icons.thermostat_rounded,
-        color: _kWaterColor,
-        label: 'Ideal temperature',
-        value: s.temperatureRange!,
-      ));
+      rows.add(
+        _ConditionRow(
+          icon: Icons.thermostat_rounded,
+          color: _kWaterColor,
+          label: 'Ideal temperature',
+          value: s.temperatureRange!,
+        ),
+      );
     }
-    rows.add(_ConditionRow(
-      icon: Icons.water_drop_rounded,
-      color: _kWaterColor,
-      label: 'Water',
-      value: 'Every $wateringFreqDays days',
-    ));
+    rows.add(
+      _ConditionRow(
+        icon: Icons.water_drop_rounded,
+        color: _kWaterColor,
+        label: 'Water',
+        value: 'Every $wateringFreqDays days',
+      ),
+    );
     if (s.locationLabel.isNotEmpty || location.isNotEmpty) {
-      rows.add(_ConditionRow(
-        icon: Icons.place_rounded,
-        color: AppColors.primary,
-        label: 'Location',
-        value: location.isNotEmpty ? location : s.locationLabel,
-      ));
+      rows.add(
+        _ConditionRow(
+          icon: Icons.place_rounded,
+          color: AppColors.primary,
+          label: 'Location',
+          value: location.isNotEmpty ? location : s.locationLabel,
+        ),
+      );
     }
 
     final tip = s.growingTips.trim();
@@ -1338,8 +1419,10 @@ class _ConditionsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Conditions & care tips',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Conditions & care tips',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 14),
           for (final (i, row) in rows.indexed) ...[
             if (i > 0) const SizedBox(height: 14),
@@ -1546,7 +1629,9 @@ class _CareRow extends StatelessWidget {
                     const TextSpan(
                       text: 'Next ',
                       style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 13),
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
                     TextSpan(
                       text: next,
@@ -1554,14 +1639,15 @@ class _CareRow extends StatelessWidget {
                         color:
                             overdue ? AppColors.amber : AppColors.textPrimary,
                         fontSize: 13,
-                        fontWeight:
-                            overdue ? FontWeight.w700 : FontWeight.w600,
+                        fontWeight: overdue ? FontWeight.w700 : FontWeight.w600,
                       ),
                     ),
                     TextSpan(
                       text: '   ·   Last $last',
                       style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 13),
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -1633,8 +1719,7 @@ class _CareSheetRow extends StatelessWidget {
                       color:
                           overdue ? AppColors.amber : AppColors.textSecondary,
                       fontSize: 13,
-                      fontWeight:
-                          overdue ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ],
@@ -1647,7 +1732,11 @@ class _CareSheetRow extends StatelessWidget {
                 color: color,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+              child: const Icon(
+                Icons.add_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ],
         ),
@@ -1681,8 +1770,7 @@ class _ReadableText extends StatelessWidget {
       children: [
         for (final (i, p) in points.indexed)
           Padding(
-            padding:
-                EdgeInsets.only(bottom: i == points.length - 1 ? 0 : 8),
+            padding: EdgeInsets.only(bottom: i == points.length - 1 ? 0 : 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1690,8 +1778,10 @@ class _ReadableText extends StatelessWidget {
                   margin: const EdgeInsets.only(top: 7, right: 10),
                   width: 6,
                   height: 6,
-                  decoration:
-                      BoxDecoration(color: bulletColor, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: bulletColor,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 Expanded(child: Text(p, style: style)),
               ],
@@ -1714,8 +1804,7 @@ List<String>? _bulletize(String raw) {
       s.trim().replaceFirst(RegExp(r'^[-•*\d.)\s]+'), '').trim();
 
   if (t.contains('\n')) {
-    final lines =
-        t.split('\n').map(clean).where((e) => e.isNotEmpty).toList();
+    final lines = t.split('\n').map(clean).where((e) => e.isNotEmpty).toList();
     return lines.length >= 2 ? lines : null;
   }
 
@@ -1787,8 +1876,9 @@ class _NoteCard extends StatelessWidget {
           children: [
             if (note.notePhotoUrl != null)
               ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
                 child: CachedNetworkImage(
                   imageUrl: note.notePhotoUrl!,
                   width: double.infinity,
@@ -1832,17 +1922,25 @@ class _NoteCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Icon(Icons.schedule_rounded,
-                          size: 14, color: AppColors.textMuted),
+                      const Icon(
+                        Icons.schedule_rounded,
+                        size: 14,
+                        color: AppColors.textMuted,
+                      ),
                       const SizedBox(width: 5),
                       Text(
                         _timeLabel(note.createdAt),
                         style: const TextStyle(
-                            color: AppColors.textMuted, fontSize: 12),
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                        ),
                       ),
                       const Spacer(),
-                      const Icon(Icons.chevron_right_rounded,
-                          size: 20, color: AppColors.textMuted),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: AppColors.textMuted,
+                      ),
                     ],
                   ),
                 ],
@@ -1861,8 +1959,18 @@ class _DateHeader extends StatelessWidget {
   const _DateHeader({required this.date});
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   String get _label {
@@ -1908,9 +2016,11 @@ class _TimelineTile extends StatelessWidget {
 
   static String _relative(DateTime d) {
     final now = DateTime.now();
-    final days = DateTime(now.year, now.month, now.day)
-        .difference(DateTime(d.year, d.month, d.day))
-        .inDays;
+    final days = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).difference(DateTime(d.year, d.month, d.day)).inDays;
     if (days <= 0) return 'Today';
     if (days == 1) return 'Yesterday';
     if (days < 7) return '$days days ago';
@@ -1933,13 +2043,13 @@ class _TimelineTile extends StatelessWidget {
         return (
           icon: Icons.water_drop_rounded,
           color: _kWaterColor,
-          title: 'Watered'
+          title: 'Watered',
         );
       case 'fertilize':
         return (
           icon: Icons.compost_rounded,
           color: AppColors.amber,
-          title: 'Fertilized'
+          title: 'Fertilized',
         );
       case 'mist':
         return (icon: Icons.cloud_rounded, color: _kMistColor, title: 'Misted');
@@ -1947,7 +2057,7 @@ class _TimelineTile extends StatelessWidget {
         return (
           icon: Icons.eco_rounded,
           color: AppColors.primary,
-          title: 'Care'
+          title: 'Care',
         );
     }
   }
@@ -1989,17 +2099,17 @@ class _TimelineTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(v.title,
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(v.title, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 4),
-                Text(_relative(event.createdAt),
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  _relative(event.createdAt),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
           if (tappable)
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textMuted),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
         ],
       ),
     );

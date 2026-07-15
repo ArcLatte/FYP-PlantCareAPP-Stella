@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
@@ -97,9 +98,11 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       setState(() {
         _customLocations
           ..clear()
-          ..addAll(locations
-              .map((l) => l['name']?.toString() ?? '')
-              .where((n) => n.isNotEmpty));
+          ..addAll(
+            locations
+                .map((l) => l['name']?.toString() ?? '')
+                .where((n) => n.isNotEmpty),
+          );
         _isLoadingLocations = false;
       });
     } catch (e) {
@@ -205,20 +208,28 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Discard new plant?',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('Your selections will be lost.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: const Text(
+          'Discard new plant?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'Your selections will be lost.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep editing',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Keep editing',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Discard',
-                style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'Discard',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
@@ -235,8 +246,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Add new location',
-            style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          'Add new location',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -247,13 +260,17 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child:
-                const Text('Save', style: TextStyle(color: AppColors.primary)),
+            child: const Text(
+              'Save',
+              style: TextStyle(color: AppColors.primary),
+            ),
           ),
         ],
       ),
@@ -272,7 +289,11 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       });
     } catch (e) {
       if (mounted) {
-        AppSnackBar.error(context, e.toString().replaceAll('Exception: ', ''));
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not add the location. Please try again.',
+        );
       }
     }
   }
@@ -310,8 +331,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
   // ───────── Photo ─────────
 
   Future<void> _openPhotoSheet() async {
-    final result =
-        await showPhotoPickerSheet(context, showClear: _photo != null);
+    final result = await showPhotoPickerSheet(
+      context,
+      showClear: _photo != null,
+    );
     if (result == null || !mounted) return;
     setState(() {
       if (result.cleared) {
@@ -350,8 +373,12 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
-        setState(() =>
-            _errorMessage = e.toString().replaceAll('Exception: ', ''));
+        setState(
+          () => _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not save the plant. Please try again.',
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -371,9 +398,9 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         appBar: AppBar(
           title: Text(_stepTitles[_step]),
           leading: IconButton(
-            icon: Icon(_step == 0
-                ? Icons.close_rounded
-                : Icons.arrow_back_rounded),
+            icon: Icon(
+              _step == 0 ? Icons.close_rounded : Icons.arrow_back_rounded,
+            ),
             onPressed: _handleBack,
           ),
         ),
@@ -417,11 +444,13 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text('Back',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w700,
-                          )),
+                      child: const Text(
+                        'Back',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -469,8 +498,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('What kind of plant is this?',
-                  style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                'What kind of plant is this?',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 12),
               TextField(
                 onChanged: (v) => setState(() => _speciesQuery = v),
@@ -488,7 +519,9 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           child: _isLoadingSpecies
               ? ListView.builder(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 8),
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
                   itemCount: 6,
                   itemBuilder: (_, _) => const Padding(
                     padding: EdgeInsets.only(bottom: 10),
@@ -506,12 +539,13 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 8),
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
                       itemCount: _filteredSpecies.length,
                       itemBuilder: (context, i) {
                         final s = _filteredSpecies[i];
-                        final selected =
-                            _selectedSpecies?['id'] == s['id'];
+                        final selected = _selectedSpecies?['id'] == s['id'];
                         return _SpeciesRow(
                           species: s,
                           selected: selected,
@@ -530,11 +564,15 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       children: [
-        Text('Where will it live?',
-            style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          'Where will it live?',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 4),
-        Text('Helps you group plants by room or area.',
-            style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          'Helps you group plants by room or area.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
         const SizedBox(height: 16),
         if (_isLoadingLocations)
           for (int i = 0; i < 4; i++) ...[
@@ -549,8 +587,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
               selected: _selectedLocation == name,
               onTap: () => setState(() {
                 // Tap again to deselect — location is optional.
-                _selectedLocation =
-                    _selectedLocation == name ? null : name;
+                _selectedLocation = _selectedLocation == name ? null : name;
               }),
             ),
             const SizedBox(height: 10),
@@ -574,8 +611,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       children: [
-        Text('Nickname & care schedule',
-            style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          'Nickname & care schedule',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 16),
         Text('Plant nickname', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
@@ -589,8 +628,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        Text('Watering interval (days)',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Watering interval (days)',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _freqController,
@@ -609,8 +650,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           color: const Color(0xFF4F9FD9),
           label: 'Last watered',
           value: _dateLabel(_lastWatered),
-          onTap: () => _pickDate(
-              _lastWatered, (d) => setState(() => _lastWatered = d)),
+          onTap: () =>
+              _pickDate(_lastWatered, (d) => setState(() => _lastWatered = d)),
           onClear: _lastWatered == null
               ? null
               : () => setState(() => _lastWatered = null),
@@ -624,7 +665,9 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
             hint: 'Recommended every ${_speciesFertilizerFreq}d',
             value: _dateLabel(_lastFertilized),
             onTap: () => _pickDate(
-                _lastFertilized, (d) => setState(() => _lastFertilized = d)),
+              _lastFertilized,
+              (d) => setState(() => _lastFertilized = d),
+            ),
             onClear: _lastFertilized == null
                 ? null
                 : () => setState(() => _lastFertilized = null),
@@ -638,16 +681,18 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
             label: 'Last misted',
             hint: 'Recommended every ${_speciesMistingFreq}d',
             value: _dateLabel(_lastMisted),
-            onTap: () => _pickDate(
-                _lastMisted, (d) => setState(() => _lastMisted = d)),
+            onTap: () =>
+                _pickDate(_lastMisted, (d) => setState(() => _lastMisted = d)),
             onClear: _lastMisted == null
                 ? null
                 : () => setState(() => _lastMisted = null),
           ),
         ],
         const SizedBox(height: 24),
-        Text('Notes (optional)',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Notes (optional)',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _notesController,
@@ -670,11 +715,15 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       children: [
-        Text('Add a photo of your plant',
-            style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          'Add a photo of your plant',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 4),
-        Text("Optional, but it makes your garden feel alive.",
-            style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          "Optional, but it makes your garden feel alive.",
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
         const SizedBox(height: 16),
         Center(
           child: GestureDetector(
@@ -703,8 +752,11 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     child: const Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.add_a_photo_rounded,
-                            color: AppColors.primary, size: 44),
+                        Icon(
+                          Icons.add_a_photo_rounded,
+                          color: AppColors.primary,
+                          size: 44,
+                        ),
                         SizedBox(height: 10),
                         Text(
                           'Tap to add photo',
@@ -722,8 +774,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           Center(
             child: TextButton(
               onPressed: () => setState(() => _photo = null),
-              child: const Text('Remove photo',
-                  style: TextStyle(color: AppColors.textMuted)),
+              child: const Text(
+                'Remove photo',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
             ),
           ),
         const SizedBox(height: 16),
@@ -733,19 +787,23 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
             decoration: BoxDecoration(
               color: AppColors.error.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border:
-                  Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.error_outline,
-                    color: AppColors.error, size: 18),
+                const Icon(
+                  Icons.error_outline,
+                  color: AppColors.error,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _errorMessage!,
-                    style:
-                        const TextStyle(color: AppColors.error, fontSize: 13),
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
@@ -765,22 +823,26 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
             children: [
               _SummaryRow(label: 'Name', value: _effectiveName),
               _SummaryRow(label: 'Species', value: speciesName),
-              _SummaryRow(
-                  label: 'Location', value: _selectedLocation ?? '—'),
+              _SummaryRow(label: 'Location', value: _selectedLocation ?? '—'),
               _SummaryRow(
                 label: 'Watering',
                 value: 'Every ${_freqController.text.trim()} days',
               ),
               if (_lastWatered != null)
                 _SummaryRow(
-                    label: 'Last watered', value: _dateLabel(_lastWatered)),
+                  label: 'Last watered',
+                  value: _dateLabel(_lastWatered),
+                ),
               if (_lastFertilized != null)
                 _SummaryRow(
-                    label: 'Last fertilized',
-                    value: _dateLabel(_lastFertilized)),
+                  label: 'Last fertilized',
+                  value: _dateLabel(_lastFertilized),
+                ),
               if (_lastMisted != null)
                 _SummaryRow(
-                    label: 'Last misted', value: _dateLabel(_lastMisted)),
+                  label: 'Last misted',
+                  value: _dateLabel(_lastMisted),
+                ),
             ],
           ),
         ),
@@ -841,8 +903,7 @@ class _SpeciesRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = (species['name'] ?? '').toString();
     final sci = (species['scientific_name'] ?? '').toString();
-    final waterDays =
-        (species['default_watering_freq_days'] as num?)?.toInt();
+    final waterDays = (species['default_watering_freq_days'] as num?)?.toInt();
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -865,8 +926,11 @@ class _SpeciesRow extends StatelessWidget {
                 color: AppColors.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.eco_rounded,
-                  color: AppColors.primary, size: 24),
+              child: const Icon(
+                Icons.eco_rounded,
+                color: AppColors.primary,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -958,16 +1022,18 @@ class _SelectableRow extends StatelessWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color:
-                      accent ? AppColors.primary : AppColors.textPrimary,
+                  color: accent ? AppColors.primary : AppColors.textPrimary,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
               ),
             ),
             if (selected)
-              const Icon(Icons.check_circle_rounded,
-                  color: AppColors.primary, size: 20),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.primary,
+                size: 20,
+              ),
           ],
         ),
       ),
@@ -1053,13 +1119,19 @@ class _DateRow extends StatelessWidget {
             ),
             if (onClear != null)
               IconButton(
-                icon: const Icon(Icons.close_rounded,
-                    color: AppColors.textMuted, size: 18),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textMuted,
+                  size: 18,
+                ),
                 onPressed: onClear,
               )
             else
-              const Icon(Icons.event_rounded,
-                  color: AppColors.textMuted, size: 20),
+              const Icon(
+                Icons.event_rounded,
+                color: AppColors.textMuted,
+                size: 20,
+              ),
           ],
         ),
       ),

@@ -46,10 +46,12 @@ class NoteEditorScreen extends StatefulWidget {
 }
 
 class _NoteEditorScreenState extends State<NoteEditorScreen> {
-  late final TextEditingController _titleCtrl =
-      TextEditingController(text: widget.initialTitle ?? '');
-  late final TextEditingController _bodyCtrl =
-      TextEditingController(text: widget.initialText ?? '');
+  late final TextEditingController _titleCtrl = TextEditingController(
+    text: widget.initialTitle ?? '',
+  );
+  late final TextEditingController _bodyCtrl = TextEditingController(
+    text: widget.initialText ?? '',
+  );
   final FocusNode _bodyFocus = FocusNode();
   late String _previousBody = widget.initialText ?? '';
 
@@ -123,7 +125,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     } catch (e) {
       if (!mounted) return null;
       setState(() => _busy = false);
-      AppSnackBar.error(context, 'Failed to save note: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not save the note. Please try again.',
+      );
       return null;
     }
   }
@@ -144,20 +150,28 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: AppColors.cardBorder),
         ),
-        title: const Text('Delete note',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('This note will be removed permanently.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: const Text(
+          'Delete note',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'This note will be removed permanently.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
@@ -166,13 +180,19 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     setState(() => _busy = true);
     try {
       await ApiService.deletePlantNote(
-          widget.plantId, widget.existing!.careLogId!);
+        widget.plantId,
+        widget.existing!.careLogId!,
+      );
       if (!mounted) return;
       Navigator.pop(context, const NoteEditResult.deleted());
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      AppSnackBar.error(context, 'Failed to delete note: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not delete the note. Please try again.',
+      );
     }
   }
 
@@ -190,26 +210,38 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: AppColors.cardBorder),
         ),
-        title: const Text('Save changes?',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('You have unsaved changes to this note.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: const Text(
+          'Save changes?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'You have unsaved changes to this note.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'discard'),
-            child: const Text('Discard',
-                style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'Discard',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'cancel'),
-            child: const Text('Keep editing',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Keep editing',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'save'),
-            child: const Text('Save',
-                style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.w700)),
+            child: const Text(
+              'Save',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -230,8 +262,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     final text = _bodyCtrl.text;
     var cursor = _bodyCtrl.selection.baseOffset;
     if (cursor < 0) cursor = text.length;
-    final lineStart =
-        cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
+    final lineStart = cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
     if (!RegExp(r'^\s*(?:•|[-*])\s').hasMatch(text.substring(lineStart))) {
       final next =
           '${text.substring(0, lineStart)}• ${text.substring(lineStart)}';
@@ -271,7 +302,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
             return;
           }
         } else if (ch == ' ') {
-          final from = cursor - 2 < 0 ? -1 : value.lastIndexOf('\n', cursor - 2);
+          final from =
+              cursor - 2 < 0 ? -1 : value.lastIndexOf('\n', cursor - 2);
           final lineStart = from + 1;
           final segment = value.substring(lineStart, cursor);
           if (segment == '- ' || segment == '* ') {
@@ -320,8 +352,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               onPressed: _busy ? null : _onSavePressed,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
-                textStyle:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               child: const Text('Save'),
             ),
@@ -442,8 +476,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded,
-                  color: Colors.white, size: 18),
+              child: const Icon(
+                Icons.close_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             ),
           ),
         ),

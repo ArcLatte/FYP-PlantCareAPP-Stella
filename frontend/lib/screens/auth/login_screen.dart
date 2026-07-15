@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../services/api_service.dart';
@@ -43,7 +44,12 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString(AppConstants.usernameKey, user.username);
       if (mounted) context.go('/home');
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      setState(
+        () => _errorMessage = AppErrorMessages.message(
+          e,
+          fallback: 'Could not log in. Please try again.',
+        ),
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -97,18 +103,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.error.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline,
-                            color: AppColors.error, size: 18),
+                        const Icon(
+                          Icons.error_outline,
+                          color: AppColors.error,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _errorMessage!,
                             style: const TextStyle(
-                                color: AppColors.error, fontSize: 13),
+                              color: AppColors.error,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ],

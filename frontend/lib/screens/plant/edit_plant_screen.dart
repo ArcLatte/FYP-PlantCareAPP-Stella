@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
@@ -86,7 +87,10 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
       if (mounted) {
         setState(() {
           _isLoadingPlant = false;
-          _errorMessage = 'Failed to load plant: $e';
+          _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not load this plant. Please try again.',
+          );
         });
       }
     }
@@ -112,9 +116,11 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
       setState(() {
         _customLocations
           ..clear()
-          ..addAll(locations
-              .map((l) => l['name']?.toString() ?? '')
-              .where((n) => n.isNotEmpty));
+          ..addAll(
+            locations
+                .map((l) => l['name']?.toString() ?? '')
+                .where((n) => n.isNotEmpty),
+          );
         _isLoadingLocations = false;
       });
     } catch (e) {
@@ -142,8 +148,10 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Add new location',
-            style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          'Add new location',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -154,13 +162,17 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Save',
-                style: TextStyle(color: AppColors.primary)),
+            child: const Text(
+              'Save',
+              style: TextStyle(color: AppColors.primary),
+            ),
           ),
         ],
       ),
@@ -179,15 +191,21 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => _errorMessage =
-            e.toString().replaceAll('Exception: ', ''));
+        setState(
+          () => _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not add the location. Please try again.',
+          ),
+        );
       }
     }
   }
 
   Future<void> _showPhotoSheet() async {
-    final result =
-        await showPhotoPickerSheet(context, showClear: _newPhoto != null);
+    final result = await showPhotoPickerSheet(
+      context,
+      showClear: _newPhoto != null,
+    );
     if (result == null || !mounted) return;
     setState(() {
       if (result.cleared) {
@@ -214,8 +232,7 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
         name: _nameController.text.trim(),
         notes: _notesController.text.trim(),
         location: _selectedLocation ?? '',
-        wateringFreqDays:
-            int.tryParse(_freqController.text.trim()) ?? 7,
+        wateringFreqDays: int.tryParse(_freqController.text.trim()) ?? 7,
         speciesId: _selectedSpeciesId,
         photo: _newPhoto,
       );
@@ -224,8 +241,12 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
       context.pop(true);
     } catch (e) {
       if (mounted) {
-        setState(() =>
-            _errorMessage = e.toString().replaceAll('Exception: ', ''));
+        setState(
+          () => _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not save the plant. Please try again.',
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -246,8 +267,10 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _plant == null
               ? const Center(
-                  child: Text('Plant not found',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                  child: Text(
+                    'Plant not found',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
                 )
               : SafeArea(
                   child: SingleChildScrollView(
@@ -258,17 +281,22 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Photo picker
-                          Center(child: _PhotoPicker(
-                            existingUrl: _plant!.photoUrl,
-                            newPhoto: _newPhoto,
-                            onTap: _showPhotoSheet,
-                          )),
+                          Center(
+                            child: _PhotoPicker(
+                              existingUrl: _plant!.photoUrl,
+                              newPhoto: _newPhoto,
+                              onTap: _showPhotoSheet,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Center(
                             child: TextButton.icon(
                               onPressed: _showPhotoSheet,
-                              icon: const Icon(Icons.camera_alt_rounded,
-                                  size: 18, color: AppColors.primary),
+                              icon: const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
                               label: Text(
                                 _newPhoto != null
                                     ? 'Change selected photo'
@@ -276,8 +304,9 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                                         ? 'Change photo'
                                         : 'Add a photo'),
                                 style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w600),
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ),
@@ -295,15 +324,19 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.error_outline,
-                                      color: AppColors.error, size: 18),
+                                  const Icon(
+                                    Icons.error_outline,
+                                    color: AppColors.error,
+                                    size: 18,
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       _errorMessage!,
                                       style: const TextStyle(
-                                          color: AppColors.error,
-                                          fontSize: 13),
+                                        color: AppColors.error,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -312,12 +345,15 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                             const SizedBox(height: 20),
                           ],
 
-                          Text('Plant Name',
-                              style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Plant Name',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _nameController,
-                            style: const TextStyle(color: AppColors.textPrimary),
+                            style:
+                                const TextStyle(color: AppColors.textPrimary),
                             decoration: const InputDecoration(
                               hintText: 'e.g. My Tomato Plant',
                               prefixIcon: Icon(Icons.local_florist_outlined),
@@ -328,8 +364,10 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                           ),
                           const SizedBox(height: 24),
 
-                          Text('Species',
-                              style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Species',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 8),
                           _isLoadingSpecies
                               ? const SkeletonBox(height: 56, radius: 12)
@@ -337,24 +375,29 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                                   initialValue: _selectedSpeciesId,
                                   dropdownColor: AppColors.surface,
                                   style: const TextStyle(
-                                      color: AppColors.textPrimary),
+                                    color: AppColors.textPrimary,
+                                  ),
                                   decoration: const InputDecoration(
                                     hintText: 'Select species',
                                     prefixIcon: Icon(Icons.category_outlined),
                                   ),
                                   items: _species
-                                      .map((s) => DropdownMenuItem<int>(
-                                            value: s['id'] as int,
-                                            child: Text(s['name'] as String),
-                                          ))
+                                      .map(
+                                        (s) => DropdownMenuItem<int>(
+                                          value: s['id'] as int,
+                                          child: Text(s['name'] as String),
+                                        ),
+                                      )
                                       .toList(),
                                   onChanged: (val) =>
                                       setState(() => _selectedSpeciesId = val),
                                 ),
                           const SizedBox(height: 24),
 
-                          Text('Location',
-                              style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Location',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 8),
                           _isLoadingLocations
                               ? const SkeletonBox(height: 56, radius: 12)
@@ -362,7 +405,8 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                                   initialValue: _selectedLocation,
                                   dropdownColor: AppColors.surface,
                                   style: const TextStyle(
-                                      color: AppColors.textPrimary),
+                                    color: AppColors.textPrimary,
+                                  ),
                                   decoration: const InputDecoration(
                                     hintText: 'Select location',
                                     prefixIcon: Icon(Icons.place_outlined),
@@ -378,13 +422,18 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                                       value: _kAddNewSentinel,
                                       child: Row(
                                         children: [
-                                          Icon(Icons.add_rounded,
-                                              color: AppColors.primary,
-                                              size: 18),
+                                          Icon(
+                                            Icons.add_rounded,
+                                            color: AppColors.primary,
+                                            size: 18,
+                                          ),
                                           SizedBox(width: 8),
-                                          Text('Add new location…',
-                                              style: TextStyle(
-                                                  color: AppColors.primary)),
+                                          Text(
+                                            'Add new location…',
+                                            style: TextStyle(
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -393,15 +442,16 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                                     if (val == _kAddNewSentinel) {
                                       _promptNewLocation();
                                     } else {
-                                      setState(
-                                          () => _selectedLocation = val);
+                                      setState(() => _selectedLocation = val);
                                     }
                                   },
                                 ),
                           const SizedBox(height: 24),
 
-                          Text('Watering interval (days)',
-                              style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Watering interval (days)',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _freqController,
@@ -426,8 +476,10 @@ class _EditPlantScreenState extends State<EditPlantScreen> {
                           ),
                           const SizedBox(height: 24),
 
-                          Text('Notes (optional)',
-                              style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Notes (optional)',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _notesController,
@@ -494,8 +546,7 @@ class _PhotoPicker extends StatelessWidget {
                       ? CachedNetworkImage(
                           imageUrl: existingUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (_, _) =>
-                              const SkeletonBox(radius: 0),
+                          placeholder: (_, _) => const SkeletonBox(radius: 0),
                           errorWidget: (_, _, _) => const _PhotoFallback(),
                         )
                       : const _PhotoFallback()),
@@ -517,8 +568,11 @@ class _PhotoPicker extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(Icons.camera_alt_rounded,
-                  color: Colors.white, size: 18),
+              child: const Icon(
+                Icons.camera_alt_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/app_error.dart';
 import '../core/theme.dart';
 
 /// App-styled toast/snackbar helpers so feedback matches the rest of the
@@ -15,10 +16,10 @@ class AppSnackBar {
     );
   }
 
-  static void error(BuildContext context, String message) {
+  static void error(BuildContext context, Object error, {String? fallback}) {
     _show(
       context,
-      message: message,
+      message: AppErrorMessages.message(error, fallback: fallback),
       icon: Icons.error_rounded,
       background: AppColors.error,
     );
@@ -55,9 +56,7 @@ class AppSnackBar {
         elevation: 4,
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         duration: const Duration(seconds: 2),
       ),
     );

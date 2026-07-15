@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../models/scan.dart';
 import '../../services/api_service.dart';
@@ -83,7 +84,10 @@ class _ResultScreenState extends State<ResultScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = AppErrorMessages.message(
+          e,
+          fallback: 'Could not save the diagnosis. Please try again.',
+        );
         _isConfirming = false;
       });
     }
@@ -161,8 +165,11 @@ class _ResultScreenState extends State<ResultScreen> {
           ? const _ResultSkeleton()
           : scan == null
               ? const Center(
-                  child: Text('Result not found',
-                      style: TextStyle(color: AppColors.textSecondary)))
+                  child: Text(
+                    'Result not found',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                )
               : SafeArea(
                   bottom: false,
                   child: SingleChildScrollView(
@@ -203,13 +210,15 @@ class _ResultScreenState extends State<ResultScreen> {
                               color: AppColors.error.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color:
-                                      AppColors.error.withValues(alpha: 0.3)),
+                                color: AppColors.error.withValues(alpha: 0.3),
+                              ),
                             ),
                             child: Text(
                               _errorMessage!,
                               style: const TextStyle(
-                                  color: AppColors.error, fontSize: 13),
+                                color: AppColors.error,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -234,7 +243,8 @@ class _ResultScreenState extends State<ResultScreen> {
                             onTap: (_isConfirming || locked)
                                 ? null
                                 : () => setState(
-                                    () => _selectedLabel = prediction.label),
+                                      () => _selectedLabel = prediction.label,
+                                    ),
                             // Only offer "confirm from detail" for a label that
                             // is actually confirmable (drop scanId when locked).
                             onReadMore: () => context.push(
@@ -248,9 +258,8 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                 ),
       // Pinned Confirm / Done action.
-      bottomNavigationBar: (_isLoading || scan == null)
-          ? null
-          : _buildBottomBar(),
+      bottomNavigationBar:
+          (_isLoading || scan == null) ? null : _buildBottomBar(),
     );
   }
 
@@ -294,9 +303,7 @@ class _ResultScreenState extends State<ResultScreen> {
                           ? null
                           : () => _confirmDisease(_selectedLabel!),
                       child: Text(
-                        _isConfirmed
-                            ? 'Update diagnosis'
-                            : 'Confirm diagnosis',
+                        _isConfirmed ? 'Update diagnosis' : 'Confirm diagnosis',
                       ),
                     ),
         ),
@@ -365,9 +372,8 @@ class _ResultScreenState extends State<ResultScreen> {
         OutlinedButton.icon(
           // Already confirmed — the detail page opens in read-only mode (no
           // scanId, so no confirm bar).
-          onPressed: () => context.push(
-            '/disease/${Uri.encodeComponent(label)}',
-          ),
+          onPressed: () =>
+              context.push('/disease/${Uri.encodeComponent(label)}'),
           icon: const Icon(Icons.menu_book_rounded, size: 18),
           label: const Text('Read more about this'),
         ),
@@ -420,8 +426,11 @@ class _ScanImage extends StatelessWidget {
           child: imageUrl == null || imageUrl!.isEmpty
               ? Container(
                   color: AppColors.surfaceLight,
-                  child: const Icon(Icons.local_florist_rounded,
-                      size: 64, color: AppColors.textMuted),
+                  child: const Icon(
+                    Icons.local_florist_rounded,
+                    size: 64,
+                    color: AppColors.textMuted,
+                  ),
                 )
               : CachedNetworkImage(
                   imageUrl: imageUrl!,
@@ -430,8 +439,11 @@ class _ScanImage extends StatelessWidget {
                       Container(color: AppColors.surfaceLight),
                   errorWidget: (c, _, _) => Container(
                     color: AppColors.surfaceLight,
-                    child: const Icon(Icons.broken_image_rounded,
-                        size: 48, color: AppColors.textMuted),
+                    child: const Icon(
+                      Icons.broken_image_rounded,
+                      size: 48,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ),
         ),
@@ -489,79 +501,79 @@ class _PredictionTile extends StatelessWidget {
             ),
           ),
           child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Example reference photo with a rank badge.
-            _Thumb(imageUrl: imageUrl, rank: rank, isTop: isTop),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: Theme.of(context).textTheme.titleMedium,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Example reference photo with a rank badge.
+              _Thumb(imageUrl: imageUrl, rank: rank, isTop: isTop),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${(confidence * 100).toStringAsFixed(1)}%',
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
+                        const SizedBox(width: 8),
+                        Text(
+                          '${(confidence * 100).toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      locked
-                          ? const Icon(
-                              Icons.lock_rounded,
-                              color: AppColors.textMuted,
-                              size: 20,
-                            )
-                          : Icon(
-                              selected
-                                  ? Icons.radio_button_checked_rounded
-                                  : Icons.radio_button_unchecked_rounded,
-                              color: selected
-                                  ? AppColors.primary
-                                  : AppColors.textMuted,
-                              size: 22,
-                            ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: confidence,
-                      backgroundColor: AppColors.surfaceLight,
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                      minHeight: 6,
+                        const SizedBox(width: 8),
+                        locked
+                            ? const Icon(
+                                Icons.lock_rounded,
+                                color: AppColors.textMuted,
+                                size: 20,
+                              )
+                            : Icon(
+                                selected
+                                    ? Icons.radio_button_checked_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                color: selected
+                                    ? AppColors.primary
+                                    : AppColors.textMuted,
+                                size: 22,
+                              ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 32),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: confidence,
+                        backgroundColor: AppColors.surfaceLight,
+                        valueColor: AlwaysStoppedAnimation<Color>(color),
+                        minHeight: 6,
                       ),
-                      onPressed: onReadMore,
-                      icon: const Icon(Icons.menu_book_rounded, size: 16),
-                      label: const Text('Read more'),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: onReadMore,
+                        icon: const Icon(Icons.menu_book_rounded, size: 16),
+                        label: const Text('Read more'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
           ),
         ),
       ),
@@ -597,8 +609,10 @@ class _Thumb extends StatelessWidget {
               child: imageUrl == null || imageUrl!.isEmpty
                   ? Container(
                       color: AppColors.surfaceLight,
-                      child: const Icon(Icons.local_florist_rounded,
-                          color: AppColors.textMuted),
+                      child: const Icon(
+                        Icons.local_florist_rounded,
+                        color: AppColors.textMuted,
+                      ),
                     )
                   : CachedNetworkImage(
                       imageUrl: imageUrl!,
@@ -607,8 +621,10 @@ class _Thumb extends StatelessWidget {
                           Container(color: AppColors.surfaceLight),
                       errorWidget: (c, _, _) => Container(
                         color: AppColors.surfaceLight,
-                        child: const Icon(Icons.local_florist_rounded,
-                            color: AppColors.textMuted),
+                        child: const Icon(
+                          Icons.local_florist_rounded,
+                          color: AppColors.textMuted,
+                        ),
                       ),
                     ),
             ),
@@ -619,8 +635,9 @@ class _Thumb extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: (isTop ? AppColors.primary : Colors.black)
-                    .withValues(alpha: 0.75),
+                color: (isTop ? AppColors.primary : Colors.black).withValues(
+                  alpha: 0.75,
+                ),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(

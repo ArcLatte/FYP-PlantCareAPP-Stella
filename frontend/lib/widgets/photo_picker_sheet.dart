@@ -41,7 +41,11 @@ Future<PhotoPickResult?> showPhotoPickerSheet(
     } catch (e) {
       if (sheetContext.mounted) {
         Navigator.pop(sheetContext);
-        AppSnackBar.error(sheetContext, 'Could not pick image: $e');
+        AppSnackBar.error(
+          sheetContext,
+          e,
+          fallback: 'Could not open that image. Please try again.',
+        );
       }
     }
   }
@@ -70,25 +74,37 @@ Future<PhotoPickResult?> showPhotoPickerSheet(
             ),
             const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined,
-                  color: AppColors.primary),
-              title: const Text('Take photo',
-                  style: TextStyle(color: AppColors.textPrimary)),
+              leading: const Icon(
+                Icons.photo_camera_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text(
+                'Take photo',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
               onTap: () => pick(sheetContext, ImageSource.camera),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppColors.primary),
-              title: const Text('Choose from gallery',
-                  style: TextStyle(color: AppColors.textPrimary)),
+              leading: const Icon(
+                Icons.photo_library_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text(
+                'Choose from gallery',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
               onTap: () => pick(sheetContext, ImageSource.gallery),
             ),
             if (showClear)
               ListTile(
-                leading: const Icon(Icons.delete_outline_rounded,
-                    color: AppColors.error),
-                title: const Text('Remove selected photo',
-                    style: TextStyle(color: AppColors.error)),
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.error,
+                ),
+                title: const Text(
+                  'Remove selected photo',
+                  style: TextStyle(color: AppColors.error),
+                ),
                 onTap: () =>
                     Navigator.pop(sheetContext, const PhotoPickResult.clear()),
               ),

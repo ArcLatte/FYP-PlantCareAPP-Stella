@@ -8,7 +8,7 @@ from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone as datetime_timezone
 from .models import (
     CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location, CareLog,
     Achievement, UserAchievement, Cosmetic, UserCosmetic,
@@ -19,70 +19,44 @@ from .serializers import (
     PlantSerializer, PlantSpeciesSerializer, LocationSerializer,
     DiseaseSerializer, image_ref_to_url,
 )
-import torch
-import torchvision.transforms as transforms
-from torchvision import models
-from PIL import Image
+from PIL import Image, ImageOps, UnidentifiedImageError
 import json
-import os
 
+from .scanning_pipeline import default_scanning_pipeline, ScanStatus
 
-# ── Disease-classification models ────────────────────────────────
-# Each species has its own fine-tuned ConvNeXt-Tiny. The full set is too big
-# to keep resident in RAM at once, so models are loaded on demand per request
-# and freed immediately after inference (see run_inference). Model files live
-# in MODELS_DIR — locally the repo's ml/ dir, in production a mounted volume.
-import threading
-
-# Model files live in backend/ml/ (shipped via Git LFS), so the default works
-# both locally and on the server. MODELS_DIR can override it (e.g. a volume).
-_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODELS_DIR = os.getenv('MODELS_DIR', os.path.join(_BACKEND_DIR, 'ml'))
-
-# Keyed by PlantSpecies.name. Class order MUST match training (alphabetical /
-# ImageFolder order) or predictions will be mislabelled.
-SPECIES_MODELS = {
-    'Tomato': {
-        'file': 'tomato_convnext_plantdoc_v3.pth',
-        'classes': [
-            'Tomato_Bacterial_spot',
-            'Tomato_Early_blight',
-            'Tomato_Late_blight',
-            'Tomato_Leaf_Mold',
-            'Tomato_Septoria_leaf_spot',
-            'Tomato_Spider_mites_Two_spotted_spider_mite',
-            'Tomato__Target_Spot',
-            'Tomato__Tomato_YellowLeaf__Curl_Virus',
-            'Tomato__Tomato_mosaic_virus',
-            'Tomato_healthy',
-        ],
-    },
-    'Potato': {
-        'file': 'potato_convnext_plantdoc.pth',
-        'classes': [
-            'Potato___Early_blight',
-            'Potato___Late_blight',
-            'Potato___healthy',
-        ],
-    },
-    'Bell Pepper': {
-        'file': 'pepper_convnext_plantdoc.pth',
-        'classes': [
-            'Pepper__bell___Bacterial_spot',
-            'Pepper__bell___healthy',
-        ],
-    },
-}
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
 
 # Above this top-1 confidence the model is treated as sure: the scan response
 # flags the lower-ranked candidates as locked and scan_confirm rejects them.
 CONFIRM_LOCK_THRESHOLD = 0.70
+
+
+def _client_timezone(request):
+    """Fixed UTC offset supplied by the app's current GPS/device timezone.
+
+    Timestamps remain UTC; this is used only to decide which local calendar
+    day an action belongs to. Invalid or absent values safely fall back to UTC.
+    """
+    raw = request.headers.get('X-Timezone-Offset-Minutes')
+    if raw is None:
+        raw = request.data.get('timezone_offset_minutes')
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        minutes = 0
+    if minutes < -12 * 60 or minutes > 14 * 60:
+        minutes = 0
+    return datetime_timezone(timedelta(minutes=minutes))
+
+
+def _client_local_date(request):
+    return timezone.now().astimezone(_client_timezone(request)).date()
+
+
+def _utc_day_bounds(start_date, end_date, client_timezone):
+    """UTC half-open bounds covering inclusive client-local calendar dates."""
+    start = datetime.combine(start_date, time.min, client_timezone)
+    end = datetime.combine(end_date + timedelta(days=1), time.min, client_timezone)
+    return start.astimezone(datetime_timezone.utc), end.astimezone(datetime_timezone.utc)
 
 
 def _alternatives_locked(preds):
@@ -94,44 +68,6 @@ def _alternatives_locked(preds):
         return float(preds[0].get('confidence', 0)) >= CONFIRM_LOCK_THRESHOLD
     except (TypeError, AttributeError):
         return False
-
-# Serialize inference so at most one model is resident in RAM at a time.
-# Fine for a low-traffic demo; bounds peak memory to a single model.
-_inference_lock = threading.Lock()
-
-
-def run_inference(species_name, image):
-    """Load the model for `species_name`, run inference on a PIL image, then
-    free the model. Returns a top-k predictions list, or None if the species
-    has no configured model."""
-    cfg = SPECIES_MODELS.get(species_name)
-    if cfg is None:
-        return None
-
-    tensor = transform(image).unsqueeze(0)
-    with _inference_lock:
-        model = models.convnext_tiny(weights=None)
-        model.classifier[2] = torch.nn.Linear(
-            model.classifier[2].in_features, len(cfg['classes'])
-        )
-        model.load_state_dict(
-            torch.load(os.path.join(MODELS_DIR, cfg['file']), map_location='cpu')
-        )
-        model.eval()
-        try:
-            with torch.no_grad():
-                probabilities = torch.nn.functional.softmax(model(tensor)[0], dim=0)
-        finally:
-            del model  # release ~115 MB before the lock is dropped
-
-    k = min(3, len(cfg['classes']))
-    top = torch.topk(probabilities, k)
-    return [
-        {'label': cfg['classes'][top.indices[i].item()],
-         'confidence': round(top.values[i].item(), 4)}
-        for i in range(k)
-    ]
-
 
 # ─── Gamification helper ─────────────────────────────────────────
 
@@ -208,9 +144,10 @@ def login(request):
     token, _ = Token.objects.get_or_create(user=user)
 
     # Daily login bonus: only on the first login of the calendar day.
-    today = timezone.localdate()
+    client_timezone = _client_timezone(request)
+    today = timezone.now().astimezone(client_timezone).date()
     last_local = (
-        timezone.localtime(user.last_login).date()
+        user.last_login.astimezone(client_timezone).date()
         if user.last_login else None
     )
     xp_result = {'xp_gained': 0, 'leveled_up_to': None, 'unlocked': []}
@@ -313,7 +250,7 @@ def water_plant(request, pk):
 
     plant.last_watered = timezone.now()
     plant.save(update_fields=['last_watered'])
-    care = request.user.register_care_activity()
+    care = request.user.register_care_activity(today=_client_local_date(request))
     CareLog.objects.create(user=request.user, plant=plant, activity='water')
     xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
@@ -341,7 +278,7 @@ def fertilize_plant(request, pk):
 
     plant.last_fertilized = timezone.now()
     plant.save(update_fields=['last_fertilized'])
-    care = request.user.register_care_activity()
+    care = request.user.register_care_activity(today=_client_local_date(request))
     CareLog.objects.create(user=request.user, plant=plant, activity='fertilize')
     xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
@@ -369,7 +306,7 @@ def mist_plant(request, pk):
 
     plant.last_misted = timezone.now()
     plant.save(update_fields=['last_misted'])
-    care = request.user.register_care_activity()
+    care = request.user.register_care_activity(today=_client_local_date(request))
     CareLog.objects.create(user=request.user, plant=plant, activity='mist')
     xp = _grant_xp_and_check(request.user, 5)
     serializer = PlantSerializer(plant)
@@ -479,7 +416,8 @@ def note_detail(request, pk, log_id):
 @permission_classes([IsAuthenticated])
 def streak(request):
     u = request.user
-    today = timezone.localdate()
+    client_timezone = _client_timezone(request)
+    today = timezone.now().astimezone(client_timezone).date()
     # Equipped companion pot style. Creature skin tints are no longer shown or
     # applied, but the response keeps `equipped_skin: null` for old clients.
     pot = (
@@ -499,18 +437,19 @@ def streak(request):
     # a rolling window centered on today (3 days back), so 7 days of
     # history is plenty.
     window_start = today - timedelta(days=6)
+    utc_start, utc_end = _utc_day_bounds(window_start, today, client_timezone)
     week_days = (
         CareLog.objects
         .filter(
             user=u,
-            created_at__date__gte=window_start,
-            created_at__date__lte=today,  # never report a future care day
+            created_at__gte=utc_start,
+            created_at__lt=utc_end,
         )
         .exclude(activity=CareLog.Activity.NOTE)
-        .dates('created_at', 'day')
+        .datetimes('created_at', 'day', tzinfo=client_timezone)
     )
     return Response({
-        'current_streak': u.effective_streak,
+        'current_streak': u.effective_streak_for(today),
         'longest_streak': u.longest_streak,
         'last_care_date': u.last_care_date,
         'active_today': u.last_care_date == today,
@@ -520,8 +459,8 @@ def streak(request):
         # into a "future" cell and it never lights.
         'today': today.isoformat(),
         'freezes': u.streak_freezes,
-        'freeze_active': u.freeze_active,
-        'recent_care_days': [d.isoformat() for d in week_days],
+        'freeze_active': u.freeze_active_for(today),
+        'recent_care_days': [d.date().isoformat() for d in week_days],
         # Kept for old clients; tint skins are no longer applied.
         # or null — the Tasks scene applies it to the companion.
         'equipped_skin': None,
@@ -538,21 +477,22 @@ def streak_calendar(request):
     at least one water/fertilize/mist action (notes don't count — they don't
     advance the streak either), oldest first, plus the streak summary."""
     u = request.user
-    today = timezone.localdate()
+    client_timezone = _client_timezone(request)
+    today = timezone.now().astimezone(client_timezone).date()
     days = (
         CareLog.objects
         .filter(user=u)
         .exclude(activity=CareLog.Activity.NOTE)
-        .dates('created_at', 'day')
+        .datetimes('created_at', 'day', tzinfo=client_timezone)
     )
     return Response({
-        'care_dates': [d.isoformat() for d in days],
-        'current_streak': u.effective_streak,
+        'care_dates': [d.date().isoformat() for d in days],
+        'current_streak': u.effective_streak_for(today),
         'longest_streak': u.longest_streak,
         'last_care_date': u.last_care_date,
         'active_today': u.last_care_date == today,
         'today': today.isoformat(),  # server date, so the calendar's "today"
-        'freeze_active': u.freeze_active,
+        'freeze_active': u.freeze_active_for(today),
     })
 
 
@@ -717,15 +657,48 @@ def scan(request):
     except Plant.DoesNotExist:
         return Response({'error': 'Plant not found.'}, status=404)
 
-    # Run inference (model chosen by the plant's species; loaded on demand)
-    image = Image.open(image_file).convert('RGB')
-    top3_predictions = run_inference(plant.species.name, image)
+    try:
+        # Apply camera orientation before quality checks and inference so width,
+        # height and model input all describe the same visible image.
+        image = ImageOps.exif_transpose(Image.open(image_file)).convert('RGB')
+    except (UnidentifiedImageError, OSError, ValueError):
+        return Response({
+            'error': 'The uploaded file is not a valid image. Please choose a '
+                     'JPEG or PNG photo and try again.',
+            'code': 'invalid_image',
+            'action': 'retake',
+        }, status=status.HTTP_400_BAD_REQUEST)
 
-    if top3_predictions is None:
+    analysis = default_scanning_pipeline.analyze(image, plant.species.name)
+    if analysis.status is ScanStatus.QUALITY_REJECTED:
+        primary_issue = analysis.quality['issues'][0]
+        return Response({
+            'error': primary_issue['message'],
+            'code': primary_issue['code'],
+            'action': 'retake',
+            'quality': analysis.quality,
+        }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    if analysis.status is ScanStatus.NO_LEAF:
+        return Response({
+            'error': 'No leaf was detected. Move closer and center one plant '
+                     'leaf in the frame, then retake the photo.',
+            'code': 'no_leaf_detected',
+            'action': 'retake',
+            'leaf_gate': analysis.leaf_gate,
+        }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    if analysis.status is ScanStatus.UNSUPPORTED_SPECIES:
         return Response(
-            {'error': f'Disease detection is not available for {plant.species.name} yet.'},
+            {'error': f'Disease detection is not available for '
+                      f'{plant.species.name} yet.'},
             status=400,
         )
+
+    # Pillow reads from the upload before Django persists it below.
+    image_file.seek(0)
+
+    top3_predictions = analysis.predictions
 
     top_label = top3_predictions[0]['label']
     top_confidence = top3_predictions[0]['confidence']
@@ -939,7 +912,7 @@ def disease_detail(request, label):
 
 # ─── Gamification: profile + achievements ───────────────────────
 
-def _profile_payload(u):
+def _profile_payload(u, today):
     unlocked = UserAchievement.objects.filter(user=u).count()
     total = Achievement.objects.count()
     return {
@@ -953,7 +926,7 @@ def _profile_payload(u):
         'xp': u.xp,
         'xp_into_level': u.xp_into_level,
         'xp_for_next_level': u.xp_for_next_level,
-        'current_streak': u.effective_streak,
+        'current_streak': u.effective_streak_for(today),
         'longest_streak': u.longest_streak,
         'freezes': u.streak_freezes,
         'seeds': u.seeds,
@@ -1013,7 +986,7 @@ def profile(request):
 
         u.save()
 
-    return Response(_profile_payload(u))
+    return Response(_profile_payload(u, _client_local_date(request)))
 
 
 def _serialize_achievement(ach, user_view, snapshot=None):

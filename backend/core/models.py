@@ -108,7 +108,7 @@ class CustomUser(AbstractUser):
 
     # ─── Streak ───────────────────────────────────────────────
 
-    def register_care_activity(self) -> dict:
+    def register_care_activity(self, today=None) -> dict:
         """Call after any water/fertilize/mist action. Advances the streak at
         most once per calendar day. A short gap (missed days) is bridged by
         auto-consuming banked streak saves — one per missed day — so the
@@ -117,9 +117,9 @@ class CustomUser(AbstractUser):
 
         Returns a small result dict (`saved`, `missed`, `freezes_left`) so
         views can tell the client a save was consumed."""
-        today = timezone.localdate()
+        today = today or timezone.localdate()
         result = {'saved': False, 'missed': 0, 'freezes_left': self.streak_freezes}
-        if self.last_care_date == today:
+        if self.last_care_date is not None and self.last_care_date >= today:
             return result  # already counted today
 
         if self.last_care_date is None:
@@ -152,9 +152,12 @@ class CustomUser(AbstractUser):
         counts as alive while banked saves could still bridge the current
         gap (so the companion plant doesn't falsely collapse to Seed on a
         day the user is about to save); it reads 0 only once truly dead."""
+        return self.effective_streak_for(timezone.localdate())
+
+    def effective_streak_for(self, today):
+        """Displayed streak evaluated against a caller-supplied local date."""
         if self.last_care_date is None:
             return 0
-        today = timezone.localdate()
         gap = (today - self.last_care_date).days
         if gap <= 1:
             return self.current_streak  # cared today or yesterday
@@ -167,9 +170,13 @@ class CustomUser(AbstractUser):
     def freeze_active(self) -> bool:
         """True while the streak is being held alive by banked saves (a gap
         exists but is coverable). Drives the shield indicator in the UI."""
+        return self.freeze_active_for(timezone.localdate())
+
+    def freeze_active_for(self, today) -> bool:
+        """Whether a save shields the streak on a supplied local date."""
         if self.last_care_date is None:
             return False
-        gap = (timezone.localdate() - self.last_care_date).days
+        gap = (today - self.last_care_date).days
         if gap <= 1:
             return False
         missed = gap - 1

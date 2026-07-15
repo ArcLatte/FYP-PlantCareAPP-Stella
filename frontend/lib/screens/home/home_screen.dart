@@ -7,8 +7,8 @@ import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
-import '../../services/location_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/weather_controller.dart';
 import '../../services/weather_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
@@ -67,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _username = '';
   String? _tier;
   Weather? _weather;
+  final WeatherController _weatherController = WeatherController.instance;
   String _filter = _kAllFilter;
   _StatusFilter _statusFilter = _StatusFilter.all;
 
@@ -80,6 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _weather = _weatherController.weather;
+    _weatherController.addListener(_onWeatherChanged);
+    _weatherController.start();
     _loadAll();
     // Flush the daily-login XP toast (if any) once the first frame is
     // mounted, so the celebration lands on home rather than the login screen.
@@ -90,9 +94,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _weatherController.removeListener(_onWeatherChanged);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onWeatherChanged() {
+    if (mounted) setState(() => _weather = _weatherController.weather);
   }
 
   void _onScroll() {
@@ -135,28 +144,16 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingPlants = false);
-      AppSnackBar.error(context, 'Failed to load plants: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not load your plants. Please try again.',
+      );
     }
   }
 
   Future<void> _loadWeather({bool forceRefresh = false}) async {
-    // Paint cached value immediately so the card isn't empty.
-    final cached = await LocationService.getCached();
-    if (cached != null) {
-      final w = await WeatherService.getWeather(cached.lat, cached.lon);
-      if (mounted && w != null) setState(() => _weather = w);
-    }
-
-    // Then try for a fresh fix. On forceRefresh, also skip the OS's
-    // last-known cache so a relocated emulator picks up its new coords.
-    final loc = await LocationService.getCurrent(forceRefresh: forceRefresh);
-    if (loc == null) return;
-    final fresh = await WeatherService.getWeather(
-      loc.lat,
-      loc.lon,
-      forceRefresh: forceRefresh,
-    );
-    if (mounted && fresh != null) setState(() => _weather = fresh);
+    await _weatherController.refresh(forceRefresh: forceRefresh);
   }
 
   Future<void> _onRefresh() async {
@@ -176,7 +173,11 @@ class _HomeScreenState extends State<HomeScreen> {
       NotificationService.scheduleCareReminders(_plants);
     } catch (e) {
       if (mounted) {
-        AppSnackBar.error(context, 'Failed to water: $e');
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not log watering. Please try again.',
+        );
       }
     }
   }
@@ -193,7 +194,13 @@ class _HomeScreenState extends State<HomeScreen> {
       XpToast.flush(context);
       NotificationService.scheduleCareReminders(_plants);
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Failed to fertilize: $e');
+      if (mounted) {
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not log fertilizing. Please try again.',
+        );
+      }
     }
   }
 
@@ -209,7 +216,13 @@ class _HomeScreenState extends State<HomeScreen> {
       XpToast.flush(context);
       NotificationService.scheduleCareReminders(_plants);
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, 'Failed to mist: $e');
+      if (mounted) {
+        AppSnackBar.error(
+          context,
+          e,
+          fallback: 'Could not log misting. Please try again.',
+        );
+      }
     }
   }
 
@@ -240,47 +253,53 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ];
         if (plant.daysUntilFertilizer != null) {
-          rows.add(_CareActionRow(
-            icon: Icons.compost_rounded,
-            color: AppColors.amber,
-            label: 'Fertilize',
-            subtitle:
-                'Next ${_careNext(plant.daysUntilFertilizer)} · Last ${_careLast(plant.lastFertilized)}',
-            overdue: plant.daysUntilFertilizer! <= 0,
-            onTap: () {
-              Navigator.pop(ctx);
-              _fertilizePlant(plant);
-            },
-          ));
+          rows.add(
+            _CareActionRow(
+              icon: Icons.compost_rounded,
+              color: AppColors.amber,
+              label: 'Fertilize',
+              subtitle:
+                  'Next ${_careNext(plant.daysUntilFertilizer)} · Last ${_careLast(plant.lastFertilized)}',
+              overdue: plant.daysUntilFertilizer! <= 0,
+              onTap: () {
+                Navigator.pop(ctx);
+                _fertilizePlant(plant);
+              },
+            ),
+          );
         }
         if (plant.daysUntilMisting != null) {
-          rows.add(_CareActionRow(
-            icon: Icons.cloud_rounded,
-            color: const Color(0xFF26A69A),
-            label: 'Mist',
-            subtitle:
-                'Next ${_careNext(plant.daysUntilMisting)} · Last ${_careLast(plant.lastMisted)}',
-            overdue: plant.daysUntilMisting! <= 0,
+          rows.add(
+            _CareActionRow(
+              icon: Icons.cloud_rounded,
+              color: const Color(0xFF26A69A),
+              label: 'Mist',
+              subtitle:
+                  'Next ${_careNext(plant.daysUntilMisting)} · Last ${_careLast(plant.lastMisted)}',
+              overdue: plant.daysUntilMisting! <= 0,
+              onTap: () {
+                Navigator.pop(ctx);
+                _mistPlant(plant);
+              },
+            ),
+          );
+        }
+        rows.add(
+          _CareActionRow(
+            icon: Icons.center_focus_strong_rounded,
+            color: const Color(0xFF7C6CD6),
+            label: 'Scan health',
+            subtitle: 'Check leaves for disease',
+            overdue: false,
+            isNav: true,
             onTap: () {
               Navigator.pop(ctx);
-              _mistPlant(plant);
+              context.push('/scan/${plant.id}').then((_) {
+                if (mounted) _loadPlants();
+              });
             },
-          ));
-        }
-        rows.add(_CareActionRow(
-          icon: Icons.center_focus_strong_rounded,
-          color: const Color(0xFF7C6CD6),
-          label: 'Scan health',
-          subtitle: 'Check leaves for disease',
-          overdue: false,
-          isNav: true,
-          onTap: () {
-            Navigator.pop(ctx);
-            context.push('/scan/${plant.id}').then((_) {
-              if (mounted) _loadPlants();
-            });
-          },
-        ));
+          ),
+        );
 
         return SafeArea(
           child: Padding(
@@ -588,12 +607,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: _headerCollapsed
-            ? Brightness.dark
-            : Brightness.light,
-        statusBarBrightness: _headerCollapsed
-            ? Brightness.light
-            : Brightness.dark,
+        statusBarIconBrightness:
+            _headerCollapsed ? Brightness.dark : Brightness.light,
+        statusBarBrightness:
+            _headerCollapsed ? Brightness.light : Brightness.dark,
       ),
       child: Scaffold(
         extendBody: true,
@@ -649,11 +666,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   sliver: SliverGrid(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 14,
-                          crossAxisSpacing: 14,
-                          childAspectRatio: 0.72,
-                        ),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 0.72,
+                    ),
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => const PlantCardSkeleton(),
                       childCount: 4,
@@ -671,11 +688,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   sliver: SliverGrid(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 14,
-                          crossAxisSpacing: 14,
-                          childAspectRatio: 0.72,
-                        ),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 0.72,
+                    ),
                     delegate: SliverChildBuilderDelegate((context, i) {
                       final plant = filtered[i];
                       return _PlantGridCard(
@@ -1055,9 +1072,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: selected ? AppColors.textPrimary : AppColors.surface,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: selected
-                      ? AppColors.textPrimary
-                      : AppColors.cardBorder,
+                  color:
+                      selected ? AppColors.textPrimary : AppColors.cardBorder,
                 ),
               ),
               alignment: Alignment.center,
@@ -1289,9 +1305,10 @@ class _PlantGridCard extends StatelessWidget {
 
   /// "Species · Location" under the name — whichever parts exist.
   String _speciesLocation() {
-    final parts = [plant.species, plant.location]
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
+    final parts = [
+      plant.species,
+      plant.location,
+    ].where((s) => s.trim().isNotEmpty).toList();
     return parts.join(' · ');
   }
 
@@ -1579,7 +1596,8 @@ class _CareActionRow extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: overdue ? AppColors.amber : AppColors.textSecondary,
+                      color:
+                          overdue ? AppColors.amber : AppColors.textSecondary,
                       fontSize: 13,
                       fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
                     ),

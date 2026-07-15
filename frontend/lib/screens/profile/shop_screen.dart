@@ -52,7 +52,11 @@ class _ShopScreenState extends State<ShopScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      AppSnackBar.error(context, 'Failed to load shop: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not load the shop. Please try again.',
+      );
     }
   }
 
@@ -92,7 +96,7 @@ class _ShopScreenState extends State<ShopScreen> {
         );
       }
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, '$e');
+      if (mounted) AppSnackBar.error(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -105,7 +109,7 @@ class _ShopScreenState extends State<ShopScreen> {
       await ApiService.equipCosmetic(item.code);
       await _load();
     } catch (e) {
-      if (mounted) AppSnackBar.error(context, '$e');
+      if (mounted) AppSnackBar.error(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -235,8 +239,7 @@ class _ShopScreenState extends State<ShopScreen> {
             seeds: _shop?.seeds ?? 0,
             selected: item.code == _previewCode,
             busy: _busy,
-            inUse:
-                item.isNamecard &&
+            inUse: item.isNamecard &&
                 item.themeId != null &&
                 item.themeId == _activeThemeId,
             onTap: () => setState(() => _previewCode = item.code),

@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
@@ -16,8 +17,7 @@ class ScanScreen extends StatefulWidget {
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen>
-    with WidgetsBindingObserver {
+class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   CameraController? _camera;
   Future<void>? _cameraReady;
   String? _cameraError;
@@ -86,7 +86,15 @@ class _ScanScreenState extends State<ScanScreen>
         _cameraError = null;
       });
     } catch (e) {
-      if (mounted) setState(() => _cameraError = 'Camera unavailable: $e');
+      if (mounted) {
+        setState(
+          () => _cameraError = AppErrorMessages.message(
+            e,
+            fallback:
+                'Camera unavailable. Check camera permission and try again.',
+          ),
+        );
+      }
     }
   }
 
@@ -124,7 +132,10 @@ class _ScanScreenState extends State<ScanScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to take picture: $e';
+          _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not take the picture. Please try again.',
+          );
           _isSubmitting = false;
         });
       }
@@ -153,7 +164,10 @@ class _ScanScreenState extends State<ScanScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to pick image: $e';
+          _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not open that image. Please choose another one.',
+          );
           _isSubmitting = false;
         });
       }
@@ -162,13 +176,15 @@ class _ScanScreenState extends State<ScanScreen>
 
   Future<void> _submit(File file) async {
     try {
-      final result =
-          await ApiService.scanPlant(_selectedPlantId!, file);
+      final result = await ApiService.scanPlant(_selectedPlantId!, file);
       if (mounted) context.pushReplacement('/result/${result.id}');
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = AppErrorMessages.message(
+            e,
+            fallback: 'Could not scan this image. Please try again.',
+          );
           _isSubmitting = false;
         });
       }
@@ -187,20 +203,10 @@ class _ScanScreenState extends State<ScanScreen>
             Positioned.fill(child: _buildPreview()),
 
             // Top: back button + plant selector
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildTopBar(),
-            ),
+            Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
 
             // Bottom: gallery + capture + spacer
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomBar(),
-            ),
+            Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
 
             // Error banner
             if (_errorMessage != null)
@@ -224,8 +230,11 @@ class _ScanScreenState extends State<ScanScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.videocam_off_rounded,
-                  color: Colors.white70, size: 56),
+              const Icon(
+                Icons.videocam_off_rounded,
+                color: Colors.white70,
+                size: 56,
+              ),
               const SizedBox(height: 16),
               Text(
                 _cameraError!,
@@ -301,10 +310,7 @@ class _ScanScreenState extends State<ScanScreen>
         child: const SizedBox(
           width: 18,
           height: 18,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
         ),
       );
     }
@@ -334,8 +340,7 @@ class _ScanScreenState extends State<ScanScreen>
         ),
         child: Row(
           children: [
-            const Icon(Icons.eco_rounded,
-                color: AppColors.primary, size: 20),
+            const Icon(Icons.eco_rounded, color: AppColors.primary, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -347,8 +352,7 @@ class _ScanScreenState extends State<ScanScreen>
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Icon(Icons.keyboard_arrow_down_rounded,
-                color: Colors.white),
+            const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white),
           ],
         ),
       ),
@@ -481,16 +485,13 @@ class _ScanScreenState extends State<ScanScreen>
                 return ListTile(
                   leading: Icon(
                     Icons.eco_rounded,
-                    color: selected
-                        ? AppColors.primary
-                        : AppColors.textMuted,
+                    color: selected ? AppColors.primary : AppColors.textMuted,
                   ),
                   title: Text(
                     p.name,
                     style: TextStyle(
                       color: AppColors.textPrimary,
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                   subtitle: Text(
@@ -501,8 +502,10 @@ class _ScanScreenState extends State<ScanScreen>
                     ),
                   ),
                   trailing: selected
-                      ? const Icon(Icons.check_rounded,
-                          color: AppColors.primary)
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: AppColors.primary,
+                        )
                       : null,
                   onTap: () {
                     setState(() => _selectedPlantId = p.id);

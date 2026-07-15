@@ -11,7 +11,7 @@ import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
 import '../../models/weekly_challenge.dart';
 import '../../services/api_service.dart';
-import '../../services/location_service.dart';
+import '../../services/weather_controller.dart';
 import '../../services/weather_service.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/pot.dart';
@@ -40,13 +40,27 @@ class _TasksScreenState extends State<TasksScreen> {
   Streak? _streak;
   WeeklyChallenge? _weekly;
   Weather? _weather;
+  final WeatherController _weatherController = WeatherController.instance;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _weather = _weatherController.weather;
+    _weatherController.addListener(_onWeatherChanged);
+    _weatherController.start();
     _load();
     _loadWeather();
+  }
+
+  @override
+  void dispose() {
+    _weatherController.removeListener(_onWeatherChanged);
+    super.dispose();
+  }
+
+  void _onWeatherChanged() {
+    if (mounted) setState(() => _weather = _weatherController.weather);
   }
 
   Future<void> _load() async {
@@ -64,7 +78,11 @@ class _TasksScreenState extends State<TasksScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      AppSnackBar.error(context, 'Failed to load tasks: $e');
+      AppSnackBar.error(
+        context,
+        e,
+        fallback: 'Could not load your tasks. Please try again.',
+      );
     }
     // Loaded separately so a challenge hiccup can't take down the task list.
     try {
@@ -76,27 +94,7 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future<void> _loadWeather({bool forceRefresh = false}) async {
-    final cachedWeather = await WeatherService.getCachedWeather(
-      ignoreAge: !forceRefresh,
-    );
-    if (mounted && cachedWeather != null) {
-      setState(() => _weather = cachedWeather);
-    }
-
-    final cached = await LocationService.getCached();
-    if (cached != null) {
-      final w = await WeatherService.getWeather(cached.lat, cached.lon);
-      if (mounted && w != null) setState(() => _weather = w);
-    }
-
-    final loc = await LocationService.getCurrent(forceRefresh: forceRefresh);
-    if (loc == null) return;
-    final fresh = await WeatherService.getWeather(
-      loc.lat,
-      loc.lon,
-      forceRefresh: forceRefresh,
-    );
-    if (mounted && fresh != null) setState(() => _weather = fresh);
+    await _weatherController.refresh(forceRefresh: forceRefresh);
   }
 
   Future<void> _onRefresh() async {
@@ -307,10 +305,26 @@ class _StreakScenePalette {
     final a = amount.clamp(0.0, 1.0);
     final keep = 1 - a;
     return ColorFilter.matrix(<double>[
-      keep, 0, 0, 0, target.r * 255 * a,
-      0, keep, 0, 0, target.g * 255 * a,
-      0, 0, keep, 0, target.b * 255 * a,
-      0, 0, 0, 1, 0,
+      keep,
+      0,
+      0,
+      0,
+      target.r * 255 * a,
+      0,
+      keep,
+      0,
+      0,
+      target.g * 255 * a,
+      0,
+      0,
+      keep,
+      0,
+      target.b * 255 * a,
+      0,
+      0,
+      0,
+      1,
+      0,
     ]);
   }
 }
@@ -345,8 +359,8 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   int? _fromIndex; // stage to cross-fade *from* during a grow-pop
 
   int get _currentIndex => PlantStage.all.indexOf(
-    PlantStage.forStreak(widget.streak?.currentStreak ?? 0),
-  );
+        PlantStage.forStreak(widget.streak?.currentStreak ?? 0),
+      );
 
   @override
   void initState() {
@@ -1093,10 +1107,10 @@ class _DayCell extends StatelessWidget {
 
   // Blue connecting line, shown only between two adjacent cared-for days.
   Widget _bar(bool on) => Expanded(
-    child: on
-        ? Container(height: _barH, color: _kWater)
-        : const SizedBox.shrink(),
-  );
+        child: on
+            ? Container(height: _barH, color: _kWater)
+            : const SizedBox.shrink(),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1112,9 +1126,8 @@ class _DayCell extends StatelessWidget {
             // today stays boldest as the strip's anchor.
             fontWeight: isToday ? FontWeight.w900 : FontWeight.w800,
             letterSpacing: 0.3,
-            shadows: textColor.computeLuminance() > 0.65
-                ? _kStreakTextShadow
-                : null,
+            shadows:
+                textColor.computeLuminance() > 0.65 ? _kStreakTextShadow : null,
           ),
         ),
         const SizedBox(height: 7),
@@ -1145,8 +1158,8 @@ class _DayCell extends StatelessWidget {
                       color: lit
                           ? _kWater
                           : frozen
-                          ? _iceFill
-                          : (isToday ? _kWater : AppColors.cardBorder),
+                              ? _iceFill
+                              : (isToday ? _kWater : AppColors.cardBorder),
                       width: isToday && !lit ? 2 : 0.8,
                     ),
                     // Soft breathing glow inviting today's first care action.
@@ -1167,12 +1180,12 @@ class _DayCell extends StatelessWidget {
                           size: 15,
                         )
                       : frozen
-                      ? const Icon(
-                          Icons.ac_unit_rounded,
-                          color: Colors.white,
-                          size: 14,
-                        )
-                      : null,
+                          ? const Icon(
+                              Icons.ac_unit_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            )
+                          : null,
                 ),
               ),
             ],
@@ -1261,9 +1274,8 @@ class _StageProgress extends StatelessWidget {
     final done = next == null ? 1 : streak;
     final span = next == null ? 1 : next.minDays;
     final frac = (done / span).clamp(0.0, 1.0);
-    final label = next == null
-        ? 'Fully bloomed!'
-        : '$done / $span days to ${next.name}';
+    final label =
+        next == null ? 'Fully bloomed!' : '$done / $span days to ${next.name}';
     final trackColor = lightText
         ? Colors.white.withValues(alpha: 0.22)
         : Colors.black.withValues(alpha: 0.10);
