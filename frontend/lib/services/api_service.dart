@@ -618,6 +618,10 @@ class ApiService {
     String? notes,
     String? location,
     int? wateringFreqDays,
+    int? fertilizerFreqDays,
+    int? mistingFreqDays,
+    bool clearFertilizerSchedule = false,
+    bool clearMistingSchedule = false,
     int? speciesId,
     File? photo,
   }) async {
@@ -633,6 +637,16 @@ class ApiService {
       if (location != null) request.fields['location'] = location;
       if (wateringFreqDays != null) {
         request.fields['watering_freq_days'] = wateringFreqDays.toString();
+      }
+      if (clearFertilizerSchedule) {
+        request.fields['fertilizer_freq_days'] = '';
+      } else if (fertilizerFreqDays != null) {
+        request.fields['fertilizer_freq_days'] = fertilizerFreqDays.toString();
+      }
+      if (clearMistingSchedule) {
+        request.fields['misting_freq_days'] = '';
+      } else if (mistingFreqDays != null) {
+        request.fields['misting_freq_days'] = mistingFreqDays.toString();
       }
       if (speciesId != null) {
         request.fields['species'] = speciesId.toString();
@@ -657,6 +671,14 @@ class ApiService {
         'notes': ?notes,
         'location': ?location,
         'watering_freq_days': ?wateringFreqDays,
+        if (clearFertilizerSchedule)
+          'fertilizer_freq_days': null
+        else
+          'fertilizer_freq_days': ?fertilizerFreqDays,
+        if (clearMistingSchedule)
+          'misting_freq_days': null
+        else
+          'misting_freq_days': ?mistingFreqDays,
         'species': ?speciesId,
       }),
     );

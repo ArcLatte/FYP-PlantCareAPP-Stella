@@ -14,6 +14,8 @@ class Plant {
   final DateTime? lastFertilized;
   final DateTime? lastMisted;
   final int wateringFreqDays;
+  final int? fertilizerFreqDays;
+  final int? mistingFreqDays;
   final bool needsWater;
   final bool needsFertilizer;
   final bool needsMisting;
@@ -37,6 +39,8 @@ class Plant {
     this.lastFertilized,
     this.lastMisted,
     this.wateringFreqDays = 7,
+    this.fertilizerFreqDays,
+    this.mistingFreqDays,
     this.needsWater = false,
     this.needsFertilizer = false,
     this.needsMisting = false,
@@ -56,15 +60,15 @@ class Plant {
       species: (json['species_name'] ?? json['species'])?.toString() ?? '',
       speciesId: (json['species'] as num).toInt(),
       notes: json['notes']?.toString(),
-      createdAt:
-          (json['date_planted'] ?? json['created_at'] ?? '').toString(),
+      createdAt: (json['date_planted'] ?? json['created_at'] ?? '').toString(),
       photoUrl: _absolutePhotoUrl(json['photo']),
       location: json['location']?.toString() ?? '',
       lastWatered: _parseDate(json['last_watered']),
       lastFertilized: _parseDate(json['last_fertilized']),
       lastMisted: _parseDate(json['last_misted']),
-      wateringFreqDays:
-          (json['watering_freq_days'] as num?)?.toInt() ?? 7,
+      wateringFreqDays: (json['watering_freq_days'] as num?)?.toInt() ?? 7,
+      fertilizerFreqDays: (json['fertilizer_freq_days'] as num?)?.toInt(),
+      mistingFreqDays: (json['misting_freq_days'] as num?)?.toInt(),
       needsWater: json['needs_water'] == true,
       needsFertilizer: json['needs_fertilizer'] == true,
       needsMisting: json['needs_misting'] == true,
