@@ -1,10 +1,11 @@
 from io import BytesIO
 from datetime import date, datetime, timezone as datetime_timezone
+import base64
 import json
 import re
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from django.conf import settings
 from django.core import mail
@@ -105,7 +106,9 @@ class NoteImageTests(TestCase):
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
-    BREVO_API_KEY='',
+    GMAIL_CLIENT_ID='',
+    GMAIL_CLIENT_SECRET='',
+    GMAIL_REFRESH_TOKEN='',
     PASSWORD_RESET_CODE_MINUTES=10,
     PASSWORD_RESET_MAX_ATTEMPTS=5,
     PASSWORD_RESET_RESEND_SECONDS=60,
@@ -197,18 +200,31 @@ class PasswordResetTests(TestCase):
 
 
 @override_settings(
-    BREVO_API_KEY='test-api-key',
-    BREVO_API_URL='https://api.brevo.test/v3/smtp/email',
-    BREVO_SENDER_EMAIL='verified@example.com',
-    BREVO_SENDER_NAME='Stella Plant Care',
-    BREVO_TIMEOUT_SECONDS=7,
+    GMAIL_CLIENT_ID='test-client-id',
+    GMAIL_CLIENT_SECRET='test-client-secret',
+    GMAIL_REFRESH_TOKEN='test-refresh-token',
+    GMAIL_SENDER_EMAIL='sender@gmail.com',
+    GMAIL_TOKEN_URL='https://oauth2.test/token',
+    GMAIL_API_URL='https://gmail.test/gmail/v1/users/me/messages/send',
+    GMAIL_API_TIMEOUT_SECONDS=7,
     DEFAULT_FROM_EMAIL='Stella Plant Care <verified@example.com>',
 )
-class BrevoEmailTests(SimpleTestCase):
+class GmailApiEmailTests(SimpleTestCase):
     @patch('core.email_service.urlopen')
-    def test_sends_transactional_email_over_https(self, mocked_urlopen):
-        response = Mock(status=201)
-        mocked_urlopen.return_value.__enter__.return_value = response
+    @patch('core.email_service._gmail_access_token_expires_at', 0)
+    @patch('core.email_service._gmail_access_token', None)
+    def test_refreshes_token_and_sends_email_over_https(self, mocked_urlopen):
+        token_response = Mock()
+        token_response.read.return_value = json.dumps({
+            'access_token': 'test-access-token',
+            'expires_in': 3600,
+        }).encode('utf-8')
+        send_response = Mock(status=200)
+        token_context = MagicMock()
+        token_context.__enter__.return_value = token_response
+        send_context = MagicMock()
+        send_context.__enter__.return_value = send_response
+        mocked_urlopen.side_effect = [token_context, send_context]
 
         from .email_service import send_transactional_email
         send_transactional_email(
@@ -217,12 +233,21 @@ class BrevoEmailTests(SimpleTestCase):
             recipient_email='user@example.com',
         )
 
-        request = mocked_urlopen.call_args.args[0]
-        payload = json.loads(request.data.decode('utf-8'))
-        self.assertEqual(request.full_url, settings.BREVO_API_URL)
-        self.assertEqual(request.get_header('Api-key'), 'test-api-key')
-        self.assertEqual(payload['sender']['email'], 'verified@example.com')
-        self.assertEqual(payload['to'], [{'email': 'user@example.com'}])
+        token_request = mocked_urlopen.call_args_list[0].args[0]
+        send_request = mocked_urlopen.call_args_list[1].args[0]
+        payload = json.loads(send_request.data.decode('utf-8'))
+        decoded_message = base64.urlsafe_b64decode(payload['raw']).decode()
+
+        self.assertEqual(token_request.full_url, settings.GMAIL_TOKEN_URL)
+        self.assertIn(b'refresh_token=test-refresh-token', token_request.data)
+        self.assertEqual(send_request.full_url, settings.GMAIL_API_URL)
+        self.assertEqual(
+            send_request.get_header('Authorization'),
+            'Bearer test-access-token',
+        )
+        self.assertIn('To: user@example.com', decoded_message)
+        self.assertIn('Subject: Reset code', decoded_message)
+        self.assertIn('Code: 123456', decoded_message)
         self.assertEqual(mocked_urlopen.call_args.kwargs['timeout'], 7)
 
 

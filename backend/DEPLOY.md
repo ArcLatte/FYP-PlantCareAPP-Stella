@@ -75,9 +75,10 @@ Web service → **Variables**:
 | `DEBUG`       | `False`                                  |
 | `MEDIA_ROOT`  | `/data/media`                            |
 | `DATABASE_URL`| `${{ Postgres.DATABASE_URL }}` (step 2)  |
-| `BREVO_API_KEY` | Brevo API key beginning with `xkeysib-` |
-| `BREVO_SENDER_EMAIL` | Sender address verified in Brevo |
-| `BREVO_SENDER_NAME` | `Stella Plant Care` |
+| `GMAIL_CLIENT_ID` | Google OAuth client ID |
+| `GMAIL_CLIENT_SECRET` | Google OAuth client secret |
+| `GMAIL_REFRESH_TOKEN` | Refresh token authorized for `gmail.send` |
+| `GMAIL_SENDER_EMAIL` | Dedicated Gmail sender address |
 | `DEFAULT_FROM_EMAIL` | `Stella Plant Care <your-address@gmail.com>` |
 
 A freshly generated key you can use:
@@ -90,15 +91,17 @@ SECRET_KEY = o7xmj#d(&nbg86j%)5+8h&-)nqfsmrgc#g(43f5jt=a!*a#6*!
 
 ---
 
-For password-reset email, create a Brevo API key under **SMTP & API -> API
-Keys** and verify the address used by `BREVO_SENDER_EMAIL` under **Senders,
-Domains & Dedicated IPs -> Senders**. This integration uses Brevo's HTTPS API,
-not its SMTP relay, so it works on Railway plans that block outbound SMTP.
+For password-reset email, enable the Gmail API in Google Cloud, authorize the
+dedicated sender account with the `https://www.googleapis.com/auth/gmail.send`
+scope, and store its OAuth client credentials and refresh token in Railway.
+The app refreshes short-lived access tokens automatically and sends through
+Google's HTTPS API, so it works on Railway plans that block outbound SMTP.
 
-The same integration works locally: add `BREVO_API_KEY`,
-`BREVO_SENDER_EMAIL`, and `DEFAULT_FROM_EMAIL` to `backend/.env` to send real
-email. If `BREVO_API_KEY` is absent while `DEBUG=True`, reset messages are
-printed in the development terminal instead.
+The same integration works locally: add all four `GMAIL_*` credential variables
+and `DEFAULT_FROM_EMAIL` to `backend/.env` to send real email. If none of the
+Gmail API credential variables are present while `DEBUG=True`, reset messages
+are printed in the development terminal instead. Never commit OAuth secrets or
+refresh tokens.
 
 ---
 

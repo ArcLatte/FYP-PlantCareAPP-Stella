@@ -148,9 +148,9 @@ STORAGES = {
 # User model
 AUTH_USER_MODEL = 'core.CustomUser'
 
-# Transactional email. Railway uses Brevo's HTTPS API because outbound SMTP is
-# unavailable on Railway's lower-tier plans. With no BREVO_API_KEY, local
-# development falls back to Django's console backend and prints the message.
+# Transactional email. Railway uses Gmail's HTTPS API because outbound SMTP is
+# unavailable on Railway's lower-tier plans. With no Gmail API credentials,
+# local development falls back to the console backend and prints the message.
 EMAIL_BACKEND = os.getenv(
     'EMAIL_BACKEND',
     (
@@ -168,14 +168,21 @@ DEFAULT_FROM_EMAIL = os.getenv(
     'DEFAULT_FROM_EMAIL',
     EMAIL_HOST_USER or 'Stella Plant Care <no-reply@stella.local>',
 )
-BREVO_API_KEY = os.getenv('BREVO_API_KEY', '')
-BREVO_API_URL = os.getenv(
-    'BREVO_API_URL',
-    'https://api.brevo.com/v3/smtp/email',
+GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID', '')
+GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET', '')
+GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN', '')
+GMAIL_SENDER_EMAIL = os.getenv('GMAIL_SENDER_EMAIL', '')
+GMAIL_TOKEN_URL = os.getenv(
+    'GMAIL_TOKEN_URL',
+    'https://oauth2.googleapis.com/token',
 )
-BREVO_SENDER_EMAIL = os.getenv('BREVO_SENDER_EMAIL', '')
-BREVO_SENDER_NAME = os.getenv('BREVO_SENDER_NAME', 'Stella Plant Care')
-BREVO_TIMEOUT_SECONDS = float(os.getenv('BREVO_TIMEOUT_SECONDS', '10'))
+GMAIL_API_URL = os.getenv(
+    'GMAIL_API_URL',
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+)
+GMAIL_API_TIMEOUT_SECONDS = float(
+    os.getenv('GMAIL_API_TIMEOUT_SECONDS', '10')
+)
 PASSWORD_RESET_CODE_MINUTES = int(
     os.getenv('PASSWORD_RESET_CODE_MINUTES', '10')
 )
