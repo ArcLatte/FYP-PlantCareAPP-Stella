@@ -179,6 +179,22 @@ class ApiService {
     }
   }
 
+  static Future<void> verifyPasswordResetCode({
+    required String email,
+    required String code,
+  }) async {
+    final response = await http.post(
+      Uri.parse(AppConstants.passwordResetVerifyUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'code': code}),
+    );
+    if (response.statusCode != 200) {
+      throw AppException(
+        _errorMessageFromResponse(response, 'Could not verify reset code'),
+      );
+    }
+  }
+
   static Future<void> confirmPasswordReset({
     required String email,
     required String code,

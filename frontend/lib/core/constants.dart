@@ -15,6 +15,8 @@ class AppConstants {
   static const String registerUrl = '$baseUrl/auth/register/';
   static const String passwordResetRequestUrl =
       '$baseUrl/auth/password-reset/request/';
+  static const String passwordResetVerifyUrl =
+      '$baseUrl/auth/password-reset/verify/';
   static const String passwordResetConfirmUrl =
       '$baseUrl/auth/password-reset/confirm/';
   static const String logoutUrl = '$baseUrl/auth/logout/';

@@ -248,6 +248,55 @@ def request_password_reset(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def verify_password_reset_code(request):
+    """Validate a reset code before showing the new-password step."""
+    email = str(request.data.get('email', '')).strip().lower()
+    code = str(request.data.get('code', '')).strip()
+    if not email or len(code) != 6 or not code.isdigit():
+        return Response(
+            {'error': 'Enter the six-digit reset code.'},
+            status=400,
+        )
+
+    with transaction.atomic():
+        user = CustomUser.objects.filter(
+            email__iexact=email,
+            is_active=True,
+        ).first()
+        reset = None
+        if user is not None:
+            reset = PasswordResetCode.objects.select_for_update().filter(
+                user=user,
+                used=False,
+            ).first()
+
+        if reset is None or reset.expires_at <= timezone.now():
+            if reset is not None:
+                reset.used = True
+                reset.save(update_fields=['used'])
+            return Response(
+                {'error': 'That reset code is invalid or has expired.'},
+                status=400,
+            )
+
+        if (
+            reset.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS
+            or not check_password(code, reset.code_hash)
+        ):
+            reset.attempts += 1
+            if reset.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS:
+                reset.used = True
+            reset.save(update_fields=['attempts', 'used'])
+            return Response(
+                {'error': 'That reset code is invalid or has expired.'},
+                status=400,
+            )
+
+    return Response({'message': 'Reset code verified.'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def confirm_password_reset(request):
     """Validate a one-time code and replace the account password."""
     email = str(request.data.get('email', '')).strip().lower()

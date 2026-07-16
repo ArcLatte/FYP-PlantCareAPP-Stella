@@ -175,6 +175,18 @@ class PasswordResetTests(TestCase):
         self.assertFalse(Token.objects.filter(key=token.key).exists())
         self.assertTrue(PasswordResetCode.objects.get(user=self.user).used)
 
+    def test_valid_code_can_be_verified_before_password_entry(self):
+        code = self._request_code()
+
+        response = self.client.post(
+            '/api/auth/password-reset/verify/',
+            {'email': self.user.email, 'code': code},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(PasswordResetCode.objects.get(user=self.user).used)
+
     def test_code_is_locked_after_five_wrong_attempts(self):
         code = self._request_code()
         wrong_code = '000000' if code != '000000' else '999999'
