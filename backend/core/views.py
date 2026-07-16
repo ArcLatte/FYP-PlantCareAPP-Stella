@@ -270,7 +270,7 @@ def fertilize_plant(request, pk):
     except Plant.DoesNotExist:
         return Response({'error': 'Plant not found.'}, status=404)
 
-    if plant.species.default_fertilizer_freq_days is None:
+    if plant.fertilizer_freq_days is None:
         return Response(
             {'error': f'{plant.species.name} has no fertilizer schedule.'},
             status=400,
@@ -298,7 +298,7 @@ def mist_plant(request, pk):
     except Plant.DoesNotExist:
         return Response({'error': 'Plant not found.'}, status=404)
 
-    if plant.species.default_misting_freq_days is None:
+    if plant.misting_freq_days is None:
         return Response(
             {'error': f'{plant.species.name} does not need misting.'},
             status=400,

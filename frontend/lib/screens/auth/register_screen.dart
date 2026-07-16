@@ -186,9 +186,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Enter a password';
-                    if (v.length < 8)
+                    if (v == null || v.isEmpty) {
+                      return 'Enter a password';
+                    }
+                    if (v.length < 8) {
                       return 'Password must be at least 8 characters';
+                    }
                     return null;
                   },
                 ),

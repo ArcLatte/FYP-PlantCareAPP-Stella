@@ -27,8 +27,11 @@ SPECIES = [
         #   https://www.rhs.org.uk/vegetables/tomatoes/grow-your-own
         #   https://extension.umn.edu/vegetables/growing-tomatoes
         description=(
-            'Warm-season fruiting vegetable. Heavy feeder; needs steady '
-            'water and full sun to produce well.'
+            'Tomatoes are warm-season fruiting plants that thrive in bright, '
+            'direct sun and rich, well-drained soil. Their fast growth and '
+            'heavy fruit load make consistent watering and feeding especially '
+            'important. Most varieties also benefit from support and airflow '
+            'to keep stems upright and foliage healthy.'
         ),
         sunlight=PlantSpecies.Sunlight.FULL_SUN,
         recommended_location=PlantSpecies.Location.OUTDOOR,
@@ -53,8 +56,10 @@ SPECIES = [
         #   https://perenual.com/
         #   https://extension.psu.edu/potato-production
         description=(
-            'Cool-season tuber crop. Mound soil over emerging stems '
-            '("hilling") to encourage tuber formation and prevent greening.'
+            'Potatoes are cool-season crops grown for the underground tubers '
+            'that form along buried stems. They prefer loose, slightly acidic '
+            'soil where tubers can expand without becoming misshapen. Regular '
+            'hilling protects developing potatoes from sunlight and prevents greening.'
         ),
         sunlight=PlantSpecies.Sunlight.FULL_SUN,
         recommended_location=PlantSpecies.Location.OUTDOOR,
@@ -79,8 +84,11 @@ SPECIES = [
         #   https://perenual.com/
         #   https://extension.umn.edu/vegetables/growing-peppers
         description=(
-            'Warm-season fruiting vegetable. Slow to start in cool weather; '
-            'rewards a long, hot growing season with sweet thick-walled fruit.'
+            'Bell peppers are compact warm-season plants that produce crisp, '
+            'hollow fruit which sweetens and changes colour as it ripens. They '
+            'start slowly in cool conditions and perform best with steady warmth, '
+            'full sun, and evenly moist soil. Healthy plants can keep fruiting '
+            'for many weeks when ripe peppers are picked regularly.'
         ),
         sunlight=PlantSpecies.Sunlight.FULL_SUN,
         recommended_location=PlantSpecies.Location.OUTDOOR,
@@ -105,8 +113,10 @@ SPECIES = [
         #   https://perenual.com/
         #   https://extension.psu.edu/sweet-corn
         description=(
-            'Tall warm-season grass grown for sweet kernels. Wind-pollinated, '
-            'so plant in blocks of at least 4×4 rows rather than long single lines.'
+            'Corn is a tall warm-season grass grown for ears of sweet kernels. '
+            'Each silk must receive pollen for its kernel to develop, so spacing '
+            'and group size directly affect how full the cobs become. It needs '
+            'open sun, fertile soil, and reliable moisture during ear formation.'
         ),
         sunlight=PlantSpecies.Sunlight.FULL_SUN,
         recommended_location=PlantSpecies.Location.OUTDOOR,
@@ -131,8 +141,11 @@ SPECIES = [
         #   https://perenual.com/
         #   https://www.rhs.org.uk/fruit/strawberries/grow-your-own
         description=(
-            'Low-growing perennial fruit. Tolerates containers and indoor '
-            'grow lights; appreciates some humidity, hence the misting cadence.'
+            'Strawberries are low-growing perennial fruit plants that spread '
+            'through runners and suit beds, hanging baskets, and containers. '
+            'Their shallow roots need dependable moisture without soggy soil. '
+            'Flowers require good light and pollination, while clean, dry fruit '
+            'benefits from mulch and gentle airflow around the crown.'
         ),
         sunlight=PlantSpecies.Sunlight.PARTIAL_SUN,
         recommended_location=PlantSpecies.Location.BOTH,

@@ -56,44 +56,53 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
     final s = _species;
     if (s == null) return const [];
     return _diseases
-        .where((d) =>
-            (d.speciesName ?? '').toLowerCase() == s.name.toLowerCase())
+        .where(
+          (d) => (d.speciesName ?? '').toLowerCase() == s.name.toLowerCase(),
+        )
         .toList();
   }
 
   List<Widget> _conditionCards(SpeciesDetail s) {
     final cards = <Widget>[];
     if (s.sunlightLabel.isNotEmpty) {
-      cards.add(_CareCard(
-        icon: Icons.wb_sunny_outlined,
-        value: s.sunlightLabel,
-        label: 'SUNLIGHT',
-        color: AppColors.amber,
-      ));
+      cards.add(
+        _CareCard(
+          icon: Icons.wb_sunny_outlined,
+          value: s.sunlightLabel,
+          label: 'SUNLIGHT',
+          color: AppColors.amber,
+        ),
+      );
     }
     if (s.locationLabel.isNotEmpty) {
-      cards.add(_CareCard(
-        icon: Icons.home_outlined,
-        value: s.locationLabel,
-        label: 'LOCATION',
-        color: AppColors.primary,
-      ));
+      cards.add(
+        _CareCard(
+          icon: Icons.home_outlined,
+          value: s.locationLabel,
+          label: 'LOCATION',
+          color: AppColors.primary,
+        ),
+      );
     }
     if (s.temperatureRange != null) {
-      cards.add(_CareCard(
-        icon: Icons.thermostat_outlined,
-        value: s.temperatureRange!,
-        label: 'TEMP',
-        color: AppColors.amber,
-      ));
+      cards.add(
+        _CareCard(
+          icon: Icons.thermostat_outlined,
+          value: s.temperatureRange!,
+          label: 'TEMP',
+          color: AppColors.amber,
+        ),
+      );
     }
     if (s.daysToHarvest != null) {
-      cards.add(_CareCard(
-        icon: Icons.eco_outlined,
-        value: '~${s.daysToHarvest}d',
-        label: 'HARVEST',
-        color: AppColors.primary,
-      ));
+      cards.add(
+        _CareCard(
+          icon: Icons.eco_outlined,
+          value: '~${s.daysToHarvest}d',
+          label: 'HARVEST',
+          color: AppColors.primary,
+        ),
+      );
     }
     return cards;
   }
@@ -102,12 +111,14 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
     final rows = <Widget>[];
     void add(CareActivity a, int? days) {
       if (days == null) return;
-      rows.add(_ScheduleRow(
-        icon: a.icon,
-        color: a.color,
-        label: a.title,
-        value: 'Every $days ${days == 1 ? 'day' : 'days'}',
-      ));
+      rows.add(
+        _ScheduleRow(
+          icon: a.icon,
+          color: a.color,
+          label: a.title,
+          value: 'Every $days ${days == 1 ? 'day' : 'days'}',
+        ),
+      );
     }
 
     add(CareActivity.water, s.defaultWateringFreqDays);
@@ -124,13 +135,13 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
       body: _isLoading
           ? const _SpeciesSkeleton()
           : s == null
-              ? const Center(
-                  child: Text(
-                    'Species details not found',
-                    style: TextStyle(color: AppColors.textSecondary),
-                  ),
-                )
-              : _buildContent(context, s),
+          ? const Center(
+              child: Text(
+                'Species details not found',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            )
+          : _buildContent(context, s),
     );
   }
 
@@ -139,8 +150,9 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
     final scheduleRows = _scheduleRows(s);
     final related = _relatedDiseases;
 
+    final bottomPadding = MediaQuery.paddingOf(context).bottom + 112;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomPadding),
       children: [
         // Header: leaf badge + name + scientific name.
         Row(
@@ -158,8 +170,10 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(s.name,
-                      style: Theme.of(context).textTheme.headlineMedium),
+                  Text(
+                    s.name,
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
                   if (s.scientificName.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
@@ -182,8 +196,7 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
           const SizedBox(height: 18),
           Text(
             s.description,
-            style:
-                Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.4),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.4),
           ),
         ],
 
@@ -223,13 +236,7 @@ class _SpeciesDetailScreenState extends State<SpeciesDetailScreen> {
           const SizedBox(height: 24),
           const _SectionLabel('How to plant & care'),
           const SizedBox(height: 10),
-          _InfoCard(
-            child: Text(
-              s.growingTips,
-              style:
-                  Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.4),
-            ),
-          ),
+          _InfoCard(child: _GrowingTips(text: s.growingTips)),
         ],
 
         // Common diseases → disease knowledge base.
@@ -285,6 +292,60 @@ class _InfoCard extends StatelessWidget {
         ],
       ),
       child: child,
+    );
+  }
+}
+
+class _GrowingTips extends StatelessWidget {
+  final String text;
+  const _GrowingTips({required this.text});
+
+  List<String> get _items => text
+      .split(RegExp(r'\n+|(?<=[.!?])\s+'))
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+    return Column(
+      children: [
+        for (final (index, item) in items.indexed) ...[
+          if (index > 0) const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.11),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  item,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(height: 1.45),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
@@ -382,10 +443,15 @@ class _ScheduleRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(label, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            label,
+            maxLines: 2,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         Text(
           value,
+          textAlign: TextAlign.end,
           style: const TextStyle(
             color: AppColors.textSecondary,
             fontSize: 13,

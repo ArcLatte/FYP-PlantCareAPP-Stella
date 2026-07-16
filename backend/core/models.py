@@ -310,6 +310,8 @@ class Plant(models.Model):
     last_fertilized = models.DateTimeField(null=True, blank=True)
     last_misted = models.DateTimeField(null=True, blank=True)
     watering_freq_days = models.PositiveIntegerField(default=7)
+    fertilizer_freq_days = models.PositiveIntegerField(null=True, blank=True)
+    misting_freq_days = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

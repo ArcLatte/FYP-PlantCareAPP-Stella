@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/app_error.dart';
 import '../../core/theme.dart';
 import '../../services/api_service.dart';
+import '../../services/app_refresh_bus.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/photo_picker_sheet.dart';
 import '../../widgets/skeleton.dart';
@@ -45,6 +46,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
   // ── Step 3: schedule ──
   final _nameController = TextEditingController();
   final _freqController = TextEditingController();
+  final _fertilizerFreqController = TextEditingController();
+  final _mistingFreqController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime? _lastWatered;
   DateTime? _lastFertilized;
@@ -74,6 +77,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     _pageController.dispose();
     _nameController.dispose();
     _freqController.dispose();
+    _fertilizerFreqController.dispose();
+    _mistingFreqController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -149,8 +154,17 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       case 1:
         return true; // location optional — server defaults to ''
       case 2:
+        final wateringOk = (int.tryParse(_freqController.text.trim()) ?? 0) > 0;
+        final fertilizerOk =
+            _speciesFertilizerFreq == null ||
+            (int.tryParse(_fertilizerFreqController.text.trim()) ?? 0) > 0;
+        final mistingOk =
+            _speciesMistingFreq == null ||
+            (int.tryParse(_mistingFreqController.text.trim()) ?? 0) > 0;
         return _effectiveName.isNotEmpty &&
-            (int.tryParse(_freqController.text.trim()) ?? 0) > 0;
+            wateringOk &&
+            fertilizerOk &&
+            mistingOk;
       case 3:
         return !_isSaving;
       default:
@@ -182,6 +196,11 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       // Smart defaults from the species knowledge base.
       _freqController.text =
           ((s['default_watering_freq_days'] as num?)?.toInt() ?? 7).toString();
+      _fertilizerFreqController.text =
+          ((s['default_fertilizer_freq_days'] as num?)?.toInt())?.toString() ??
+          '';
+      _mistingFreqController.text =
+          ((s['default_misting_freq_days'] as num?)?.toInt())?.toString() ?? '';
       final rec = (s['recommended_location'] ?? '').toString();
       _selectedLocation ??= switch (rec) {
         'indoor' => 'Indoor',
@@ -361,6 +380,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         _notesController.text.trim(),
         location: _selectedLocation,
         wateringFreqDays: int.tryParse(_freqController.text.trim()) ?? 7,
+        fertilizerFreqDays: int.tryParse(_fertilizerFreqController.text.trim()),
+        mistingFreqDays: int.tryParse(_mistingFreqController.text.trim()),
         lastWatered: _lastWatered,
         lastFertilized: _lastFertilized,
         lastMisted: _lastMisted,
@@ -370,7 +391,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       if (_photo != null) {
         await ApiService.updatePlant(plant.id, photo: _photo);
       }
-      if (mounted) context.pop();
+      AppRefreshBus.plantsChanged();
+      if (mounted) context.pop(true);
     } catch (e) {
       if (mounted) {
         setState(
@@ -529,30 +551,30 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                   ),
                 )
               : _filteredSpecies.isEmpty
-                  ? Center(
-                      child: Text(
-                        _species.isEmpty
-                            ? 'No species available'
-                            : "No species match '$_speciesQuery'",
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      itemCount: _filteredSpecies.length,
-                      itemBuilder: (context, i) {
-                        final s = _filteredSpecies[i];
-                        final selected = _selectedSpecies?['id'] == s['id'];
-                        return _SpeciesRow(
-                          species: s,
-                          selected: selected,
-                          onTap: () => _onSpeciesPicked(s),
-                        );
-                      },
-                    ),
+              ? Center(
+                  child: Text(
+                    _species.isEmpty
+                        ? 'No species available'
+                        : "No species match '$_speciesQuery'",
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
+                  itemCount: _filteredSpecies.length,
+                  itemBuilder: (context, i) {
+                    final s = _filteredSpecies[i];
+                    final selected = _selectedSpecies?['id'] == s['id'];
+                    return _SpeciesRow(
+                      species: s,
+                      selected: selected,
+                      onTap: () => _onSpeciesPicked(s),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -608,6 +630,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
 
   Widget _buildScheduleStep() {
     final speciesName = (_selectedSpecies?['name'] ?? '').toString();
+    final recommendedWatering =
+        (_selectedSpecies?['default_watering_freq_days'] as num?)?.toInt() ?? 7;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       children: [
@@ -628,23 +652,39 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        Text(
-          'Watering interval (days)',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        TextField(
+        _IntervalField(
+          label: 'Watering interval',
           controller: _freqController,
-          onChanged: (_) => setState(() {}),
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          style: const TextStyle(color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            hintText: '7',
-            prefixIcon: Icon(Icons.water_drop_outlined),
-          ),
+          icon: Icons.water_drop_outlined,
+          color: const Color(0xFF4F9FD9),
+          recommendedDays: recommendedWatering,
+          onChanged: () => setState(() {}),
         ),
-        const SizedBox(height: 24),
+        if (_speciesFertilizerFreq != null) ...[
+          const SizedBox(height: 18),
+          _IntervalField(
+            label: 'Fertilizing interval',
+            controller: _fertilizerFreqController,
+            icon: Icons.compost_outlined,
+            color: AppColors.amber,
+            recommendedDays: _speciesFertilizerFreq!,
+            onChanged: () => setState(() {}),
+          ),
+        ],
+        if (_speciesMistingFreq != null) ...[
+          const SizedBox(height: 18),
+          _IntervalField(
+            label: 'Misting interval',
+            controller: _mistingFreqController,
+            icon: Icons.cloud_outlined,
+            color: const Color(0xFF26A69A),
+            recommendedDays: _speciesMistingFreq!,
+            onChanged: () => setState(() {}),
+          ),
+        ],
+        const SizedBox(height: 20),
+        Text('Care history', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
         _DateRow(
           icon: Icons.water_drop_rounded,
           color: const Color(0xFF4F9FD9),
@@ -828,6 +868,16 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                 label: 'Watering',
                 value: 'Every ${_freqController.text.trim()} days',
               ),
+              if (_speciesFertilizerFreq != null)
+                _SummaryRow(
+                  label: 'Fertilizing',
+                  value: 'Every ${_fertilizerFreqController.text.trim()} days',
+                ),
+              if (_speciesMistingFreq != null)
+                _SummaryRow(
+                  label: 'Misting',
+                  value: 'Every ${_mistingFreqController.text.trim()} days',
+                ),
               if (_lastWatered != null)
                 _SummaryRow(
                   label: 'Last watered',
@@ -874,8 +924,8 @@ class _ProgressPills extends StatelessWidget {
                   color: i < current
                       ? AppColors.primary
                       : i == current
-                          ? AppColors.primary.withValues(alpha: 0.5)
-                          : AppColors.divider,
+                      ? AppColors.primary.withValues(alpha: 0.5)
+                      : AppColors.divider,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -998,8 +1048,8 @@ class _SelectableRow extends StatelessWidget {
     final color = accent
         ? AppColors.primary
         : selected
-            ? AppColors.primary
-            : AppColors.textSecondary;
+        ? AppColors.primary
+        : AppColors.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1042,6 +1092,64 @@ class _SelectableRow extends StatelessWidget {
 }
 
 /// Tappable date row with colored icon tile, used for last-care dates.
+class _IntervalField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final IconData icon;
+  final Color color;
+  final int recommendedDays;
+  final VoidCallback onChanged;
+
+  const _IntervalField({
+    required this.label,
+    required this.controller,
+    required this.icon,
+    required this.color,
+    required this.recommendedDays,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            Text(
+              'Recommended: $recommendedDays days',
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          onChanged: (_) => onChanged(),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: recommendedDays.toString(),
+            prefixIcon: Icon(icon, color: color),
+            suffixText: 'days',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _DateRow extends StatelessWidget {
   final IconData icon;
   final Color color;

@@ -12,6 +12,7 @@ import '../screens/scan/result_screen.dart';
 import '../screens/disease/disease_detail_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/history/history_detail_screen.dart';
+import '../screens/notifications/notifications_screen.dart';
 import '../screens/library/library_screen.dart';
 import '../screens/library/species_detail_screen.dart';
 import '../screens/library/species_diseases_screen.dart';
@@ -31,7 +32,8 @@ final GoRouter appRouter = GoRouter(
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(AppConstants.tokenKey);
     final isLoggedIn = token != null && token.isNotEmpty;
-    final isAuthRoute = state.matchedLocation == '/login' ||
+    final isAuthRoute =
+        state.matchedLocation == '/login' ||
         state.matchedLocation == '/register';
 
     if (!isLoggedIn && !isAuthRoute) return '/login';
@@ -48,21 +50,22 @@ final GoRouter appRouter = GoRouter(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded,
-                size: 56, color: AppColors.textMuted),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 56,
+              color: AppColors.textMuted,
+            ),
             const SizedBox(height: 16),
             const Text(
               "This page couldn't be opened.",
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Text(
               state.uri.toString(),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textMuted),
+              style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -77,10 +80,7 @@ final GoRouter appRouter = GoRouter(
   ),
   routes: [
     // Top-level routes (no shell, no bottom nav).
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
-    ),
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(
       path: '/register',
       builder: (context, state) => const RegisterScreen(),
@@ -88,6 +88,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/plants/add',
       builder: (context, state) => const AddPlantScreen(),
+    ),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationsScreen(),
     ),
     GoRoute(
       path: '/plants/:id',
@@ -103,10 +107,7 @@ final GoRouter appRouter = GoRouter(
         return EditPlantScreen(plantId: plantId);
       },
     ),
-    GoRoute(
-      path: '/scan',
-      builder: (context, state) => const ScanScreen(),
-    ),
+    GoRoute(path: '/scan', builder: (context, state) => const ScanScreen()),
     GoRoute(
       path: '/scan/:plantId',
       builder: (context, state) {
@@ -228,8 +229,7 @@ final GoRouter appRouter = GoRouter(
                   // species (species-first Diseases tab drill-in).
                   path: 'diseases/:speciesId',
                   builder: (context, state) => SpeciesDiseasesScreen(
-                    speciesId:
-                        int.parse(state.pathParameters['speciesId']!),
+                    speciesId: int.parse(state.pathParameters['speciesId']!),
                   ),
                 ),
               ],

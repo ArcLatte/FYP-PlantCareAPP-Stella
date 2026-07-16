@@ -369,6 +369,9 @@ class _HomeScreenState extends State<HomeScreen> {
       .where((p) => p.needsWater || p.needsFertilizer || p.needsMisting)
       .toList();
 
+  // Kept as a compact fallback for older deep links; the header bell now opens
+  // the full Care alerts page.
+  // ignore: unused_element
   Future<void> _openCareSheet() async {
     final due = _dueToday;
     await showModalBottomSheet<void>(
@@ -607,10 +610,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness:
-            _headerCollapsed ? Brightness.dark : Brightness.light,
-        statusBarBrightness:
-            _headerCollapsed ? Brightness.light : Brightness.dark,
+        statusBarIconBrightness: _headerCollapsed
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarBrightness: _headerCollapsed
+            ? Brightness.light
+            : Brightness.dark,
       ),
       child: Scaffold(
         extendBody: true,
@@ -624,90 +629,108 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        body: RefreshIndicator(
-          onRefresh: _onRefresh,
-          color: AppColors.primary,
-          backgroundColor: AppColors.surface,
-          child: CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              // Weather header + the "Your Garden" panel live in ONE sliver so
-              // the panel paints ON TOP of the weather (the viewport paints an
-              // earlier sliver above later ones, which would otherwise let the
-              // weather cover the panel). The panel has a rounded top and is
-              // pulled up to overlap the weather, so the blue shows through its
-              // corners. Panel colour == scaffold colour, so the space it
-              // vacates below (from the translate) blends into the grid.
-              SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    _buildWeatherCard(),
-                    Transform.translate(
-                      offset: const Offset(0, -28),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(28),
+        body: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 460,
+              child: ColoredBox(
+                color: WeatherBackdrop.gradientColors(
+                  _weather?.iconCode ?? '01d',
+                ).first,
+              ),
+            ),
+            RefreshIndicator(
+              onRefresh: _onRefresh,
+              color: AppColors.primary,
+              backgroundColor: AppColors.surface,
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  // Weather header + the "Your Garden" panel live in ONE sliver so
+                  // the panel paints ON TOP of the weather (the viewport paints an
+                  // earlier sliver above later ones, which would otherwise let the
+                  // weather cover the panel). The panel has a rounded top and is
+                  // pulled up to overlap the weather, so the blue shows through its
+                  // corners. Panel colour == scaffold colour, so the space it
+                  // vacates below (from the translate) blends into the grid.
+                  SliverToBoxAdapter(
+                    child: Column(
+                      children: [
+                        _buildWeatherCard(),
+                        Transform.translate(
+                          offset: const Offset(0, -28),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(28),
+                              ),
+                            ),
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Column(
+                              children: [
+                                _buildGardenHeader(),
+                                _buildFilterChips(),
+                              ],
+                            ),
                           ),
                         ),
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Column(
-                          children: [_buildGardenHeader(), _buildFilterChips()],
+                      ],
+                    ),
+                  ),
+                  if (_isLoadingPlants)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 14,
+                              crossAxisSpacing: 14,
+                              childAspectRatio: 0.72,
+                            ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, i) => const PlantCardSkeleton(),
+                          childCount: 4,
                         ),
                       ),
+                    )
+                  else if (filtered.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _buildEmptyState(),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 14,
+                              crossAxisSpacing: 14,
+                              childAspectRatio: 0.72,
+                            ),
+                        delegate: SliverChildBuilderDelegate((context, i) {
+                          final plant = filtered[i];
+                          return _PlantGridCard(
+                            plant: plant,
+                            onTap: () async {
+                              await context.push('/plants/${plant.id}');
+                              _loadPlants();
+                            },
+                            onLongPress: () => _openQuickActions(plant),
+                          );
+                        }, childCount: filtered.length),
+                      ),
                     ),
-                  ],
-                ),
+                ],
               ),
-              if (_isLoadingPlants)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.72,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, i) => const PlantCardSkeleton(),
-                      childCount: 4,
-                    ),
-                  ),
-                )
-              else if (filtered.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _buildEmptyState(),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.72,
-                    ),
-                    delegate: SliverChildBuilderDelegate((context, i) {
-                      final plant = filtered[i];
-                      return _PlantGridCard(
-                        plant: plant,
-                        onTap: () async {
-                          await context.push('/plants/${plant.id}');
-                          _loadPlants();
-                        },
-                        onLongPress: () => _openQuickActions(plant),
-                      );
-                    }, childCount: filtered.length),
-                  ),
-                ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -861,7 +884,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             // Notification bell → today's care sheet. Dot
                             // appears when anything is due.
                             GestureDetector(
-                              onTap: _openCareSheet,
+                              onTap: () => context
+                                  .push('/notifications')
+                                  .then((_) => _loadPlants()),
                               child: Container(
                                 width: 40,
                                 height: 40,
@@ -1072,8 +1097,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: selected ? AppColors.textPrimary : AppColors.surface,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color:
-                      selected ? AppColors.textPrimary : AppColors.cardBorder,
+                  color: selected
+                      ? AppColors.textPrimary
+                      : AppColors.cardBorder,
                 ),
               ),
               alignment: Alignment.center,
@@ -1596,8 +1622,9 @@ class _CareActionRow extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color:
-                          overdue ? AppColors.amber : AppColors.textSecondary,
+                      color: overdue
+                          ? AppColors.amber
+                          : AppColors.textSecondary,
                       fontSize: 13,
                       fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
                     ),

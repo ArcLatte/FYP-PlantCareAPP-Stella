@@ -11,7 +11,49 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from .image_quality import ImageQualityAssessor
 from .models import CareLog, CustomUser, Plant, PlantSpecies
 from .scanning_pipeline import ScanAnalysis, ScanningPipeline, ScanStatus
+from .serializers import PlantSerializer
 from .views import scan, streak
+
+
+class PlantCareIntervalTests(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='care-interval-user',
+            password='test-password',
+        )
+        self.species = PlantSpecies.objects.create(
+            name='Care interval species',
+            default_watering_freq_days=4,
+            default_fertilizer_freq_days=14,
+            default_misting_freq_days=3,
+        )
+
+    def test_create_inherits_all_species_intervals(self):
+        serializer = PlantSerializer(data={
+            'name': 'Inherited schedule',
+            'species': self.species.id,
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        plant = serializer.save(user=self.user)
+
+        self.assertEqual(plant.watering_freq_days, 4)
+        self.assertEqual(plant.fertilizer_freq_days, 14)
+        self.assertEqual(plant.misting_freq_days, 3)
+
+    def test_create_keeps_custom_intervals(self):
+        serializer = PlantSerializer(data={
+            'name': 'Custom schedule',
+            'species': self.species.id,
+            'watering_freq_days': 2,
+            'fertilizer_freq_days': 10,
+            'misting_freq_days': 5,
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        plant = serializer.save(user=self.user)
+
+        self.assertEqual(plant.watering_freq_days, 2)
+        self.assertEqual(plant.fertilizer_freq_days, 10)
+        self.assertEqual(plant.misting_freq_days, 5)
 
 
 class StreakTimezoneTests(TestCase):

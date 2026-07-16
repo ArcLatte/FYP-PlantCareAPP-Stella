@@ -40,3 +40,8 @@ ml/
 diagram/
 report/
 weights/
+
+# Local database/media migration archives
+*.backup
+/media-upload.zip
+/stella-local.dump

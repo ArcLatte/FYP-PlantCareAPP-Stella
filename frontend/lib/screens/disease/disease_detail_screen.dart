@@ -65,15 +65,20 @@ class _DiseaseDetailScreenState extends State<DiseaseDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _isConfirming = true);
     try {
-      final result = await ApiService.confirmDisease(widget.scanId!, widget.label);
+      final result = await ApiService.confirmDisease(
+        widget.scanId!,
+        widget.label,
+      );
       if (!mounted) return;
       final healthy = widget.label.toLowerCase().contains('healthy');
       final name = result.diseaseName ?? _disease?.name ?? '';
-      messenger.showSnackBar(_savedSnack(
-        healthy
-            ? 'Marked healthy'
-            : 'Diagnosis saved${name.isNotEmpty ? ' — $name' : ''}',
-      ));
+      messenger.showSnackBar(
+        _savedSnack(
+          healthy
+              ? 'Marked healthy'
+              : 'Diagnosis saved${name.isNotEmpty ? ' — $name' : ''}',
+        ),
+      );
       // One tap → straight to the plant page (which shows the confirmed
       // diagnosis), rather than bouncing back through the result screen.
       final plantId = result.plantId;
@@ -165,105 +170,112 @@ class _DiseaseDetailScreenState extends State<DiseaseDetailScreen> {
       body: _isLoading
           ? const _DiseaseSkeleton()
           : d == null
-              ? const Center(
-                  child: Text('Disease details not found',
-                      style: TextStyle(color: AppColors.textSecondary)),
-                )
-              : SafeArea(
-                  bottom: false,
-                  child: ListView(
-                    padding: EdgeInsets.fromLTRB(
-                        24, 24, 24, _confirmMode ? 110 : 24),
+          ? const Center(
+              child: Text(
+                'Disease details not found',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            )
+          : SafeArea(
+              bottom: false,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  24,
+                  _confirmMode ? 110 : 40,
+                ),
+                children: [
+                  // Swipeable reference image carousel.
+                  if (d.allImages.isNotEmpty)
+                    _ImageCarousel(
+                      images: d.allImages,
+                      controller: _pageController,
+                      page: _page,
+                      onPage: (i) => setState(() => _page = i),
+                    ),
+                  if (d.allImages.isNotEmpty) const SizedBox(height: 20),
+
+                  // Header: name + severity chip.
+                  Row(
                     children: [
-                      // Swipeable reference image carousel.
-                      if (d.allImages.isNotEmpty) _ImageCarousel(
-                        images: d.allImages,
-                        controller: _pageController,
-                        page: _page,
-                        onPage: (i) => setState(() => _page = i),
-                      ),
-                      if (d.allImages.isNotEmpty) const SizedBox(height: 20),
-
-                      // Header: name + severity chip.
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              d.name,
-                              style: Theme.of(context).textTheme.headlineMedium,
-                            ),
-                          ),
-                          if (d.severity.isNotEmpty)
-                            _SeverityChip(
-                              label: d.isHealthy
-                                  ? 'Healthy'
-                                  : '${d.severity[0].toUpperCase()}${d.severity.substring(1)} severity',
-                              color: _severityColor(d),
-                            ),
-                        ],
-                      ),
-                      if (d.speciesName != null &&
-                          d.speciesName!.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(d.speciesName!,
-                            style: Theme.of(context).textTheme.bodyMedium),
-                      ],
-
-                      // Intro / overview as plain text (no card).
-                      if (d.description.trim().isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          d.description,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(height: 1.4),
+                      Expanded(
+                        child: Text(
+                          d.name,
+                          style: Theme.of(context).textTheme.headlineMedium,
                         ),
-                      ],
-
-                      _BulletSection(
-                        title: 'Symptoms',
-                        icon: Icons.search_rounded,
-                        items: _bullets(d.symptoms),
                       ),
-                      _BulletSection(
-                        title: 'Cause',
-                        icon: Icons.coronavirus_rounded,
-                        items: _bullets(d.cause),
-                      ),
-                      _BulletSection(
-                        title: 'Treatment',
-                        icon: Icons.healing_rounded,
-                        items: _bullets(d.treatment),
-                        accent: AppColors.primary,
-                      ),
-                      _BulletSection(
-                        title: 'Care actions',
-                        icon: Icons.eco_rounded,
-                        items: _bullets(d.careTips),
-                        accent: AppColors.primary,
-                      ),
-                      _BulletSection(
-                        title: 'Prevention',
-                        icon: Icons.shield_outlined,
-                        items: _bullets(d.prevention),
-                      ),
-
-                      if (d.sourceUrl.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => _openSource(d.sourceUrl),
-                          icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                          label: Text(
-                            d.sourceName.isNotEmpty
-                                ? 'Learn more · ${d.sourceName}'
-                                : 'Learn more',
-                          ),
+                      if (d.severity.isNotEmpty)
+                        _SeverityChip(
+                          label: d.isHealthy
+                              ? 'Healthy'
+                              : '${d.severity[0].toUpperCase()}${d.severity.substring(1)} severity',
+                          color: _severityColor(d),
                         ),
-                      ],
                     ],
                   ),
-                ),
+                  if (d.speciesName != null && d.speciesName!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      d.speciesName!,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+
+                  // Intro / overview as plain text (no card).
+                  if (d.description.trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      d.description,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(height: 1.4),
+                    ),
+                  ],
+
+                  _BulletSection(
+                    title: 'Symptoms',
+                    icon: Icons.search_rounded,
+                    items: _bullets(d.symptoms),
+                  ),
+                  _BulletSection(
+                    title: 'Cause',
+                    icon: Icons.coronavirus_rounded,
+                    items: _bullets(d.cause),
+                  ),
+                  _BulletSection(
+                    title: 'Treatment',
+                    icon: Icons.healing_rounded,
+                    items: _bullets(d.treatment),
+                    accent: AppColors.primary,
+                  ),
+                  _BulletSection(
+                    title: 'Care actions',
+                    icon: Icons.eco_rounded,
+                    items: _bullets(d.careTips),
+                    accent: AppColors.primary,
+                  ),
+                  _BulletSection(
+                    title: 'Prevention',
+                    icon: Icons.shield_outlined,
+                    items: _bullets(d.prevention),
+                  ),
+
+                  if (d.sourceUrl.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => _openSource(d.sourceUrl),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                      label: Text(
+                        d.sourceName.isNotEmpty
+                            ? 'Learn more · ${d.sourceName}'
+                            : 'Learn more',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
       bottomNavigationBar: (!_confirmMode || d == null) ? null : _confirmBar(),
     );
   }
@@ -333,12 +345,14 @@ class _ImageCarousel extends StatelessWidget {
               itemBuilder: (context, i) => CachedNetworkImage(
                 imageUrl: images[i],
                 fit: BoxFit.cover,
-                placeholder: (c, _) =>
-                    Container(color: AppColors.surfaceLight),
+                placeholder: (c, _) => Container(color: AppColors.surfaceLight),
                 errorWidget: (c, _, _) => Container(
                   color: AppColors.surfaceLight,
-                  child: const Icon(Icons.image_not_supported_rounded,
-                      size: 40, color: AppColors.textMuted),
+                  child: const Icon(
+                    Icons.image_not_supported_rounded,
+                    size: 40,
+                    color: AppColors.textMuted,
+                  ),
                 ),
               ),
             ),
@@ -419,10 +433,9 @@ class _BulletSection extends StatelessWidget {
                   Expanded(
                     child: Text(
                       item,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.copyWith(height: 1.35),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(height: 1.35),
                     ),
                   ),
                 ],

@@ -157,15 +157,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final displayedSeries = {
       for (final code in _slots.whereType<String>()) _seriesForCode(code)?.id,
     };
-    final available = _series
-        .where(
-          (s) =>
-              s.anyUnlocked &&
-              s.current != null &&
-              !displayedSeries.contains(s.id),
-        )
-        .toList()
-      ..sort((a, b) => b.metal.index.compareTo(a.metal.index));
+    final available =
+        _series
+            .where(
+              (s) =>
+                  s.anyUnlocked &&
+                  s.current != null &&
+                  !displayedSeries.contains(s.id),
+            )
+            .toList()
+          ..sort((a, b) => b.metal.index.compareTo(a.metal.index));
 
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -224,14 +225,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final tierIdx = TierFrame.tierIndex(profile.tier);
 
     Widget grid(List<Widget> tiles) => GridView.count(
-          crossAxisCount: 2,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.9,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: tiles,
-        );
+      crossAxisCount: 2,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.9,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: tiles,
+    );
 
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -474,13 +475,13 @@ class _CompanionCardState extends State<_CompanionCard>
   }
 
   static Widget _avatarInitial(UserProfile profile) => Text(
-        profile.username.isEmpty ? '?' : profile.username[0].toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
-        ),
-      );
+    profile.username.isEmpty ? '?' : profile.username[0].toUpperCase(),
+    style: const TextStyle(
+      color: Colors.white,
+      fontSize: 24,
+      fontWeight: FontWeight.w800,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -656,6 +657,8 @@ class _CompanionCardState extends State<_CompanionCard>
                               next == null
                                   ? 'Highest tier reached ✦'
                                   : 'Next tier: ${next.$2} · Lv ${next.$1}',
+                              maxLines: 2,
+                              overflow: TextOverflow.fade,
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.85),
                                 fontSize: 10.5,
@@ -793,7 +796,11 @@ class _CountUpText extends StatelessWidget {
       tween: Tween(begin: 0, end: value.toDouble()),
       duration: const Duration(milliseconds: 800),
       curve: Curves.easeOutCubic,
-      builder: (context, v, _) => Text('${v.round()}$suffix', style: style),
+      builder: (context, v, _) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text('${v.round()}$suffix', style: style),
+      ),
     );
   }
 }
@@ -1004,8 +1011,7 @@ class _StatTile extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                   style: const TextStyle(
                     color: AppColors.textMuted,
                     fontSize: 9.5,
@@ -1084,6 +1090,7 @@ class _ShopRow extends StatelessWidget {
                   const SizedBox(height: 1),
                   Text(
                     'Spend seeds on pots and namecards',
+                    maxLines: 2,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

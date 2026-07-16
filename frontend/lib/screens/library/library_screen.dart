@@ -61,9 +61,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return _species;
     return _species
-        .where((s) =>
-            s.name.toLowerCase().contains(q) ||
-            s.scientificName.toLowerCase().contains(q))
+        .where(
+          (s) =>
+              s.name.toLowerCase().contains(q) ||
+              s.scientificName.toLowerCase().contains(q),
+        )
         .toList();
   }
 
@@ -156,8 +158,10 @@ class _SegmentedTabs extends StatelessWidget {
         labelColor: Colors.white,
         unselectedLabelColor: AppColors.textSecondary,
         labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-        unselectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
         tabs: const [
           Tab(height: 40, text: 'Plants'),
           Tab(height: 40, text: 'Diseases'),
@@ -183,7 +187,7 @@ class _SpeciesTab extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        childAspectRatio: 0.72,
+        childAspectRatio: 0.68,
         children: const [
           PlantCardSkeleton(),
           PlantCardSkeleton(),
@@ -205,7 +209,7 @@ class _SpeciesTab extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        childAspectRatio: 0.72,
+        childAspectRatio: 0.68,
       ),
       itemCount: species.length,
       itemBuilder: (context, i) => _SpeciesCard(species: species[i]),
@@ -259,8 +263,7 @@ class _SpeciesCard extends StatelessWidget {
                 children: [
                   Text(
                     species.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -271,8 +274,7 @@ class _SpeciesCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       species.scientificName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
@@ -284,8 +286,11 @@ class _SpeciesCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(Icons.wb_sunny_outlined,
-                            size: 13, color: AppColors.amber),
+                        const Icon(
+                          Icons.wb_sunny_outlined,
+                          size: 13,
+                          color: AppColors.amber,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -334,9 +339,11 @@ class _DiseasesTab extends StatelessWidget {
   List<Disease> get _matchingDiseases {
     final q = query.trim().toLowerCase();
     return allDiseases
-        .where((d) =>
-            d.name.toLowerCase().contains(q) ||
-            (d.speciesName ?? '').toLowerCase().contains(q))
+        .where(
+          (d) =>
+              d.name.toLowerCase().contains(q) ||
+              (d.speciesName ?? '').toLowerCase().contains(q),
+        )
         .toList();
   }
 
@@ -354,8 +361,10 @@ class _DiseasesTab extends StatelessWidget {
       final c = counts[s.name.toLowerCase()];
       if (c != null && c > 0) out.add((species: s, count: c));
     }
-    out.sort((a, b) =>
-        a.species.name.toLowerCase().compareTo(b.species.name.toLowerCase()));
+    out.sort(
+      (a, b) =>
+          a.species.name.toLowerCase().compareTo(b.species.name.toLowerCase()),
+    );
     return out;
   }
 
@@ -363,7 +372,7 @@ class _DiseasesTab extends StatelessWidget {
     crossAxisCount: 2,
     mainAxisSpacing: 14,
     crossAxisSpacing: 14,
-    childAspectRatio: 0.72,
+    childAspectRatio: 0.68,
   );
 
   @override
@@ -374,7 +383,7 @@ class _DiseasesTab extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        childAspectRatio: 0.72,
+        childAspectRatio: 0.68,
         children: const [
           PlantCardSkeleton(),
           PlantCardSkeleton(),
@@ -452,8 +461,9 @@ class _SpeciesDiseaseCard extends StatelessWidget {
           children: [
             Expanded(
               child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
+                ),
                 child: SpeciesImage(imageUrl: species.imageUrl),
               ),
             ),
@@ -465,8 +475,7 @@ class _SpeciesDiseaseCard extends StatelessWidget {
                 children: [
                   Text(
                     species.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -502,8 +511,11 @@ class _CountChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.coronavirus_rounded,
-              size: 13, color: AppColors.primary),
+          const Icon(
+            Icons.coronavirus_rounded,
+            size: 13,
+            color: AppColors.primary,
+          ),
           const SizedBox(width: 5),
           Text(
             '$count ${count == 1 ? 'disease' : 'diseases'}',
@@ -531,8 +543,11 @@ class SpeciesImage extends StatelessWidget {
     final placeholder = Container(
       color: AppColors.primary.withValues(alpha: 0.08),
       alignment: Alignment.center,
-      child: const Icon(Icons.local_florist_rounded,
-          color: AppColors.primary, size: 40),
+      child: const Icon(
+        Icons.local_florist_rounded,
+        color: AppColors.primary,
+        size: 40,
+      ),
     );
     if (imageUrl == null || imageUrl!.isEmpty) return placeholder;
     return CachedNetworkImage(
@@ -560,8 +575,11 @@ class DiseaseGridCard extends StatelessWidget {
     final placeholder = Container(
       color: AppColors.surfaceLight,
       alignment: Alignment.center,
-      child: const Icon(Icons.coronavirus_rounded,
-          color: AppColors.textMuted, size: 34),
+      child: const Icon(
+        Icons.coronavirus_rounded,
+        color: AppColors.textMuted,
+        size: 34,
+      ),
     );
     return GestureDetector(
       onTap: () =>
@@ -583,8 +601,9 @@ class DiseaseGridCard extends StatelessWidget {
           children: [
             Expanded(
               child: ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
+                ),
                 child: images.isNotEmpty
                     ? CachedNetworkImage(
                         imageUrl: images.first,
@@ -606,8 +625,7 @@ class DiseaseGridCard extends StatelessWidget {
                 children: [
                   Text(
                     disease.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: 3,
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -728,11 +746,16 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.cloud_off_rounded,
-              size: 64, color: AppColors.textMuted),
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 64,
+            color: AppColors.textMuted,
+          ),
           const SizedBox(height: 16),
-          Text("Couldn't load the library",
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            "Couldn't load the library",
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: 160,

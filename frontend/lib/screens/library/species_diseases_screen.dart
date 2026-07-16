@@ -46,9 +46,11 @@ class _SpeciesDiseasesScreenState extends State<SpeciesDiseasesScreen> {
       setState(() {
         _species = species;
         _diseases = all
-            .where((d) =>
-                (d.speciesName ?? '').toLowerCase() ==
-                species.name.toLowerCase())
+            .where(
+              (d) =>
+                  (d.speciesName ?? '').toLowerCase() ==
+                  species.name.toLowerCase(),
+            )
             .toList();
         _isLoading = false;
       });
@@ -76,14 +78,14 @@ class _SpeciesDiseasesScreenState extends State<SpeciesDiseasesScreen> {
       body: _isLoading
           ? _loading()
           : _hasError || s == null
-              ? _error()
-              : _content(s),
+          ? _error()
+          : _content(s),
     );
   }
 
   Widget _loading() {
     return GridView.count(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
       crossAxisCount: 2,
       mainAxisSpacing: 14,
       crossAxisSpacing: 14,
@@ -102,18 +104,20 @@ class _SpeciesDiseasesScreenState extends State<SpeciesDiseasesScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.cloud_off_rounded,
-              size: 64, color: AppColors.textMuted),
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 64,
+            color: AppColors.textMuted,
+          ),
           const SizedBox(height: 16),
-          Text("Couldn't load diseases",
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            "Couldn't load diseases",
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: 160,
-            child: ElevatedButton(
-              onPressed: _load,
-              child: const Text('Retry'),
-            ),
+            child: ElevatedButton(onPressed: _load, child: const Text('Retry')),
           ),
         ],
       ),
@@ -143,8 +147,10 @@ class _SpeciesDiseasesScreenState extends State<SpeciesDiseasesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(s.name,
-                        style: Theme.of(context).textTheme.headlineSmall),
+                    Text(
+                      s.name,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       '$count ${count == 1 ? 'disease' : 'diseases'} catalogued',
@@ -169,7 +175,7 @@ class _SpeciesDiseasesScreenState extends State<SpeciesDiseasesScreen> {
                   ),
                 )
               : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
                   gridDelegate: _grid,
                   itemCount: _diseases.length,
                   itemBuilder: (context, i) =>

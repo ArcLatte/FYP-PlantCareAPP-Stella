@@ -1,8 +1,14 @@
 class AppConstants {
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  // Defaults to the deployed API. Override at build/run time for local
+  // development, for example:
+  // flutter run --dart-define=API_HOST=http://10.0.2.2:8000
+  // Keep API_HOST free of a trailing slash.
+  static const String mediaHost = String.fromEnvironment(
+    'API_HOST',
+    defaultValue: 'https://fyp-plantcareapp-stella-production.up.railway.app',
+  );
 
-  // Root host (no /api) — used for absolute media URLs returned by Django.
-  static const String mediaHost = 'http://10.0.2.2:8000';
+  static const String baseUrl = '$mediaHost/api';
 
   // Auth endpoints
   static const String loginUrl = '$baseUrl/auth/login/';
@@ -41,7 +47,6 @@ class AppConstants {
       'location_timezone_offset_minutes';
   static const String lastLatKey = 'last_lat';
   static const String lastLonKey = 'last_lon';
-
 
   static const String openWeatherApiKey = String.fromEnvironment(
     'OPENWEATHER_KEY',

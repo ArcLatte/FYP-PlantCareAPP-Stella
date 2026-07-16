@@ -100,8 +100,7 @@ class ApiService {
 
   static Future<void> _addTimezoneHeader(Map<String, String> headers) async {
     final prefs = await SharedPreferences.getInstance();
-    headers['X-Timezone-Offset-Minutes'] =
-        '${_timezoneOffsetMinutes(prefs)}';
+    headers['X-Timezone-Offset-Minutes'] = '${_timezoneOffsetMinutes(prefs)}';
   }
 
   /// Authed GET with expired-session handling: a 401 clears the stored
@@ -272,6 +271,8 @@ class ApiService {
     String? notes, {
     String? location,
     int? wateringFreqDays,
+    int? fertilizerFreqDays,
+    int? mistingFreqDays,
     DateTime? lastWatered,
     DateTime? lastFertilized,
     DateTime? lastMisted,
@@ -285,7 +286,9 @@ class ApiService {
         'species': speciesId,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (location != null && location.isNotEmpty) 'location': location,
-        if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
+        'watering_freq_days': ?wateringFreqDays,
+        'fertilizer_freq_days': ?fertilizerFreqDays,
+        'misting_freq_days': ?mistingFreqDays,
         if (lastWatered != null) 'last_watered': lastWatered.toIso8601String(),
         if (lastFertilized != null)
           'last_fertilized': lastFertilized.toIso8601String(),
@@ -650,11 +653,11 @@ class ApiService {
       url,
       headers: headers,
       body: jsonEncode({
-        if (name != null) 'name': name,
-        if (notes != null) 'notes': notes,
-        if (location != null) 'location': location,
-        if (wateringFreqDays != null) 'watering_freq_days': wateringFreqDays,
-        if (speciesId != null) 'species': speciesId,
+        'name': ?name,
+        'notes': ?notes,
+        'location': ?location,
+        'watering_freq_days': ?wateringFreqDays,
+        'species': ?speciesId,
       }),
     );
     if (response.statusCode == 200) {

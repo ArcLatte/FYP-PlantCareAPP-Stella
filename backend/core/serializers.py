@@ -90,7 +90,7 @@ class PlantSerializer(serializers.ModelSerializer):
             'id', 'name', 'species', 'species_name', 'species_detail',
             'date_planted', 'photo', 'notes', 'location',
             'last_watered', 'last_fertilized', 'last_misted',
-            'watering_freq_days',
+            'watering_freq_days', 'fertilizer_freq_days', 'misting_freq_days',
             'needs_water', 'needs_fertilizer', 'needs_misting',
             'days_until_water', 'days_until_fertilizer', 'days_until_misting',
             'latest_health', 'latest_disease', 'created_at',
@@ -107,11 +107,19 @@ class PlantSerializer(serializers.ModelSerializer):
         # If the caller didn't pin a per-plant watering cadence, inherit
         # the species default. Existing Flutter call sites that send an
         # explicit watering_freq_days keep their behavior.
-        if 'watering_freq_days' not in validated_data:
-            species = validated_data.get('species')
-            if species is not None:
+        species = validated_data.get('species')
+        if species is not None:
+            if 'watering_freq_days' not in validated_data:
                 validated_data['watering_freq_days'] = (
                     species.default_watering_freq_days
+                )
+            if 'fertilizer_freq_days' not in validated_data:
+                validated_data['fertilizer_freq_days'] = (
+                    species.default_fertilizer_freq_days
+                )
+            if 'misting_freq_days' not in validated_data:
+                validated_data['misting_freq_days'] = (
+                    species.default_misting_freq_days
                 )
         return super().create(validated_data)
 
@@ -130,7 +138,7 @@ class PlantSerializer(serializers.ModelSerializer):
 
     # ─── Fertilizer countdown ────────────────────────────────
     def _fertilizer_freq(self, obj):
-        return obj.species.default_fertilizer_freq_days
+        return obj.fertilizer_freq_days
 
     def get_needs_fertilizer(self, obj):
         freq = self._fertilizer_freq(obj)
@@ -151,7 +159,7 @@ class PlantSerializer(serializers.ModelSerializer):
 
     # ─── Misting countdown ───────────────────────────────────
     def _misting_freq(self, obj):
-        return obj.species.default_misting_freq_days
+        return obj.misting_freq_days
 
     def get_needs_misting(self, obj):
         freq = self._misting_freq(obj)

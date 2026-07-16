@@ -11,6 +11,7 @@ import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
 import '../../models/weekly_challenge.dart';
 import '../../services/api_service.dart';
+import '../../services/app_refresh_bus.dart';
 import '../../services/weather_controller.dart';
 import '../../services/weather_service.dart';
 import '../../widgets/app_snackbar.dart';
@@ -48,6 +49,7 @@ class _TasksScreenState extends State<TasksScreen> {
     super.initState();
     _weather = _weatherController.weather;
     _weatherController.addListener(_onWeatherChanged);
+    AppRefreshBus.plants.addListener(_onPlantsChanged);
     _weatherController.start();
     _load();
     _loadWeather();
@@ -55,8 +57,13 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   void dispose() {
+    AppRefreshBus.plants.removeListener(_onPlantsChanged);
     _weatherController.removeListener(_onWeatherChanged);
     super.dispose();
+  }
+
+  void _onPlantsChanged() {
+    if (mounted) _load();
   }
 
   void _onWeatherChanged() {
@@ -127,80 +134,101 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final iconCode = _weather?.iconCode ?? _streakSceneIcon(DateTime.now());
     return Scaffold(
       body: _isLoading
           ? const _TasksSkeleton()
-          : RefreshIndicator(
-              onRefresh: _onRefresh,
-              color: AppColors.primary,
-              backgroundColor: AppColors.surface,
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  // Full-bleed plant-growth backdrop (like the home weather
-                  // header — fills the top, sits behind the status bar).
-                  _StreakBackdrop(streak: _streak, weather: _weather),
-                  // Tasks panel sits on top of the backdrop, overlapping upward
-                  // with rounded top corners.
-                  Transform.translate(
-                    offset: const Offset(0, -44),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(28),
-                        ),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Weekly Challenge sits above Today's tasks: it's a
-                          // week-scoped goal, not a today-only task.
-                          if (_weekly != null) ...[
-                            _Entrance(
-                              index: 0,
-                              child: WeeklyChallengeCard(challenge: _weekly!),
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-                          _Entrance(
-                            index: 1,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "Today's tasks",
-                                  style: Theme.of(context).textTheme.titleLarge,
-                                ),
-                                _HistoryButton(onTap: _openHistory),
-                              ],
+          : Stack(
+              children: [
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 620,
+                  child: ColoredBox(
+                    color: WeatherBackdrop.gradientColors(iconCode).first,
+                  ),
+                ),
+                RefreshIndicator(
+                  onRefresh: _onRefresh,
+                  color: AppColors.primary,
+                  backgroundColor: AppColors.surface,
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      // Full-bleed plant-growth backdrop (like the home weather
+                      // header — fills the top, sits behind the status bar).
+                      _StreakBackdrop(streak: _streak, weather: _weather),
+                      // Tasks panel sits on top of the backdrop, overlapping upward
+                      // with rounded top corners.
+                      Transform.translate(
+                        offset: const Offset(0, -44),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(28),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          if (_allCaughtUp)
-                            const _Entrance(index: 2, child: _AllCaughtUp())
-                          else ...[
-                            for (final (i, a) in _visibleActivities.indexed)
-                              if (_dueCount(a) > 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: _Entrance(
-                                    index: 2 + i,
-                                    child: _TaskCard(
-                                      activity: a,
-                                      count: _dueCount(a),
-                                      onTap: () => _openActivity(a),
-                                    ),
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Weekly Challenge sits above Today's tasks: it's a
+                              // week-scoped goal, not a today-only task.
+                              if (_weekly != null) ...[
+                                _Entrance(
+                                  index: 0,
+                                  child: WeeklyChallengeCard(
+                                    challenge: _weekly!,
                                   ),
                                 ),
-                          ],
-                        ],
+                                const SizedBox(height: 20),
+                              ],
+                              _Entrance(
+                                index: 1,
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "Today's tasks",
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleLarge,
+                                    ),
+                                    _HistoryButton(onTap: _openHistory),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              if (_allCaughtUp)
+                                const _Entrance(index: 2, child: _AllCaughtUp())
+                              else ...[
+                                for (final (i, a) in _visibleActivities.indexed)
+                                  if (_dueCount(a) > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      child: _Entrance(
+                                        index: 2 + i,
+                                        child: _TaskCard(
+                                          activity: a,
+                                          count: _dueCount(a),
+                                          onTap: () => _openActivity(a),
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
     );
   }
@@ -359,8 +387,8 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   int? _fromIndex; // stage to cross-fade *from* during a grow-pop
 
   int get _currentIndex => PlantStage.all.indexOf(
-        PlantStage.forStreak(widget.streak?.currentStreak ?? 0),
-      );
+    PlantStage.forStreak(widget.streak?.currentStreak ?? 0),
+  );
 
   @override
   void initState() {
@@ -1107,10 +1135,10 @@ class _DayCell extends StatelessWidget {
 
   // Blue connecting line, shown only between two adjacent cared-for days.
   Widget _bar(bool on) => Expanded(
-        child: on
-            ? Container(height: _barH, color: _kWater)
-            : const SizedBox.shrink(),
-      );
+    child: on
+        ? Container(height: _barH, color: _kWater)
+        : const SizedBox.shrink(),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1126,8 +1154,9 @@ class _DayCell extends StatelessWidget {
             // today stays boldest as the strip's anchor.
             fontWeight: isToday ? FontWeight.w900 : FontWeight.w800,
             letterSpacing: 0.3,
-            shadows:
-                textColor.computeLuminance() > 0.65 ? _kStreakTextShadow : null,
+            shadows: textColor.computeLuminance() > 0.65
+                ? _kStreakTextShadow
+                : null,
           ),
         ),
         const SizedBox(height: 7),
@@ -1158,8 +1187,8 @@ class _DayCell extends StatelessWidget {
                       color: lit
                           ? _kWater
                           : frozen
-                              ? _iceFill
-                              : (isToday ? _kWater : AppColors.cardBorder),
+                          ? _iceFill
+                          : (isToday ? _kWater : AppColors.cardBorder),
                       width: isToday && !lit ? 2 : 0.8,
                     ),
                     // Soft breathing glow inviting today's first care action.
@@ -1180,12 +1209,12 @@ class _DayCell extends StatelessWidget {
                           size: 15,
                         )
                       : frozen
-                          ? const Icon(
-                              Icons.ac_unit_rounded,
-                              color: Colors.white,
-                              size: 14,
-                            )
-                          : null,
+                      ? const Icon(
+                          Icons.ac_unit_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        )
+                      : null,
                 ),
               ),
             ],
@@ -1274,8 +1303,9 @@ class _StageProgress extends StatelessWidget {
     final done = next == null ? 1 : streak;
     final span = next == null ? 1 : next.minDays;
     final frac = (done / span).clamp(0.0, 1.0);
-    final label =
-        next == null ? 'Fully bloomed!' : '$done / $span days to ${next.name}';
+    final label = next == null
+        ? 'Fully bloomed!'
+        : '$done / $span days to ${next.name}';
     final trackColor = lightText
         ? Colors.white.withValues(alpha: 0.22)
         : Colors.black.withValues(alpha: 0.10);
