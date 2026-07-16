@@ -72,7 +72,9 @@ def _request_gmail_access_token():
         return token
 
 
-def _send_with_gmail_api(*, subject, text_content, recipient_email):
+def _send_with_gmail_api(
+    *, subject, text_content, recipient_email, html_content=None
+):
     access_token = _request_gmail_access_token()
     sender_name, default_sender = parseaddr(settings.DEFAULT_FROM_EMAIL)
     sender_email = settings.GMAIL_SENDER_EMAIL or default_sender
@@ -86,6 +88,8 @@ def _send_with_gmail_api(*, subject, text_content, recipient_email):
     )
     message['Subject'] = subject
     message.set_content(text_content)
+    if html_content:
+        message.add_alternative(html_content, subtype='html')
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('ascii')
 
     request = Request(
@@ -114,7 +118,9 @@ def _send_with_gmail_api(*, subject, text_content, recipient_email):
         raise EmailDeliveryError('Could not connect to the Gmail API.') from exc
 
 
-def send_transactional_email(*, subject, text_content, recipient_email):
+def send_transactional_email(
+    *, subject, text_content, recipient_email, html_content=None
+):
     """Send through Gmail API, or use a local non-SMTP Django backend."""
     gmail_settings = (
         settings.GMAIL_CLIENT_ID,
@@ -126,6 +132,7 @@ def send_transactional_email(*, subject, text_content, recipient_email):
             subject=subject,
             text_content=text_content,
             recipient_email=recipient_email,
+            html_content=html_content,
         )
         return
 
@@ -142,4 +149,5 @@ def send_transactional_email(*, subject, text_content, recipient_email):
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[recipient_email],
         fail_silently=False,
+        html_message=html_content,
     )

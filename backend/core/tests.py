@@ -140,6 +140,9 @@ class PasswordResetTests(TestCase):
         reset = PasswordResetCode.objects.get(user=self.user)
         self.assertNotEqual(reset.code_hash, code)
         self.assertEqual(mail.outbox[0].to, [self.user.email])
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        self.assertIn('Verification code', mail.outbox[0].alternatives[0].content)
+        self.assertEqual(mail.outbox[0].alternatives[0].mimetype, 'text/html')
 
     def test_unknown_email_gets_same_response_without_email(self):
         response = self.client.post(
@@ -231,6 +234,7 @@ class GmailApiEmailTests(SimpleTestCase):
             subject='Reset code',
             text_content='Code: 123456',
             recipient_email='user@example.com',
+            html_content='<p><strong>Code:</strong> 123456</p>',
         )
 
         token_request = mocked_urlopen.call_args_list[0].args[0]
@@ -248,6 +252,8 @@ class GmailApiEmailTests(SimpleTestCase):
         self.assertIn('To: user@example.com', decoded_message)
         self.assertIn('Subject: Reset code', decoded_message)
         self.assertIn('Code: 123456', decoded_message)
+        self.assertIn('multipart/alternative', decoded_message)
+        self.assertIn('text/html', decoded_message)
         self.assertEqual(mocked_urlopen.call_args.kwargs['timeout'], 7)
 
 

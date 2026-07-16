@@ -11,6 +11,7 @@ from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
+from django.template.loader import render_to_string
 from django.utils import timezone
 from datetime import datetime, time, timedelta, timezone as datetime_timezone
 from .models import (
@@ -216,6 +217,11 @@ def request_password_reset(request):
         )
 
     try:
+        email_context = {
+            'username': user.username,
+            'code': code,
+            'expiry_minutes': settings.PASSWORD_RESET_CODE_MINUTES,
+        }
         send_transactional_email(
             subject='Your Stella password reset code',
             text_content=(
@@ -226,6 +232,10 @@ def request_password_reset(request):
                 'email.\n\nStella Plant Care'
             ),
             recipient_email=user.email,
+            html_content=render_to_string(
+                'email/password_reset.html',
+                email_context,
+            ),
         )
     except Exception:
         reset.delete()
