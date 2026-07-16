@@ -9,7 +9,6 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import transaction
 from django.utils import timezone
@@ -31,6 +30,7 @@ import logging
 import secrets
 
 from .scanning_pipeline import default_scanning_pipeline, ScanStatus
+from .email_service import send_transactional_email
 
 
 logger = logging.getLogger(__name__)
@@ -216,18 +216,16 @@ def request_password_reset(request):
         )
 
     try:
-        send_mail(
+        send_transactional_email(
             subject='Your Stella password reset code',
-            message=(
+            text_content=(
                 f'Hello {user.username},\n\n'
                 f'Your Stella password reset code is: {code}\n\n'
                 f'This code expires in {settings.PASSWORD_RESET_CODE_MINUTES} '
                 'minutes. If you did not request this, you can ignore this '
                 'email.\n\nStella Plant Care'
             ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
+            recipient_email=user.email,
         )
     except Exception:
         reset.delete()

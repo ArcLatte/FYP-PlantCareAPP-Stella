@@ -75,8 +75,9 @@ Web service → **Variables**:
 | `DEBUG`       | `False`                                  |
 | `MEDIA_ROOT`  | `/data/media`                            |
 | `DATABASE_URL`| `${{ Postgres.DATABASE_URL }}` (step 2)  |
-| `EMAIL_HOST_USER` | Dedicated Stella Gmail address      |
-| `EMAIL_HOST_PASSWORD` | Google 16-character App Password (not the normal account password) |
+| `BREVO_API_KEY` | Brevo API key beginning with `xkeysib-` |
+| `BREVO_SENDER_EMAIL` | Sender address verified in Brevo |
+| `BREVO_SENDER_NAME` | `Stella Plant Care` |
 | `DEFAULT_FROM_EMAIL` | `Stella Plant Care <your-address@gmail.com>` |
 
 A freshly generated key you can use:
@@ -89,11 +90,15 @@ SECRET_KEY = o7xmj#d(&nbg86j%)5+8h&-)nqfsmrgc#g(43f5jt=a!*a#6*!
 
 ---
 
-For password-reset email, enable 2-Step Verification on the dedicated Google
-account, create an App Password, and paste that App Password into
-`EMAIL_HOST_PASSWORD`. Gmail's host, TLS, and port already default to
-`smtp.gmail.com`, `True`, and `587`; they can be overridden with `EMAIL_HOST`,
-`EMAIL_USE_TLS`, and `EMAIL_PORT` if the provider changes later.
+For password-reset email, create a Brevo API key under **SMTP & API -> API
+Keys** and verify the address used by `BREVO_SENDER_EMAIL` under **Senders,
+Domains & Dedicated IPs -> Senders**. This integration uses Brevo's HTTPS API,
+not its SMTP relay, so it works on Railway plans that block outbound SMTP.
+
+The same integration works locally: add `BREVO_API_KEY`,
+`BREVO_SENDER_EMAIL`, and `DEFAULT_FROM_EMAIL` to `backend/.env` to send real
+email. If `BREVO_API_KEY` is absent while `DEBUG=True`, reset messages are
+printed in the development terminal instead.
 
 ---
 

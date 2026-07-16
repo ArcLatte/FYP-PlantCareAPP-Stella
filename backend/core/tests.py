@@ -1,10 +1,12 @@
 from io import BytesIO
 from datetime import date, datetime, timezone as datetime_timezone
+import json
 import re
 import tempfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from django.conf import settings
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -103,6 +105,7 @@ class NoteImageTests(TestCase):
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    BREVO_API_KEY='',
     PASSWORD_RESET_CODE_MINUTES=10,
     PASSWORD_RESET_MAX_ATTEMPTS=5,
     PASSWORD_RESET_RESEND_SECONDS=60,
@@ -191,6 +194,36 @@ class PasswordResetTests(TestCase):
             format='json',
         )
         self.assertEqual(response.status_code, 400)
+
+
+@override_settings(
+    BREVO_API_KEY='test-api-key',
+    BREVO_API_URL='https://api.brevo.test/v3/smtp/email',
+    BREVO_SENDER_EMAIL='verified@example.com',
+    BREVO_SENDER_NAME='Stella Plant Care',
+    BREVO_TIMEOUT_SECONDS=7,
+    DEFAULT_FROM_EMAIL='Stella Plant Care <verified@example.com>',
+)
+class BrevoEmailTests(SimpleTestCase):
+    @patch('core.email_service.urlopen')
+    def test_sends_transactional_email_over_https(self, mocked_urlopen):
+        response = Mock(status=201)
+        mocked_urlopen.return_value.__enter__.return_value = response
+
+        from .email_service import send_transactional_email
+        send_transactional_email(
+            subject='Reset code',
+            text_content='Code: 123456',
+            recipient_email='user@example.com',
+        )
+
+        request = mocked_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode('utf-8'))
+        self.assertEqual(request.full_url, settings.BREVO_API_URL)
+        self.assertEqual(request.get_header('Api-key'), 'test-api-key')
+        self.assertEqual(payload['sender']['email'], 'verified@example.com')
+        self.assertEqual(payload['to'], [{'email': 'user@example.com'}])
+        self.assertEqual(mocked_urlopen.call_args.kwargs['timeout'], 7)
 
 
 class PlantCareIntervalTests(TestCase):

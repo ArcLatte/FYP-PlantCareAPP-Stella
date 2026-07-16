@@ -148,9 +148,9 @@ STORAGES = {
 # User model
 AUTH_USER_MODEL = 'core.CustomUser'
 
-# Transactional email. Production uses Gmail SMTP; local development defaults
-# to printing messages in the terminal. Never commit EMAIL_HOST_PASSWORD -- it
-# must be a Google App Password supplied through Railway/local environment.
+# Transactional email. Railway uses Brevo's HTTPS API because outbound SMTP is
+# unavailable on Railway's lower-tier plans. With no BREVO_API_KEY, local
+# development falls back to Django's console backend and prints the message.
 EMAIL_BACKEND = os.getenv(
     'EMAIL_BACKEND',
     (
@@ -168,6 +168,14 @@ DEFAULT_FROM_EMAIL = os.getenv(
     'DEFAULT_FROM_EMAIL',
     EMAIL_HOST_USER or 'Stella Plant Care <no-reply@stella.local>',
 )
+BREVO_API_KEY = os.getenv('BREVO_API_KEY', '')
+BREVO_API_URL = os.getenv(
+    'BREVO_API_URL',
+    'https://api.brevo.com/v3/smtp/email',
+)
+BREVO_SENDER_EMAIL = os.getenv('BREVO_SENDER_EMAIL', '')
+BREVO_SENDER_NAME = os.getenv('BREVO_SENDER_NAME', 'Stella Plant Care')
+BREVO_TIMEOUT_SECONDS = float(os.getenv('BREVO_TIMEOUT_SECONDS', '10'))
 PASSWORD_RESET_CODE_MINUTES = int(
     os.getenv('PASSWORD_RESET_CODE_MINUTES', '10')
 )
