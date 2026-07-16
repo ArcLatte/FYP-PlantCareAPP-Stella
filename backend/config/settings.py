@@ -148,6 +148,34 @@ STORAGES = {
 # User model
 AUTH_USER_MODEL = 'core.CustomUser'
 
+# Transactional email. Production uses Gmail SMTP; local development defaults
+# to printing messages in the terminal. Never commit EMAIL_HOST_PASSWORD -- it
+# must be a Google App Password supplied through Railway/local environment.
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    (
+        'django.core.mail.backends.console.EmailBackend'
+        if DEBUG
+        else 'django.core.mail.backends.smtp.EmailBackend'
+    ),
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv(
+    'DEFAULT_FROM_EMAIL',
+    EMAIL_HOST_USER or 'Stella Plant Care <no-reply@stella.local>',
+)
+PASSWORD_RESET_CODE_MINUTES = int(
+    os.getenv('PASSWORD_RESET_CODE_MINUTES', '10')
+)
+PASSWORD_RESET_MAX_ATTEMPTS = int(os.getenv('PASSWORD_RESET_MAX_ATTEMPTS', '5'))
+PASSWORD_RESET_RESEND_SECONDS = int(
+    os.getenv('PASSWORD_RESET_RESEND_SECONDS', '60')
+)
+
 # Media files (uploaded scan images). On Railway this points at a mounted
 # volume so uploads survive redeploys; locally it defaults to the repo dir.
 MEDIA_URL = '/media/'

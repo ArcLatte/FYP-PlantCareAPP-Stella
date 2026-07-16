@@ -12,7 +12,7 @@ class StellaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Stella',
+      title: 'Stella Plant Care',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       scrollBehavior: const AppScrollBehavior(),

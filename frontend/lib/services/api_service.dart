@@ -166,6 +166,40 @@ class ApiService {
     );
   }
 
+  static Future<void> requestPasswordReset(String email) async {
+    final response = await http.post(
+      Uri.parse(AppConstants.passwordResetRequestUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    if (response.statusCode != 200) {
+      throw AppException(
+        _errorMessageFromResponse(response, 'Could not send reset code'),
+      );
+    }
+  }
+
+  static Future<void> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse(AppConstants.passwordResetConfirmUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'code': code,
+        'new_password': newPassword,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw AppException(
+        _errorMessageFromResponse(response, 'Could not reset password'),
+      );
+    }
+  }
+
   static Future<void> logout() async {
     final headers = await _authHeaders();
     await http.post(Uri.parse(AppConstants.logoutUrl), headers: headers);
@@ -322,18 +356,22 @@ class ApiService {
     int id,
     String text, {
     String? title,
-    File? photo,
+    List<File> photos = const [],
   }) async {
     final url = Uri.parse('${AppConstants.plantsUrl}$id/note/');
     final http.Response response;
-    if (photo != null) {
+    if (photos.isNotEmpty) {
       final token = await _getToken();
       final request = http.MultipartRequest('POST', url);
       request.headers['Authorization'] = 'Token $token';
       await _addTimezoneHeader(request.headers);
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
-      request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
+      for (final photo in photos) {
+        request.files.add(
+          await http.MultipartFile.fromPath('photos', photo.path),
+        );
+      }
       response = await http.Response.fromStream(await request.send());
     } else {
       response = await http.post(
@@ -353,26 +391,32 @@ class ApiService {
     );
   }
 
-  /// Edit an existing journal note: updates its text and, optionally, the
-  /// photo. Pass [photo] to replace it, or [removePhoto] to clear it.
+  /// Edit an existing journal note, appending and removing selected images.
   static Future<ActivityEvent> updatePlantNote(
     int plantId,
     int logId,
     String text, {
     String? title,
-    File? photo,
-    bool removePhoto = false,
+    List<File> photos = const [],
+    Set<int> removeImageIds = const {},
+    bool removeLegacyPhoto = false,
   }) async {
     final url = Uri.parse('${AppConstants.plantsUrl}$plantId/note/$logId/');
     final http.Response response;
-    if (photo != null) {
+    if (photos.isNotEmpty) {
       final token = await _getToken();
       final request = http.MultipartRequest('PUT', url);
       request.headers['Authorization'] = 'Token $token';
       await _addTimezoneHeader(request.headers);
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
-      request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
+      request.fields['remove_image_ids'] = jsonEncode(removeImageIds.toList());
+      if (removeLegacyPhoto) request.fields['remove_photo'] = 'true';
+      for (final photo in photos) {
+        request.files.add(
+          await http.MultipartFile.fromPath('photos', photo.path),
+        );
+      }
       response = await http.Response.fromStream(await request.send());
     } else {
       response = await http.put(
@@ -381,7 +425,8 @@ class ApiService {
         body: jsonEncode({
           'note': text,
           'title': title ?? '',
-          if (removePhoto) 'remove_photo': true,
+          'remove_image_ids': removeImageIds.toList(),
+          if (removeLegacyPhoto) 'remove_photo': true,
         }),
       );
     }

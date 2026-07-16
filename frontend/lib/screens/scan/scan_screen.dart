@@ -27,6 +27,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   bool _isLoadingPlants = true;
 
   bool _isSubmitting = false;
+  File? _capturedImage;
   String? _errorMessage;
 
   final ImagePicker _picker = ImagePicker();
@@ -73,8 +74,11 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       );
       final controller = CameraController(
         back,
-        ResolutionPreset.high,
+        // Both classifiers consume 224x224 tensors. Medium keeps ample detail
+        // while making capture and mobile upload noticeably faster.
+        ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
       await controller.initialize();
       if (!mounted) {
@@ -128,7 +132,10 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     });
     try {
       final xfile = await controller.takePicture();
-      await _submit(File(xfile.path));
+      final file = File(xfile.path);
+      if (!mounted) return;
+      setState(() => _capturedImage = file);
+      await _submit(file);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -137,6 +144,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             fallback: 'Could not take the picture. Please try again.',
           );
           _isSubmitting = false;
+          _capturedImage = null;
         });
       }
     }
@@ -158,9 +166,10 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       if (picked == null) return;
       setState(() {
         _isSubmitting = true;
+        _capturedImage = File(picked.path);
         _errorMessage = null;
       });
-      await _submit(File(picked.path));
+      await _submit(_capturedImage!);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -169,6 +178,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             fallback: 'Could not open that image. Please choose another one.',
           );
           _isSubmitting = false;
+          _capturedImage = null;
         });
       }
     }
@@ -186,6 +196,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             fallback: 'Could not scan this image. Please try again.',
           );
           _isSubmitting = false;
+          _capturedImage = null;
         });
       }
     }
@@ -202,6 +213,12 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             // Camera preview fills the screen
             Positioned.fill(child: _buildPreview()),
 
+            // Framing guide is UI-only; it is not part of the saved photo.
+            if (!_isSubmitting &&
+                _camera?.value.isInitialized == true &&
+                _cameraError == null)
+              Positioned.fill(child: _buildScanGuide()),
+
             // Top: back button + plant selector
             Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
 
@@ -216,6 +233,10 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                 right: 16,
                 child: _buildErrorBanner(),
               ),
+
+            // A modal analysis state also blocks every camera control. The
+            // captured frame remains visible and motionless underneath it.
+            if (_isSubmitting) Positioned.fill(child: _buildAnalysisOverlay()),
           ],
         ),
       ),
@@ -223,6 +244,14 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildPreview() {
+    final capturedImage = _capturedImage;
+    if (capturedImage != null) {
+      return Image.file(
+        capturedImage,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    }
     if (_cameraError != null) {
       return Center(
         child: Padding(
@@ -294,6 +323,57 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
           const SizedBox(width: 12),
           Expanded(child: _buildPlantSelector()),
         ],
+      ),
+    );
+  }
+
+  Widget _buildScanGuide() {
+    return IgnorePointer(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(28, 112, 28, 142),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.48),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.center_focus_strong_rounded,
+                    color: Colors.white,
+                    size: 17,
+                  ),
+                  SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      'Place one leaf inside the frame',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: 0.86,
+                  child: CustomPaint(painter: _ScanFramePainter()),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -447,6 +527,52 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildAnalysisOverlay() {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.38),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Analyzing your photo',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Checking image quality and plant health. This may take a few seconds.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showPlantPickerSheet() {
     showModalBottomSheet(
       context: context,
@@ -542,4 +668,44 @@ class _CircleButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ScanFramePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Rect.fromLTWH(1, 1, size.width - 2, size.height - 2);
+    final guidePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.38)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bounds, const Radius.circular(24)),
+      guidePaint,
+    );
+
+    const cornerLength = 34.0;
+    const inset = 1.0;
+    final cornerPaint = Paint()
+      ..color = AppColors.primary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    final path = Path()
+      ..moveTo(inset, cornerLength)
+      ..lineTo(inset, inset)
+      ..lineTo(cornerLength, inset)
+      ..moveTo(size.width - cornerLength, inset)
+      ..lineTo(size.width - inset, inset)
+      ..lineTo(size.width - inset, cornerLength)
+      ..moveTo(size.width - inset, size.height - cornerLength)
+      ..lineTo(size.width - inset, size.height - inset)
+      ..lineTo(size.width - cornerLength, size.height - inset)
+      ..moveTo(cornerLength, size.height - inset)
+      ..lineTo(inset, size.height - inset)
+      ..lineTo(inset, size.height - cornerLength);
+    canvas.drawPath(path, cornerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanFramePainter oldDelegate) => false;
 }

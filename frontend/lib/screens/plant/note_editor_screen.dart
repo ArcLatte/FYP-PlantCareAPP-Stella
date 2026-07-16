@@ -2,11 +2,12 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/theme.dart';
 import '../../models/activity.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
-import '../../widgets/photo_picker_sheet.dart';
 
 /// What the [NoteEditorScreen] hands back to the journal list: the saved note
 /// (created or updated), or a flag that it was deleted. Null pop = no change.
@@ -14,9 +15,7 @@ class NoteEditResult {
   final ActivityEvent? saved;
   final bool deleted;
   const NoteEditResult.saved(this.saved) : deleted = false;
-  const NoteEditResult.deleted()
-      : saved = null,
-        deleted = true;
+  const NoteEditResult.deleted() : saved = null, deleted = true;
 }
 
 /// A full-page note editor styled like a plain notes app. Tapping a note opens
@@ -39,7 +38,8 @@ class NoteEditorScreen extends StatefulWidget {
   bool get isEditing => existing != null;
   String? get initialTitle => existing?.noteTitle;
   String? get initialText => existing?.note;
-  String? get existingPhotoUrl => existing?.notePhotoUrl;
+  List<NoteImageAttachment> get existingImages =>
+      existing?.noteImages ?? const [];
 
   @override
   State<NoteEditorScreen> createState() => _NoteEditorScreenState();
@@ -49,14 +49,15 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   late final TextEditingController _titleCtrl = TextEditingController(
     text: widget.initialTitle ?? '',
   );
-  late final TextEditingController _bodyCtrl = TextEditingController(
+  late final _MarkdownEditingController _bodyCtrl = _MarkdownEditingController(
     text: widget.initialText ?? '',
   );
   final FocusNode _bodyFocus = FocusNode();
   late String _previousBody = widget.initialText ?? '';
 
-  File? _newPhoto;
-  bool _removeExisting = false;
+  final List<File> _newPhotos = [];
+  final Set<int> _removedImageIds = {};
+  bool _removeLegacyPhoto = false;
   bool _busy = false;
 
   @override
@@ -67,26 +68,151 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     super.dispose();
   }
 
+  List<NoteImageAttachment> get _visibleExistingImages => widget.existingImages
+      .where(
+        (image) => image.legacy
+            ? !_removeLegacyPhoto
+            : !_removedImageIds.contains(image.id),
+      )
+      .toList();
+
   bool get _hasPhoto =>
-      _newPhoto != null ||
-      (widget.existingPhotoUrl != null && !_removeExisting);
+      _newPhotos.isNotEmpty || _visibleExistingImages.isNotEmpty;
 
   bool _isDirty() {
     final titleChanged =
         _titleCtrl.text.trim() != (widget.initialTitle ?? '').trim();
     final bodyChanged =
         _bodyCtrl.text.trimRight() != (widget.initialText ?? '').trimRight();
-    final photoChanged = _newPhoto != null || _removeExisting;
+    final photoChanged =
+        _newPhotos.isNotEmpty ||
+        _removedImageIds.isNotEmpty ||
+        _removeLegacyPhoto;
     return titleChanged || bodyChanged || photoChanged;
   }
 
   Future<void> _pickPhoto() async {
-    final res = await showPhotoPickerSheet(context);
-    if (res?.file != null) {
-      setState(() {
-        _newPhoto = res!.file;
-        _removeExisting = false;
-      });
+    final source = await showModalBottomSheet<_NotePhotoSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(
+                  Icons.photo_camera_outlined,
+                  color: AppColors.primary,
+                ),
+                title: const Text('Take photo'),
+                subtitle: const Text('Take and crop one photo'),
+                onTap: () =>
+                    Navigator.pop(sheetContext, _NotePhotoSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.photo_library_outlined,
+                  color: AppColors.primary,
+                ),
+                title: const Text('Choose photos'),
+                subtitle: const Text('Select and crop multiple photos'),
+                onTap: () =>
+                    Navigator.pop(sheetContext, _NotePhotoSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final available = 6 - _visibleExistingImages.length - _newPhotos.length;
+    if (available <= 0) {
+      AppSnackBar.error(context, 'A note can contain up to 6 photos.');
+      return;
+    }
+
+    try {
+      final picker = ImagePicker();
+      final List<XFile> selected;
+      if (source == _NotePhotoSource.camera) {
+        final photo = await picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 90,
+          maxWidth: 1800,
+        );
+        selected = photo == null ? [] : [photo];
+      } else {
+        selected = await picker.pickMultiImage(
+          imageQuality: 90,
+          maxWidth: 1800,
+        );
+      }
+      if (!mounted || selected.isEmpty) return;
+      if (selected.length > available) {
+        AppSnackBar.error(
+          context,
+          'Only $available more photo${available == 1 ? '' : 's'} can be added.',
+        );
+      }
+      for (final selectedPhoto in selected.take(available)) {
+        final cropped = await ImageCropper().cropImage(
+          sourcePath: selectedPhoto.path,
+          maxWidth: 1600,
+          maxHeight: 1600,
+          compressFormat: ImageCompressFormat.jpg,
+          compressQuality: 88,
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Crop note photo',
+              toolbarColor: AppColors.primary,
+              toolbarWidgetColor: Colors.white,
+              activeControlsWidgetColor: AppColors.primary,
+              lockAspectRatio: false,
+              aspectRatioPresets: const [
+                CropAspectRatioPreset.original,
+                CropAspectRatioPreset.square,
+                CropAspectRatioPreset.ratio4x3,
+                CropAspectRatioPreset.ratio16x9,
+              ],
+            ),
+            IOSUiSettings(
+              title: 'Crop note photo',
+              aspectRatioPresets: const [
+                CropAspectRatioPreset.original,
+                CropAspectRatioPreset.square,
+                CropAspectRatioPreset.ratio4x3,
+                CropAspectRatioPreset.ratio16x9,
+              ],
+            ),
+          ],
+        );
+        if (cropped != null && mounted) {
+          setState(() => _newPhotos.add(File(cropped.path)));
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        AppSnackBar.error(
+          context,
+          error,
+          fallback: 'Could not add those photos. Please try again.',
+        );
+      }
     }
   }
 
@@ -108,15 +234,16 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           widget.existing!.careLogId!,
           text,
           title: title,
-          photo: _newPhoto,
-          removePhoto: _removeExisting && _newPhoto == null,
+          photos: _newPhotos,
+          removeImageIds: _removedImageIds,
+          removeLegacyPhoto: _removeLegacyPhoto,
         );
       } else {
         event = await ApiService.addPlantNote(
           widget.plantId,
           text,
           title: title,
-          photo: _newPhoto,
+          photos: _newPhotos,
         );
       }
       if (!mounted) return null;
@@ -275,6 +402,57 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     _bodyFocus.requestFocus();
   }
 
+  void _toggleInlineFormat(String marker) {
+    final text = _bodyCtrl.text;
+    var selection = _bodyCtrl.selection;
+    if (!selection.isValid) {
+      selection = TextSelection.collapsed(offset: text.length);
+    }
+    final start = selection.start;
+    final end = selection.end;
+    final markerLength = marker.length;
+    final isWrapped =
+        start >= markerLength &&
+        end + markerLength <= text.length &&
+        text.substring(start - markerLength, start) == marker &&
+        text.substring(end, end + markerLength) == marker;
+
+    if (isWrapped) {
+      final next =
+          text.substring(0, start - markerLength) +
+          text.substring(start, end) +
+          text.substring(end + markerLength);
+      _bodyCtrl.value = TextEditingValue(
+        text: next,
+        selection: TextSelection(
+          baseOffset: start - markerLength,
+          extentOffset: end - markerLength,
+        ),
+      );
+      _previousBody = next;
+    } else {
+      final selected = text.substring(start, end);
+      final next =
+          text.substring(0, start) +
+          marker +
+          selected +
+          marker +
+          text.substring(end);
+      final innerStart = start + markerLength;
+      _bodyCtrl.value = TextEditingValue(
+        text: next,
+        selection: selected.isEmpty
+            ? TextSelection.collapsed(offset: innerStart)
+            : TextSelection(
+                baseOffset: innerStart,
+                extentOffset: innerStart + selected.length,
+              ),
+      );
+      _previousBody = next;
+    }
+    _bodyFocus.requestFocus();
+  }
+
   /// Live bullet handling: continue the list on Enter, end it on an empty
   /// bullet, and convert a freshly typed "- " / "* " into "• " immediately.
   void _onBodyChanged(String value) {
@@ -302,8 +480,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
             return;
           }
         } else if (ch == ' ') {
-          final from =
-              cursor - 2 < 0 ? -1 : value.lastIndexOf('\n', cursor - 2);
+          final from = cursor - 2 < 0
+              ? -1
+              : value.lastIndexOf('\n', cursor - 2);
           final lineStart = from + 1;
           final segment = value.substring(lineStart, cursor);
           if (segment == '- ' || segment == '* ') {
@@ -365,6 +544,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -388,16 +570,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                         ),
                       ),
                     ),
-                    if (_hasPhoto) ...[
-                      const SizedBox(height: 14),
-                      _buildInlinePhoto(),
-                    ],
                     const SizedBox(height: 10),
                     TextField(
                       controller: _bodyCtrl,
                       focusNode: _bodyFocus,
                       onChanged: _onBodyChanged,
-                      minLines: 10,
+                      minLines: 5,
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
                       textCapitalization: TextCapitalization.sentences,
@@ -415,6 +593,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                         ),
                       ),
                     ),
+                    if (_hasPhoto) ...[
+                      const SizedBox(height: 18),
+                      _buildInlinePhotos(),
+                    ],
                   ],
                 ),
               ),
@@ -441,48 +623,91 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     );
   }
 
-  Widget _buildInlinePhoto() {
-    final showNew = _newPhoto != null;
-    return Stack(
+  Widget _buildInlinePhotos() {
+    final existing = _visibleExistingImages;
+    final itemCount = existing.length + _newPhotos.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: showNew
-              ? Image.file(
-                  _newPhoto!,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                )
-              : CachedNetworkImage(
-                  imageUrl: widget.existingPhotoUrl!,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-        ),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: GestureDetector(
-            onTap: () => setState(() {
-              if (showNew) {
-                _newPhoto = null;
-              } else {
-                _removeExisting = true;
-              }
-            }),
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: Colors.black54,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.close_rounded,
-                color: Colors.white,
-                size: 18,
+        Row(
+          children: [
+            const Icon(
+              Icons.photo_library_outlined,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              '$itemCount photo${itemCount == 1 ? '' : 's'}',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1,
           ),
+          itemCount: itemCount,
+          itemBuilder: (context, index) {
+            final isExisting = index < existing.length;
+            final existingImage = isExisting ? existing[index] : null;
+            final newIndex = index - existing.length;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: isExisting
+                      ? CachedNetworkImage(
+                          imageUrl: existingImage!.url,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 700,
+                        )
+                      : Image.file(_newPhotos[newIndex], fit: BoxFit.cover),
+                ),
+                Positioned(
+                  top: 7,
+                  right: 7,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => setState(() {
+                        if (isExisting) {
+                          if (existingImage!.legacy) {
+                            _removeLegacyPhoto = true;
+                          } else if (existingImage.id != null) {
+                            _removedImageIds.add(existingImage.id!);
+                          }
+                        } else {
+                          _newPhotos.removeAt(newIndex);
+                        }
+                      }),
+                      child: const Padding(
+                        padding: EdgeInsets.all(7),
+                        child: Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -506,10 +731,76 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               label: 'Bullet',
               onTap: _insertBullet,
             ),
+            _ToolButton(
+              icon: Icons.format_bold_rounded,
+              label: 'Bold',
+              onTap: () => _toggleInlineFormat('**'),
+            ),
+            _ToolButton(
+              icon: Icons.format_italic_rounded,
+              label: 'Italic',
+              onTap: () => _toggleInlineFormat('_'),
+            ),
           ],
         ),
       ),
     );
+  }
+}
+
+enum _NotePhotoSource { camera, gallery }
+
+class _MarkdownEditingController extends TextEditingController {
+  _MarkdownEditingController({super.text});
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    if (withComposing &&
+        value.composing.isValid &&
+        !value.composing.isCollapsed) {
+      return super.buildTextSpan(
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
+    }
+    final spans = <InlineSpan>[];
+    final expression = RegExp(r'(\*\*[^\n]+?\*\*|_[^\n]+?_)');
+    var offset = 0;
+    for (final match in expression.allMatches(text)) {
+      if (match.start > offset) {
+        spans.add(TextSpan(text: text.substring(offset, match.start)));
+      }
+      final value = match.group(0)!;
+      final isBold = value.startsWith('**');
+      final markerLength = isBold ? 2 : 1;
+      final marker = value.substring(0, markerLength);
+      final content = value.substring(
+        markerLength,
+        value.length - markerLength,
+      );
+      final markerStyle = TextStyle(
+        color: AppColors.textMuted.withValues(alpha: 0.6),
+        fontSize: 12,
+      );
+      spans.add(TextSpan(text: marker, style: markerStyle));
+      spans.add(
+        TextSpan(
+          text: content,
+          style: isBold
+              ? const TextStyle(fontWeight: FontWeight.w800)
+              : const TextStyle(fontStyle: FontStyle.italic),
+        ),
+      );
+      spans.add(TextSpan(text: marker, style: markerStyle));
+      offset = match.end;
+    }
+    if (offset < text.length) spans.add(TextSpan(text: text.substring(offset)));
+    return TextSpan(style: style, children: spans);
   }
 }
 
@@ -531,7 +822,7 @@ class _ToolButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

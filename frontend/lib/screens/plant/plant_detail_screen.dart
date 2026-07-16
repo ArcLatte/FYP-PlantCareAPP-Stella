@@ -315,8 +315,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       );
     }
 
-    final careText =
-        disease.treatment.isNotEmpty ? disease.treatment : disease.careTips;
+    final careText = disease.treatment.isNotEmpty
+        ? disease.treatment
+        : disease.careTips;
     const accent = AppColors.amber;
 
     return Container(
@@ -665,69 +666,68 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       body: _isLoading
           ? const _PlantDetailSkeleton()
           : plant == null
-              ? const Center(
-                  child: Text(
-                    'Plant not found',
-                    style: TextStyle(color: AppColors.textSecondary),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  color: AppColors.primary,
-                  backgroundColor: AppColors.surface,
-                  // NestedScrollView reports its body's overscroll at depth 2;
-                  // listening there makes the spinner appear at the very top of
-                  // the page (over the hero) instead of inside a tab.
-                  notificationPredicate: (n) => n.depth == 2,
-                  child: NestedScrollView(
-                    // Clamping (no rubber-band bounce) so the page feels solid.
-                    physics: const ClampingScrollPhysics(),
-                    headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                      // Hero + care details scroll away with the page.
-                      SliverToBoxAdapter(
-                        child: Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: _PlantHero(plant: plant),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: _buildCareCard(context, plant),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Tab pills pin to the top once scrolled up to.
-                      SliverOverlapAbsorber(
-                        handle: NestedScrollView.sliverOverlapAbsorberHandleFor(
-                          context,
-                        ),
-                        sliver: SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _TabBarDelegate(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 12, 16, 10),
-                              child: _TabPills(
-                                controller: _tabController,
-                                diseased: _isDiseased,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    body: TabBarView(
-                      controller: _tabController,
+          ? const Center(
+              child: Text(
+                'Plant not found',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              color: AppColors.primary,
+              backgroundColor: AppColors.surface,
+              // NestedScrollView reports its body's overscroll at depth 2;
+              // listening there makes the spinner appear at the very top of
+              // the page (over the hero) instead of inside a tab.
+              notificationPredicate: (n) => n.depth == 2,
+              child: NestedScrollView(
+                // Clamping (no rubber-band bounce) so the page feels solid.
+                physics: const ClampingScrollPhysics(),
+                headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                  // Hero + care details scroll away with the page.
+                  SliverToBoxAdapter(
+                    child: Column(
                       children: [
-                        _buildHealthCareTab(context, plant),
-                        _buildNotesTab(context),
-                        _buildHistoryTab(context),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: _PlantHero(plant: plant),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: _buildCareCard(context, plant),
+                        ),
                       ],
                     ),
                   ),
+                  // Tab pills pin to the top once scrolled up to.
+                  SliverOverlapAbsorber(
+                    handle: NestedScrollView.sliverOverlapAbsorberHandleFor(
+                      context,
+                    ),
+                    sliver: SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _TabBarDelegate(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                          child: _TabPills(
+                            controller: _tabController,
+                            diseased: _isDiseased,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                body: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildHealthCareTab(context, plant),
+                    _buildNotesTab(context),
+                    _buildHistoryTab(context),
+                  ],
                 ),
+              ),
+            ),
       bottomNavigationBar: plant == null
           ? null
           : SafeArea(
@@ -811,8 +811,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
     if (dh != null) {
       progress = (ageDays / dh).clamp(0.0, 1.0);
       final remaining = dh - ageDays;
-      caption =
-          remaining <= 0 ? 'Ready to harvest' : '~${remaining}d to harvest';
+      caption = remaining <= 0
+          ? 'Ready to harvest'
+          : '~${remaining}d to harvest';
     } else {
       final next = PlantStage.next(stage);
       if (next == null) {
@@ -1636,8 +1637,9 @@ class _CareRow extends StatelessWidget {
                     TextSpan(
                       text: next,
                       style: TextStyle(
-                        color:
-                            overdue ? AppColors.amber : AppColors.textPrimary,
+                        color: overdue
+                            ? AppColors.amber
+                            : AppColors.textPrimary,
                         fontSize: 13,
                         fontWeight: overdue ? FontWeight.w700 : FontWeight.w600,
                       ),
@@ -1716,8 +1718,9 @@ class _CareSheetRow extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color:
-                          overdue ? AppColors.amber : AppColors.textSecondary,
+                      color: overdue
+                          ? AppColors.amber
+                          : AppColors.textSecondary,
                       fontSize: 13,
                       fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
                     ),
@@ -1825,6 +1828,11 @@ class _NoteCard extends StatelessWidget {
   final VoidCallback? onTap;
   const _NoteCard({required this.note, this.onTap});
 
+  static String _plainMarkdown(String value) => value
+      .replaceAll('**', '')
+      .replaceAllMapped(RegExp(r'_([^_]+)_'), (match) => match.group(1)!)
+      .trim();
+
   static String _timeLabel(DateTime d) {
     final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
     final m = d.minute.toString().padLeft(2, '0');
@@ -1843,13 +1851,13 @@ class _NoteCard extends StatelessWidget {
     String title;
     String preview;
     if (rawTitle.isNotEmpty) {
-      title = rawTitle;
-      preview = _stripBullet(body.replaceAll('\n', ' '));
+      title = _plainMarkdown(rawTitle);
+      preview = _plainMarkdown(_stripBullet(body.replaceAll('\n', ' ')));
     } else if (body.isNotEmpty) {
       final lines = body.split('\n');
       final idx = lines.indexWhere((l) => l.trim().isNotEmpty);
-      title = _stripBullet(lines[idx]);
-      preview = _stripBullet(lines.skip(idx + 1).join(' '));
+      title = _plainMarkdown(_stripBullet(lines[idx]));
+      preview = _plainMarkdown(_stripBullet(lines.skip(idx + 1).join(' ')));
     } else {
       title = 'Photo';
       preview = '';
@@ -1874,20 +1882,60 @@ class _NoteCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (note.notePhotoUrl != null)
+            if (note.noteImages.isNotEmpty)
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(16),
                 ),
-                child: CachedNetworkImage(
-                  imageUrl: note.notePhotoUrl!,
-                  width: double.infinity,
+                child: SizedBox(
                   height: 150,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 900,
-                  placeholder: (_, _) =>
-                      const SkeletonBox(height: 150, radius: 0),
-                  errorWidget: (_, _, _) => const SizedBox.shrink(),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: note.noteImages.first.url,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 900,
+                        placeholder: (_, _) =>
+                            const SkeletonBox(height: 150, radius: 0),
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
+                      ),
+                      if (note.noteImages.length > 1)
+                        Positioned(
+                          right: 10,
+                          bottom: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.68),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.photo_library_rounded,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  '${note.noteImages.length}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             Padding(

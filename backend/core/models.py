@@ -41,6 +41,7 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.email
 
+
     # ─── Levelling ───────────────────────────────────────────
 
     @staticmethod
@@ -181,6 +182,35 @@ class CustomUser(AbstractUser):
             return False
         missed = gap - 1
         return missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS
+
+
+class PasswordResetCode(models.Model):
+    """Short-lived, one-time password reset challenge.
+
+    Only Django's salted hash of the emailed code is stored. Keeping attempts
+    in the database makes the limit reliable across Gunicorn threads and
+    future multi-instance deployments.
+    """
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='password_reset_codes',
+    )
+    code_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'used', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f'Password reset for {self.user_id}'
 
 
 class PlantSpecies(models.Model):
@@ -380,6 +410,26 @@ class CareLog(models.Model):
 
     def __str__(self):
         return f"{self.activity} — {self.plant.name} @ {self.created_at:%Y-%m-%d}"
+
+
+class NoteImage(models.Model):
+    """One ordered image embedded in a journal note."""
+
+    note = models.ForeignKey(
+        CareLog,
+        on_delete=models.CASCADE,
+        related_name='images',
+        limit_choices_to={'activity': CareLog.Activity.NOTE},
+    )
+    image = models.ImageField(upload_to='notes/')
+    position = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+
+    def __str__(self):
+        return f'Image {self.id} for note {self.note_id}'
 
 
 class Achievement(models.Model):

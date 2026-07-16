@@ -13,6 +13,10 @@ class AppConstants {
   // Auth endpoints
   static const String loginUrl = '$baseUrl/auth/login/';
   static const String registerUrl = '$baseUrl/auth/register/';
+  static const String passwordResetRequestUrl =
+      '$baseUrl/auth/password-reset/request/';
+  static const String passwordResetConfirmUrl =
+      '$baseUrl/auth/password-reset/confirm/';
   static const String logoutUrl = '$baseUrl/auth/logout/';
   static const String changePasswordUrl = '$baseUrl/auth/change-password/';
   static const String deleteAccountUrl = '$baseUrl/auth/delete-account/';

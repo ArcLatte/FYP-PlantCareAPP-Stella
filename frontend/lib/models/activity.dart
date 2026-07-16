@@ -9,7 +9,7 @@ class ActivityEvent {
   final String? activity; // care: 'water' | 'fertilize' | 'mist' | 'note'
   final String? noteTitle; // note: optional short subject/heading
   final String? note; // care/note: the user's journal text
-  final String? notePhotoUrl; // note: optional attached progress photo
+  final List<NoteImageAttachment> noteImages;
   final int? plantId;
   final String? plantName;
   final int? scanId; // scan only
@@ -23,7 +23,7 @@ class ActivityEvent {
     this.activity,
     this.noteTitle,
     this.note,
-    this.notePhotoUrl,
+    this.noteImages = const [],
     this.plantId,
     this.plantName,
     this.scanId,
@@ -38,16 +38,34 @@ class ActivityEvent {
   /// A journal note (a care log carrying free text rather than a watering etc.).
   bool get isNote => type == 'care' && activity == 'note';
 
+  String? get notePhotoUrl => noteImages.isEmpty ? null : noteImages.first.url;
+
   factory ActivityEvent.fromJson(Map<String, dynamic> json) {
     final note = json['note']?.toString();
     final title = json['title']?.toString();
+    final rawImages = json['note_images'];
+    final images = rawImages is List
+        ? rawImages
+              .whereType<Map>()
+              .map(
+                (item) => NoteImageAttachment.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
+              .where((item) => item.url.isNotEmpty)
+              .toList()
+        : <NoteImageAttachment>[];
+    final legacyUrl = _absoluteUrl(json['note_photo']);
+    if (images.isEmpty && legacyUrl != null) {
+      images.add(NoteImageAttachment(id: null, url: legacyUrl, legacy: true));
+    }
     return ActivityEvent(
       type: json['type']?.toString() ?? 'care',
       careLogId: (json['id'] as num?)?.toInt(),
       activity: json['activity']?.toString(),
       noteTitle: (title != null && title.isNotEmpty) ? title : null,
       note: (note != null && note.isNotEmpty) ? note : null,
-      notePhotoUrl: _absoluteUrl(json['note_photo']),
+      noteImages: images,
       plantId: (json['plant_id'] as num?)?.toInt(),
       plantName: json['plant_name']?.toString(),
       scanId: (json['scan_id'] as num?)?.toInt(),
@@ -56,6 +74,26 @@ class ActivityEvent {
       createdAt:
           DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
+    );
+  }
+}
+
+class NoteImageAttachment {
+  final int? id;
+  final String url;
+  final bool legacy;
+
+  const NoteImageAttachment({
+    required this.id,
+    required this.url,
+    this.legacy = false,
+  });
+
+  factory NoteImageAttachment.fromJson(Map<String, dynamic> json) {
+    return NoteImageAttachment(
+      id: (json['id'] as num?)?.toInt(),
+      url: _absoluteUrl(json['url']) ?? '',
+      legacy: json['legacy'] == true,
     );
   }
 }

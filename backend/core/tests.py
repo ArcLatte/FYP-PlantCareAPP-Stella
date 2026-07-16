@@ -1,18 +1,196 @@
 from io import BytesIO
 from datetime import date, datetime, timezone as datetime_timezone
+import re
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from PIL import Image, ImageDraw, ImageFilter
-from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from .image_quality import ImageQualityAssessor
-from .models import CareLog, CustomUser, Plant, PlantSpecies
+from .models import (
+    CareLog,
+    CustomUser,
+    PasswordResetCode,
+    Plant,
+    PlantSpecies,
+    NoteImage,
+)
 from .scanning_pipeline import ScanAnalysis, ScanningPipeline, ScanStatus
 from .serializers import PlantSerializer
 from .views import scan, streak
+
+
+class NoteImageTests(TestCase):
+    def setUp(self):
+        self.media_dir = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.settings_override.enable()
+        self.addCleanup(self.settings_override.disable)
+        self.addCleanup(self.media_dir.cleanup)
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='note-image-user',
+            email='note-images@example.com',
+            password='test-password',
+        )
+        self.client.force_authenticate(user=self.user)
+        species = PlantSpecies.objects.create(name='Note image species')
+        self.plant = Plant.objects.create(
+            user=self.user,
+            species=species,
+            name='Journal plant',
+        )
+
+    @staticmethod
+    def _image(name, color):
+        image = Image.new('RGB', (80, 80), color)
+        content = BytesIO()
+        image.save(content, format='JPEG')
+        content.seek(0)
+        return SimpleUploadedFile(name, content.read(), content_type='image/jpeg')
+
+    def test_create_note_with_multiple_images(self):
+        response = self.client.post(
+            f'/api/plants/{self.plant.id}/note/',
+            {
+                'title': 'Growth update',
+                'note': '**Two** new leaves',
+                'photos': [
+                    self._image('first.jpg', 'green'),
+                    self._image('second.jpg', 'yellow'),
+                ],
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(len(response.data['note_images']), 2)
+        self.assertEqual(NoteImage.objects.count(), 2)
+
+    def test_edit_can_remove_one_image_and_append_another(self):
+        log = CareLog.objects.create(
+            user=self.user,
+            plant=self.plant,
+            activity=CareLog.Activity.NOTE,
+            note='Progress',
+        )
+        old = NoteImage.objects.create(
+            note=log,
+            image=self._image('old.jpg', 'green'),
+        )
+
+        response = self.client.put(
+            f'/api/plants/{self.plant.id}/note/{log.id}/',
+            {
+                'title': '',
+                'note': '_Updated_',
+                'remove_image_ids': f'[{old.id}]',
+                'photos': [self._image('new.jpg', 'blue')],
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['note_images']), 1)
+        self.assertFalse(NoteImage.objects.filter(id=old.id).exists())
+
+
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    PASSWORD_RESET_CODE_MINUTES=10,
+    PASSWORD_RESET_MAX_ATTEMPTS=5,
+    PASSWORD_RESET_RESEND_SECONDS=60,
+)
+class PasswordResetTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='reset-user',
+            email='reset@example.com',
+            password='Original-password-42',
+        )
+
+    def _request_code(self):
+        response = self.client.post(
+            '/api/auth/password-reset/request/',
+            {'email': self.user.email},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        match = re.search(r'\b(\d{6})\b', mail.outbox[0].body)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def test_request_sends_code_without_storing_plaintext(self):
+        code = self._request_code()
+
+        reset = PasswordResetCode.objects.get(user=self.user)
+        self.assertNotEqual(reset.code_hash, code)
+        self.assertEqual(mail.outbox[0].to, [self.user.email])
+
+    def test_unknown_email_gets_same_response_without_email(self):
+        response = self.client.post(
+            '/api/auth/password-reset/request/',
+            {'email': 'unknown@example.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('If an account', response.data['message'])
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_valid_code_changes_password_and_revokes_token(self):
+        token = Token.objects.create(user=self.user)
+        code = self._request_code()
+
+        response = self.client.post(
+            '/api/auth/password-reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': code,
+                'new_password': 'New-secure-password-84',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('New-secure-password-84'))
+        self.assertFalse(Token.objects.filter(key=token.key).exists())
+        self.assertTrue(PasswordResetCode.objects.get(user=self.user).used)
+
+    def test_code_is_locked_after_five_wrong_attempts(self):
+        code = self._request_code()
+        wrong_code = '000000' if code != '000000' else '999999'
+        for _ in range(5):
+            response = self.client.post(
+                '/api/auth/password-reset/confirm/',
+                {
+                    'email': self.user.email,
+                    'code': wrong_code,
+                    'new_password': 'New-secure-password-84',
+                },
+                format='json',
+            )
+            self.assertEqual(response.status_code, 400)
+
+        response = self.client.post(
+            '/api/auth/password-reset/confirm/',
+            {
+                'email': self.user.email,
+                'code': code,
+                'new_password': 'New-secure-password-84',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
 
 
 class PlantCareIntervalTests(TestCase):

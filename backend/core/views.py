@@ -3,15 +3,21 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.mail import send_mail
 from django.core.validators import validate_email
+from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, time, timedelta, timezone as datetime_timezone
 from .models import (
     CustomUser, Plant, PlantSpecies, Disease, ScanResult, Location, CareLog,
-    Achievement, UserAchievement, Cosmetic, UserCosmetic,
+    Achievement, UserAchievement, Cosmetic, UserCosmetic, PasswordResetCode,
+    NoteImage,
 )
 from .achievements import check_achievements, progress_snapshot, PROGRESS
 from .weekly import challenge_state, check_weekly_challenge
@@ -21,8 +27,13 @@ from .serializers import (
 )
 from PIL import Image, ImageOps, UnidentifiedImageError
 import json
+import logging
+import secrets
 
 from .scanning_pipeline import default_scanning_pipeline, ScanStatus
+
+
+logger = logging.getLogger(__name__)
 
 
 # Above this top-1 confidence the model is treated as sure: the scan response
@@ -161,6 +172,132 @@ def login(request):
         'username': user.username,
         **xp_result,
     })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def request_password_reset(request):
+    """Email a short-lived reset code without revealing registered emails."""
+    email = str(request.data.get('email', '')).strip().lower()
+    if not email:
+        return Response({'error': 'Email is required.'}, status=400)
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        return Response({'error': 'Enter a valid email address.'}, status=400)
+
+    generic_message = (
+        'If an account uses that email, a reset code has been sent.'
+    )
+    user = CustomUser.objects.filter(email__iexact=email, is_active=True).first()
+    if user is None:
+        return Response({'message': generic_message})
+
+    now = timezone.now()
+    cooldown_start = now - timedelta(
+        seconds=settings.PASSWORD_RESET_RESEND_SECONDS
+    )
+    if PasswordResetCode.objects.filter(
+        user=user,
+        used=False,
+        created_at__gte=cooldown_start,
+    ).exists():
+        return Response({'message': generic_message})
+
+    code = f'{secrets.randbelow(1_000_000):06d}'
+    with transaction.atomic():
+        PasswordResetCode.objects.filter(user=user, used=False).update(used=True)
+        reset = PasswordResetCode.objects.create(
+            user=user,
+            code_hash=make_password(code),
+            expires_at=now + timedelta(
+                minutes=settings.PASSWORD_RESET_CODE_MINUTES
+            ),
+        )
+
+    try:
+        send_mail(
+            subject='Your Stella password reset code',
+            message=(
+                f'Hello {user.username},\n\n'
+                f'Your Stella password reset code is: {code}\n\n'
+                f'This code expires in {settings.PASSWORD_RESET_CODE_MINUTES} '
+                'minutes. If you did not request this, you can ignore this '
+                'email.\n\nStella Plant Care'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception:
+        reset.delete()
+        # Keep the public response identical for registered and unknown emails.
+        # The exception remains visible in Railway logs for configuration fixes.
+        logger.exception('Could not send password reset email')
+
+    return Response({'message': generic_message})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirm_password_reset(request):
+    """Validate a one-time code and replace the account password."""
+    email = str(request.data.get('email', '')).strip().lower()
+    code = str(request.data.get('code', '')).strip()
+    new_password = request.data.get('new_password')
+    if not email or not code or not new_password:
+        return Response(
+            {'error': 'Email, reset code and new password are required.'},
+            status=400,
+        )
+    if len(code) != 6 or not code.isdigit():
+        return Response({'error': 'Enter the six-digit reset code.'}, status=400)
+
+    with transaction.atomic():
+        user = CustomUser.objects.filter(
+            email__iexact=email,
+            is_active=True,
+        ).first()
+        reset = None
+        if user is not None:
+            reset = PasswordResetCode.objects.select_for_update().filter(
+                user=user,
+                used=False,
+            ).first()
+
+        if reset is None or reset.expires_at <= timezone.now():
+            if reset is not None:
+                reset.used = True
+                reset.save(update_fields=['used'])
+            return Response(
+                {'error': 'That reset code is invalid or has expired.'},
+                status=400,
+            )
+
+        if (
+            reset.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS
+            or not check_password(code, reset.code_hash)
+        ):
+            reset.attempts += 1
+            if reset.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS:
+                reset.used = True
+            reset.save(update_fields=['attempts', 'used'])
+            return Response(
+                {'error': 'That reset code is invalid or has expired.'},
+                status=400,
+            )
+
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            return Response({'error': exc.messages[0]}, status=400)
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        PasswordResetCode.objects.filter(user=user, used=False).update(used=True)
+        Token.objects.filter(user=user).delete()
+
+    return Response({'message': 'Password reset. You can now sign in.'})
 
 
 @api_view(['POST'])
@@ -334,16 +471,31 @@ def add_note(request, pk):
 
     title = (request.data.get('title') or '').strip()[:120]
     text = (request.data.get('note') or '').strip()
+    photos = request.FILES.getlist('photos')
     photo = request.FILES.get('photo')
-    if not text and not photo and not title:
+    if len(photos) > 6:
+        return Response({'error': 'A note can contain up to 6 photos.'}, status=400)
+    if not text and not photos and not photo and not title:
         return Response({'error': 'Add a note or a photo.'}, status=400)
 
-    log = CareLog.objects.create(
-        user=request.user, plant=plant, activity='note', note=text, title=title,
-    )
-    if photo:
-        log.photo = photo
-        log.save(update_fields=['photo'])
+    with transaction.atomic():
+        log = CareLog.objects.create(
+            user=request.user,
+            plant=plant,
+            activity='note',
+            note=text,
+            title=title,
+        )
+        # The singular field remains supported for older app builds.
+        if photo:
+            log.photo = photo
+            log.save(update_fields=['photo'])
+        for position, uploaded in enumerate(photos):
+            NoteImage.objects.create(
+                note=log,
+                image=uploaded,
+                position=position,
+            )
     # Notes grant no XP, but they count toward the weekly challenge (e.g.
     # "Journalist") — completing it here still pays its rewards immediately.
     weekly = check_weekly_challenge(request.user)
@@ -359,25 +511,36 @@ def add_note(request, pk):
 
 def _note_event(log, plant):
     """Activity-event payload for a single journal note (shared by add/edit)."""
+    images = _note_images(log)
     return {
         'type': 'care',
         'activity': 'note',
         'id': log.id,
         'title': log.title,
         'note': log.note,
-        'note_photo': log.photo.url if log.photo else None,
+        'note_photo': images[0]['url'] if images else None,
+        'note_images': images,
         'plant_id': plant.id,
         'plant_name': plant.name,
         'created_at': log.created_at,
     }
 
 
+def _note_images(log):
+    images = []
+    if log.photo:
+        images.append({'id': None, 'url': log.photo.url, 'legacy': True})
+    images.extend(
+        {'id': item.id, 'url': item.image.url, 'legacy': False}
+        for item in log.images.all()
+    )
+    return images
+
+
 @api_view(['PUT', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def note_detail(request, pk, log_id):
-    """Edit (PUT/PATCH) or delete (DELETE) a single journal note. Editing
-    updates the text and, optionally, the photo: send a new `photo` file to
-    replace it, or `remove_photo=true` to clear it."""
+    """Edit/delete a note, including selected removals and appended photos."""
     try:
         plant = Plant.objects.get(pk=pk, user=request.user)
     except Plant.DoesNotExist:
@@ -394,21 +557,63 @@ def note_detail(request, pk, log_id):
 
     title = (request.data.get('title') or '').strip()[:120]
     text = (request.data.get('note') or '').strip()
+    photos = request.FILES.getlist('photos')
     photo = request.FILES.get('photo')
     remove_photo = str(request.data.get('remove_photo', '')).lower() in (
         '1', 'true', 'yes')
 
-    will_have_photo = bool(photo) or (bool(log.photo) and not remove_photo)
+    raw_remove_ids = request.data.get('remove_image_ids', '[]')
+    try:
+        remove_ids = {
+            int(value)
+            for value in (
+                json.loads(raw_remove_ids)
+                if isinstance(raw_remove_ids, str)
+                else raw_remove_ids
+            )
+        }
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return Response({'error': 'Invalid image removal list.'}, status=400)
+
+    existing_images = log.images.all()
+    removable = existing_images.filter(id__in=remove_ids)
+    remaining_count = existing_images.exclude(id__in=remove_ids).count()
+    legacy_count = 1 if log.photo and not remove_photo else 0
+    if remaining_count + legacy_count + len(photos) > 6:
+        return Response({'error': 'A note can contain up to 6 photos.'}, status=400)
+
+    will_have_photo = (
+        bool(photo)
+        or bool(photos)
+        or remaining_count > 0
+        or (bool(log.photo) and not remove_photo)
+    )
     if not text and not will_have_photo and not title:
         return Response({'error': 'Add a note or a photo.'}, status=400)
 
-    log.title = title
-    log.note = text
-    if photo:
-        log.photo = photo
-    elif remove_photo:
-        log.photo = None
-    log.save()
+    with transaction.atomic():
+        log.title = title
+        log.note = text
+        if photo:
+            log.photo = photo
+        elif remove_photo:
+            log.photo = None
+        log.save()
+        for item in removable:
+            item.image.delete(save=False)
+            item.delete()
+        last_position = (
+            log.images.order_by('-position')
+            .values_list('position', flat=True)
+            .first()
+        )
+        next_position = 0 if last_position is None else last_position + 1
+        for offset, uploaded in enumerate(photos):
+            NoteImage.objects.create(
+                note=log,
+                image=uploaded,
+                position=next_position + offset,
+            )
     return Response(_note_event(log, plant), status=200)
 
 
@@ -529,16 +734,21 @@ def activity(request):
     care_logs = (
         CareLog.objects
         .filter(user=request.user)
-        .select_related('plant')[:100]
+        .select_related('plant')
+        .prefetch_related('images')[:100]
     )
     for log in care_logs:
+        note_images = (
+            _note_images(log) if log.activity == CareLog.Activity.NOTE else []
+        )
         events.append({
             'type': 'care',
             'activity': log.activity,
             'id': log.id,
             'title': log.title,
             'note': log.note,
-            'note_photo': log.photo.url if log.photo else None,
+            'note_photo': note_images[0]['url'] if note_images else None,
+            'note_images': note_images,
             'plant_id': log.plant_id,
             'plant_name': log.plant.name,
             'created_at': log.created_at,
@@ -799,15 +1009,19 @@ def plant_activity(request, pk):
 
     events = []
 
-    care_logs = CareLog.objects.filter(plant=plant)[:100]
+    care_logs = CareLog.objects.filter(plant=plant).prefetch_related('images')[:100]
     for log in care_logs:
+        note_images = (
+            _note_images(log) if log.activity == CareLog.Activity.NOTE else []
+        )
         events.append({
             'type': 'care',
             'activity': log.activity,
             'id': log.id,
             'title': log.title,
             'note': log.note,
-            'note_photo': log.photo.url if log.photo else None,
+            'note_photo': note_images[0]['url'] if note_images else None,
+            'note_images': note_images,
             'plant_id': plant.id,
             'plant_name': plant.name,
             'created_at': log.created_at,
