@@ -13,8 +13,6 @@
   <path d="M-20,78 C36,54 93,64 148,53 C218,40 286,52 380,36 L380,230 L-20,230 Z" fill="url(#grassWashBack)"/>
   <path d="M-20,101 C52,84 107,91 166,82 C238,70 296,83 380,66 L380,230 L-20,230 Z" fill="#4F7468" opacity="0.24"/>
   <path d="M-20,162 C52,149 116,156 178,145 C249,133 309,145 380,126 L380,230 L-20,230 Z" fill="#45685F" opacity="0.16"/>
-  <ellipse cx="180" cy="94" rx="74" ry="28" fill="#34584F" opacity="0.22"/>
-  <ellipse cx="180" cy="113" rx="92" ry="23" fill="url(#centerLift)"/>
   <path d="M24,132 C26,123 31,116 38,110" fill="none" stroke="#3D665E" stroke-width="2" stroke-linecap="round" opacity="0.32"/>
   <path d="M326,121 C329,112 335,105 342,99" fill="none" stroke="#3D665E" stroke-width="2" stroke-linecap="round" opacity="0.28"/>
 </svg>

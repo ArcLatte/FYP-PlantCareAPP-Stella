@@ -748,7 +748,19 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                 ),
               ),
               Positioned(
-                bottom: 132,
+                left: -24,
+                right: -24,
+                bottom: 0,
+                height: 232,
+                child: _groundAsset(
+                  'streak_ground_front_ovals',
+                  colorFilter: palette.groundFrontFilter,
+                ),
+              ),
+              Positioned(
+                // Lift the creature and pot toward the ground ovals, leaving
+                // the larger illustrated grass backdrop in place.
+                bottom: 146,
                 child: _plantForScene(stage, plantSize, palette),
               ),
               // Ambient life around the plant: fireflies after dark; pollen

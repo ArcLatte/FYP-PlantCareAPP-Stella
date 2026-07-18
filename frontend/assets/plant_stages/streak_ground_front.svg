@@ -13,8 +13,6 @@
   <path d="M-20,35 C42,24 88,35 140,27 C207,16 266,30 380,15 L380,220 L-20,220 Z" fill="url(#groundLip)"/>
   <path d="M-20,48 C50,37 97,49 153,40 C220,29 276,44 380,28 L380,220 L-20,220 Z" fill="url(#softTop)"/>
   <path d="M-20,138 C48,124 111,132 174,119 C248,104 306,118 380,96 L380,220 L-20,220 Z" fill="#416A61" opacity="0.20"/>
-  <ellipse cx="180" cy="94" rx="84" ry="18" fill="#E8DDA9" opacity="0.20"/>
-  <ellipse cx="180" cy="101" rx="76" ry="12" fill="#284C45" opacity="0.24"/>
   <path d="M42,115 C44,106 49,100 56,94" fill="none" stroke="#315E56" stroke-width="1.8" stroke-linecap="round" opacity="0.32"/>
   <path d="M309,117 C312,107 317,100 325,94" fill="none" stroke="#315E56" stroke-width="1.8" stroke-linecap="round" opacity="0.30"/>
 </svg>
