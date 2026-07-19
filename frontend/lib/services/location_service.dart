@@ -10,23 +10,44 @@ class DeviceLocation {
 }
 
 class LocationService {
-  /// Request runtime permission and fetch the current GPS fix.
-  /// Returns null if the user denied or the OS could not produce a fix.
-  static Future<DeviceLocation?> getCurrent({bool forceRefresh = false}) async {
-    print('[LOC] getCurrent forceRefresh=$forceRefresh');
+  static Future<LocationPermission>? _permissionRequestInFlight;
 
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    print('[LOC] serviceEnabled=$serviceEnabled');
-    if (!serviceEnabled) return null;
+  /// Coalesces concurrent startup checks into one Android permission request.
+  /// Permission is requested before checking GPS state, because disabled
+  /// location services must not suppress the runtime permission prompt.
+  static Future<LocationPermission> ensurePermission() {
+    final active = _permissionRequestInFlight;
+    if (active != null) return active;
 
+    final future = _ensurePermission();
+    _permissionRequestInFlight = future;
+    return future.whenComplete(() => _permissionRequestInFlight = null);
+  }
+
+  static Future<LocationPermission> _ensurePermission() async {
     var permission = await Geolocator.checkPermission();
     print('[LOC] permission=$permission');
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       print('[LOC] permission after request=$permission');
-      if (permission == LocationPermission.denied) return null;
     }
-    if (permission == LocationPermission.deniedForever) return null;
+    return permission;
+  }
+
+  /// Request runtime permission and fetch the current GPS fix.
+  /// Returns null if the user denied or the OS could not produce a fix.
+  static Future<DeviceLocation?> getCurrent({bool forceRefresh = false}) async {
+    print('[LOC] getCurrent forceRefresh=$forceRefresh');
+
+    final permission = await ensurePermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    print('[LOC] serviceEnabled=$serviceEnabled');
+    if (!serviceEnabled) return null;
 
     // Try a live fix first when forceRefresh — but with a short timeout
     // because emulators frequently hang here.

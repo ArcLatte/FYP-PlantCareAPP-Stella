@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 230" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="centerLift" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2E8B9" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#F2E8B9" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="180" cy="80" rx="74" ry="28" fill="#34584F" opacity="0.22"/>
+  <ellipse cx="180" cy="99" rx="92" ry="23" fill="url(#centerLift)"/>
+</svg>

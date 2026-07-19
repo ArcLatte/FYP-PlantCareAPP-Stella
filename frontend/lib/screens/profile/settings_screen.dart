@@ -247,18 +247,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Long-press: fire a test notification to confirm delivery works.
   Future<void> _sendTestNotification() async {
-    final ok = await NotificationService.sendTestNotification();
+    final result = await NotificationService.sendTestNotification();
     if (!mounted) return;
-    if (ok) {
-      AppSnackBar.success(
-        context,
-        'Test sent — leave the app for ~10 seconds to see it',
-      );
-    } else {
-      AppSnackBar.error(
-        context,
-        'Couldn\'t send — enable notifications for Stella in system settings',
-      );
+    switch (result.status) {
+      case NotificationTestStatus.sent:
+        AppSnackBar.success(context, 'Test notification sent');
+      case NotificationTestStatus.permissionDenied:
+        AppSnackBar.error(
+          context,
+          'Notifications are blocked. Allow them for Stella in system settings.',
+        );
+      case NotificationTestStatus.failed:
+        final detail = (result.error ?? 'unknown Android error').replaceAll(
+          RegExp(r'\s+'),
+          ' ',
+        );
+        final shortDetail = detail.length > 500
+            ? '${detail.substring(0, 500)}…'
+            : detail;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Notification test failed'),
+            content: SelectableText(shortDetail),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
     }
   }
 
@@ -349,7 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.schedule_rounded,
                 iconColor: AppColors.primary,
                 label: 'Reminder time',
-                sublabel: 'When daily watering reminders arrive · hold to test',
+                sublabel: 'When daily care reminders arrive · hold to test',
                 onTap: _pickReminderTime,
                 onLongPress: _sendTestNotification,
                 trailing: Row(
@@ -383,7 +402,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.eco_rounded,
                 iconColor: AppColors.primary,
                 label: 'Stella',
-                sublabel: 'Version 1.0.0',
+                sublabel: 'Version 1.4.3',
               ),
               const _RowDivider(),
               _SettingsRow(
@@ -393,7 +412,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => showLicensePage(
                   context: context,
                   applicationName: 'Stella',
-                  applicationVersion: '1.0.0',
+                  applicationVersion: '1.4.3',
                 ),
                 trailing: const Icon(
                   Icons.chevron_right_rounded,

@@ -7,6 +7,7 @@ import '../../models/plant.dart';
 import '../../models/plant_stage.dart';
 import '../../models/species.dart';
 import '../../services/api_service.dart';
+import '../../services/app_refresh_bus.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/xp_toast.dart';
@@ -53,6 +54,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       final updated = await ApiService.waterPlant(_plant!.id);
       if (!mounted) return;
       setState(() => _plant = updated);
+      AppRefreshBus.plantsChanged();
       AppSnackBar.success(context, '${updated.name} watered');
       XpToast.flush(context);
       _refreshActivity();
@@ -76,6 +78,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       final updated = await ApiService.fertilizePlant(_plant!.id);
       if (!mounted) return;
       setState(() => _plant = updated);
+      AppRefreshBus.plantsChanged();
       AppSnackBar.success(context, '${updated.name} fertilized');
       XpToast.flush(context);
       _refreshActivity();
@@ -99,6 +102,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
       final updated = await ApiService.mistPlant(_plant!.id);
       if (!mounted) return;
       setState(() => _plant = updated);
+      AppRefreshBus.plantsChanged();
       AppSnackBar.success(context, '${updated.name} misted');
       XpToast.flush(context);
       _refreshActivity();
@@ -771,20 +775,34 @@ class _PlantDetailScreenState extends State<PlantDetailScreen>
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () =>
-                              context.push('/scan/${widget.plantId}'),
-                          icon: const Icon(Icons.document_scanner_rounded),
-                          label: const Text('Scan plant'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                        child: Tooltip(
+                          message: plant.scanAvailable
+                              ? 'Choose this plant from the scan screen first.'
+                              : 'Scanning is unavailable for custom species.',
+                          child: ElevatedButton.icon(
+                            onPressed: plant.scanAvailable
+                                ? () => context.push('/scan')
+                                : null,
+                            icon: Icon(
+                              plant.scanAvailable
+                                  ? Icons.document_scanner_rounded
+                                  : Icons.lock_rounded,
                             ),
-                            textStyle: const TextStyle(
-                              fontWeight: FontWeight.w700,
+                            label: Text(
+                              plant.scanAvailable
+                                  ? 'Scan plant'
+                                  : 'Scan locked',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ),

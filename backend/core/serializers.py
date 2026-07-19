@@ -27,6 +27,8 @@ def image_ref_to_url(ref):
 
 class PlantSpeciesSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
+    is_custom = serializers.BooleanField(read_only=True)
+    scan_available = serializers.SerializerMethodField()
 
     class Meta:
         model = PlantSpecies
@@ -38,11 +40,14 @@ class PlantSpeciesSerializer(serializers.ModelSerializer):
             'default_fertilizer_freq_days',
             'default_misting_freq_days',
             'days_to_harvest',
-            'image_url',
+            'image_url', 'is_custom', 'scan_available',
         ]
 
     def get_image_url(self, obj):
         return image_ref_to_url(obj.image_path) or ''
+
+    def get_scan_available(self, obj):
+        return not obj.is_custom
 
 
 class DiseaseSerializer(serializers.ModelSerializer):
@@ -101,6 +106,16 @@ class PlantSerializer(serializers.ModelSerializer):
             'days_until_water', 'days_until_fertilizer', 'days_until_misting',
             'latest_health', 'latest_disease',
         ]
+
+    def validate_species(self, species):
+        """Custom species may only be assigned by their owner."""
+        request = self.context.get('request')
+        if (
+            species.created_by_id is not None
+            and (request is None or species.created_by_id != request.user.id)
+        ):
+            raise serializers.ValidationError('Species not found.')
+        return species
 
     # ─── Create ──────────────────────────────────────────────
     def create(self, validated_data):

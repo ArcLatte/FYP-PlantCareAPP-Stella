@@ -102,15 +102,7 @@ class _StreakCalendarSheetState extends State<_StreakCalendarSheet> {
   /// Days of the currently shielded gap (after the last care day, before
   /// today) — shown as ice dots, matching the day strip.
   Set<DateTime> _frozenDays(StreakCalendar cal, DateTime today) {
-    final frozen = <DateTime>{};
-    final l = cal.lastCareDate;
-    if (!cal.freezeActive || l == null) return frozen;
-    var day = DateTime(l.year, l.month, l.day).add(const Duration(days: 1));
-    while (day.isBefore(today)) {
-      frozen.add(day);
-      day = day.add(const Duration(days: 1));
-    }
-    return frozen;
+    return cal.frozenDates.where((day) => !day.isAfter(today)).toSet();
   }
 
   @override

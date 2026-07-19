@@ -1,3 +1,4 @@
+import gc
 from functools import lru_cache
 from pathlib import Path
 
@@ -55,6 +56,12 @@ class LeafGateClassifier:
         model.load_state_dict(checkpoint.get('model', checkpoint))
         model.eval()
         return model
+
+    @classmethod
+    def release_cached_model(cls):
+        """Drop the leaf model before the larger disease stage is loaded."""
+        cls._load_model.cache_clear()
+        gc.collect()
 
     def classify(self, image):
         """Classify an image using training labels 0=not-leaf and 1=leaf."""

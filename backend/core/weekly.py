@@ -12,7 +12,7 @@ claims, which keeps it farm-resistant.
 and returns the completion info so the view can include it in the response.
 """
 
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone as datetime_timezone
 
 from django.utils import timezone
 
@@ -88,44 +88,57 @@ def _week_range(today=None):
     return start, start + timedelta(days=7)
 
 
-def _metric_value(user, metric: str) -> int:
+def _week_bounds(today, client_timezone):
+    """UTC bounds for the user's local ISO week."""
+    start, end = _week_range(today)
+    start_at = datetime.combine(start, time.min, client_timezone)
+    end_at = datetime.combine(end, time.min, client_timezone)
+    return start_at.astimezone(datetime_timezone.utc), end_at.astimezone(
+        datetime_timezone.utc
+    )
+
+
+def _metric_value(user, metric: str, today=None, client_timezone=None) -> int:
     """Progress for one metric inside the current week, counted from logged
     rows (server truth, not client claims)."""
-    start, end = _week_range()
+    client_timezone = client_timezone or timezone.get_current_timezone()
+    start_at, end_at = _week_bounds(today, client_timezone)
     if metric == 'care_days':
         return (
             CareLog.objects
             .filter(user=user, activity__in=CARE_ACTIVITIES,
-                    created_at__date__gte=start, created_at__date__lt=end)
-            .values('created_at__date').distinct().count()
+                    created_at__gte=start_at, created_at__lt=end_at)
+            .datetimes('created_at', 'day', tzinfo=client_timezone)
+            .count()
         )
     if metric == 'care_actions':
         return CareLog.objects.filter(
             user=user, activity__in=CARE_ACTIVITIES,
-            created_at__date__gte=start, created_at__date__lt=end,
+            created_at__gte=start_at, created_at__lt=end_at,
         ).count()
     if metric == 'notes':
         return CareLog.objects.filter(
             user=user, activity='note',
-            created_at__date__gte=start, created_at__date__lt=end,
+            created_at__gte=start_at, created_at__lt=end_at,
         ).count()
     if metric == 'scans':
         return ScanResult.objects.filter(
             plant__user=user,
-            created_at__date__gte=start, created_at__date__lt=end,
+            created_at__gte=start_at, created_at__lt=end_at,
         ).count()
     return 0
 
 
-def challenge_state(user) -> dict:
+def challenge_state(user, today=None, client_timezone=None) -> dict:
     """Snapshot for `GET /api/weekly-challenge/`: the active challenge, the
     user's progress, and whether it's already completed this week."""
-    challenge = current_challenge()
-    start, end = _week_range()
+    today = today or timezone.localdate()
+    challenge = current_challenge(today)
+    start, end = _week_range(today)
     completed = WeeklyChallengeProgress.objects.filter(
         user=user, week_start=start,
     ).exists()
-    progress = _metric_value(user, challenge['metric'])
+    progress = _metric_value(user, challenge['metric'], today, client_timezone)
     return {
         'code': challenge['code'],
         'name': challenge['name'],
@@ -139,19 +152,20 @@ def challenge_state(user) -> dict:
         'seeds_reward': SEEDS_REWARD,
         'week_start': start,
         'week_end': end - timedelta(days=1),  # inclusive Sunday for display
-        'days_left': max(0, (end - timezone.localdate()).days),
+        'days_left': max(0, (end - today).days),
     }
 
 
-def check_weekly_challenge(user) -> dict | None:
+def check_weekly_challenge(user, today=None, client_timezone=None) -> dict | None:
     """Complete the week's challenge if the user now qualifies. Grants the
     XP reward and banks the streak save(s). Returns the completion payload
     for the response side-channel, or None if nothing new happened."""
-    challenge = current_challenge()
-    start = week_start()
+    today = today or timezone.localdate()
+    challenge = current_challenge(today)
+    start = week_start(today)
     if WeeklyChallengeProgress.objects.filter(user=user, week_start=start).exists():
         return None
-    if _metric_value(user, challenge['metric']) < challenge['target']:
+    if _metric_value(user, challenge['metric'], today, client_timezone) < challenge['target']:
         return None
 
     WeeklyChallengeProgress.objects.create(

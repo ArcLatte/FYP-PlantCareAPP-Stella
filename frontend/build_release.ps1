@@ -1,3 +1,8 @@
+param(
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$Version
+)
+
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -17,7 +22,7 @@ $major = [int]$match.Groups[1].Value
 $minor = [int]$match.Groups[2].Value
 $patch = [int]$match.Groups[3].Value + 1
 $buildCode = [int]$match.Groups[4].Value + 1
-$versionName = "$major.$minor.$patch"
+$versionName = if ($Version) { $Version } else { "$major.$minor.$patch" }
 $newVersionLine = "version: $versionName+$buildCode"
 $updatedPubspec = [regex]::Replace(
     $originalPubspec,

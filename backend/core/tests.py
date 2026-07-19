@@ -1,5 +1,5 @@
 from io import BytesIO
-from datetime import date, datetime, timezone as datetime_timezone
+from datetime import date, datetime, timedelta, timezone as datetime_timezone
 import base64
 import json
 import re
@@ -23,10 +23,93 @@ from .models import (
     Plant,
     PlantSpecies,
     NoteImage,
+    StreakFreezeUsage,
 )
 from .scanning_pipeline import ScanAnalysis, ScanningPipeline, ScanStatus
 from .serializers import PlantSerializer
 from .views import scan, streak
+from .weekly import _metric_value
+
+
+class CustomSpeciesTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='custom-species-user',
+            email='custom-species@example.com',
+            password='test-password',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_custom_species_is_owned_and_marked_scan_unavailable(self):
+        response = self.client.post('/api/species/', {'name': 'My Hybrid'})
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(response.data['is_custom'])
+        self.assertFalse(response.data['scan_available'])
+        self.assertEqual(response.data['name'], 'My Hybrid')
+
+    def test_custom_species_is_hidden_from_other_users(self):
+        species = PlantSpecies.objects.create(
+            name='Private Hybrid', created_by=self.user,
+        )
+        other = CustomUser.objects.create_user(
+            username='other-custom-species-user',
+            email='other-custom-species@example.com',
+            password='test-password',
+        )
+        self.client.force_authenticate(user=other)
+
+        listing = self.client.get('/api/species/')
+        detail = self.client.get(f'/api/species/{species.id}/')
+
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertNotIn(species.id, [item['id'] for item in listing.data])
+        self.assertEqual(detail.status_code, 404, detail.data)
+
+    def test_plant_cannot_use_another_users_custom_species(self):
+        species = PlantSpecies.objects.create(
+            name='Private Tracker', created_by=self.user,
+        )
+        other = CustomUser.objects.create_user(
+            username='other-plant-user',
+            email='other-plant@example.com',
+            password='test-password',
+        )
+        self.client.force_authenticate(user=other)
+
+        response = self.client.post(
+            '/api/plants/',
+            {'name': 'Not mine', 'species': species.id},
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data['species'], ['Species not found.'])
+
+    def test_scan_rejects_a_plant_with_custom_species(self):
+        species = PlantSpecies.objects.create(
+            name='Custom tracker', created_by=self.user,
+        )
+        plant = Plant.objects.create(
+            user=self.user, species=species, name='Tracker plant',
+        )
+        image = Image.new('RGB', (80, 80), 'green')
+        content = BytesIO()
+        image.save(content, format='JPEG')
+
+        response = self.client.post(
+            '/api/scans/',
+            {
+                'plant_id': plant.id,
+                'image': SimpleUploadedFile(
+                    'leaf.jpg', content.getvalue(), content_type='image/jpeg',
+                ),
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data['code'], 'custom_species_scan_unavailable')
 
 
 class NoteImageTests(TestCase):
@@ -75,6 +158,49 @@ class NoteImageTests(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(len(response.data['note_images']), 2)
         self.assertEqual(NoteImage.objects.count(), 2)
+
+    def test_create_note_replaces_inline_photo_tokens_with_saved_image_ids(self):
+        response = self.client.post(
+            f'/api/plants/{self.plant.id}/note/',
+            {
+                'note': 'Before [[image:photo-a]] after [[image:photo-b]] end.',
+                'photo_tokens': '["photo-a", "photo-b"]',
+                'photos': [
+                    self._image('first.jpg', 'green'),
+                    self._image('second.jpg', 'yellow'),
+                ],
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        images = response.data['note_images']
+        self.assertEqual(len(images), 2)
+        self.assertIn(f'[[image:{images[0]["id"]}]]', response.data['note'])
+        self.assertIn(f'[[image:{images[1]["id"]}]]', response.data['note'])
+        self.assertNotIn('photo-a', response.data['note'])
+
+    def test_rich_document_replaces_local_image_source_with_media_url(self):
+        local_path = r'C:\\temporary\\note-photo.jpg'
+        response = self.client.post(
+            f'/api/plants/{self.plant.id}/note/',
+            {
+                'note': 'Before and after',
+                'document': json.dumps([
+                    {'insert': 'Before\n'},
+                    {'insert': {'image': local_path}},
+                    {'insert': '\nAfter\n'},
+                ]),
+                'photo_tokens': json.dumps([local_path]),
+                'photos': [self._image('inline.jpg', 'green')],
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        image_source = response.data['document'][1]['insert']['image']
+        self.assertTrue(image_source.startswith('/media/notes/'))
+        self.assertNotEqual(image_source, local_path)
 
     def test_edit_can_remove_one_image_and_append_another(self):
         log = CareLog.objects.create(
@@ -390,6 +516,83 @@ class StreakTimezoneTests(TestCase):
         self.assertIn('2026-07-16', response.data['recent_care_days'])
 
 
+class StreakFreezeHistoryTests(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            username='freeze-history-user',
+            email='freeze-history@example.com',
+            password='test-password',
+            current_streak=5,
+            longest_streak=5,
+            last_care_date=date(2026, 7, 15),
+            streak_freezes=3,
+        )
+
+    def test_each_missed_date_consumes_and_records_one_freeze(self):
+        saved = self.user.reconcile_streak_freezes(today=date(2026, 7, 17))
+
+        self.user.refresh_from_db()
+        self.assertEqual(saved, [date(2026, 7, 16)])
+        self.assertEqual(self.user.streak_freezes, 2)
+        self.assertTrue(StreakFreezeUsage.objects.filter(
+            user=self.user,
+            date=date(2026, 7, 16),
+        ).exists())
+
+    def test_frozen_date_preserves_chain_without_inflating_count(self):
+        self.user.reconcile_streak_freezes(today=date(2026, 7, 17))
+
+        result = self.user.register_care_activity(today=date(2026, 7, 17))
+
+        self.user.refresh_from_db()
+        self.assertTrue(result['saved'])
+        self.assertEqual(self.user.current_streak, 6)
+        self.assertEqual(self.user.streak_freezes, 2)
+        self.assertTrue(StreakFreezeUsage.objects.filter(
+            user=self.user,
+            date=date(2026, 7, 16),
+        ).exists())
+
+    def test_reconcile_does_not_spend_a_freeze_twice(self):
+        self.user.reconcile_streak_freezes(today=date(2026, 7, 17))
+        self.user.reconcile_streak_freezes(today=date(2026, 7, 17))
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.streak_freezes, 2)
+        self.assertEqual(
+            StreakFreezeUsage.objects.filter(user=self.user).count(),
+            1,
+        )
+
+
+class WeeklyChallengeTimezoneTests(TestCase):
+    def test_progress_uses_the_same_client_local_week_as_the_streak(self):
+        user = CustomUser.objects.create_user(
+            username='weekly-timezone-user',
+            email='weekly-timezone@example.com',
+            password='test-password',
+        )
+        species = PlantSpecies.objects.create(name='Weekly timezone species')
+        plant = Plant.objects.create(user=user, species=species, name='Weekly plant')
+        # Sunday 17:30 UTC is Monday 01:30 in UTC+08. It must therefore count
+        # toward the week beginning Monday 20 July for this user.
+        CareLog.objects.create(
+            user=user,
+            plant=plant,
+            activity=CareLog.Activity.WATER,
+            created_at=datetime(2026, 7, 19, 17, 30, tzinfo=datetime_timezone.utc),
+        )
+
+        progress = _metric_value(
+            user,
+            'care_actions',
+            today=date(2026, 7, 20),
+            client_timezone=datetime_timezone(timedelta(hours=8)),
+        )
+
+        self.assertEqual(progress, 1)
+
+
 @override_settings(
     SCAN_MIN_IMAGE_DIMENSION=224,
     SCAN_BLUR_THRESHOLD=25,
@@ -631,3 +834,36 @@ class ScanningPipelineTests(SimpleTestCase):
         self.assertTrue(result.accepted)
         self.assertEqual(result.predictions, predictions)
         self.disease.classify.assert_called_once_with('Tomato', self.image)
+
+    def test_releases_leaf_model_before_disease_inference(self):
+        events = []
+
+        class ReleasableLeafClassifier:
+            def classify(self, _image):
+                events.append('leaf')
+                return {
+                    'passed': True,
+                    'leaf_confidence': 0.999,
+                    'threshold': 0.99,
+                }
+
+            @classmethod
+            def release_cached_model(cls):
+                events.append('release')
+
+        disease = Mock()
+        disease.classify.side_effect = lambda *_: (
+            events.append('disease')
+            or [{'label': 'Tomato_healthy', 'confidence': 0.95}]
+        )
+        self.quality.assess.return_value = {'passed': True, 'issues': []}
+        pipeline = ScanningPipeline(
+            self.quality,
+            ReleasableLeafClassifier(),
+            disease,
+        )
+
+        result = pipeline.analyze(self.image, 'Tomato')
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(events, ['leaf', 'release', 'disease'])

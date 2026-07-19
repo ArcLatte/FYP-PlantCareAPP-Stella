@@ -24,6 +24,10 @@ class Streak {
   /// days). Null when the backend didn't send them.
   final Set<DateTime>? recentCareDays;
 
+  /// Saved calendar dates in the recent strip. They join the visual streak
+  /// chain but never represent a care action or increase the streak count.
+  final Set<DateTime>? recentFrozenDays;
+
   /// Equipped creature-skin payload (`{'tint': '#hex', 'amount': 0.x}`)
   /// or null when no skin is equipped.
   final Map<String, dynamic>? equippedSkin;
@@ -41,6 +45,7 @@ class Streak {
     this.freezes = 0,
     this.freezeActive = false,
     this.recentCareDays,
+    this.recentFrozenDays,
     this.equippedSkin,
     this.equippedPot,
   });
@@ -59,6 +64,7 @@ class Streak {
       freezes: (json['freezes'] as num?)?.toInt() ?? 0,
       freezeActive: json['freeze_active'] == true,
       recentCareDays: parseDates(json['recent_care_days']),
+      recentFrozenDays: parseDates(json['recent_frozen_days']),
       equippedSkin: (json['equipped_skin'] is Map<String, dynamic>)
           ? json['equipped_skin'] as Map<String, dynamic>
           : null,
@@ -90,6 +96,7 @@ class StreakCalendar {
   final DateTime? lastCareDate;
   final bool activeToday;
   final bool freezeActive;
+  final Set<DateTime> frozenDates;
 
   /// The server's current date, so the calendar highlights "today" and dims
   /// future days by the same clock the care days were recorded on. Falls
@@ -103,6 +110,7 @@ class StreakCalendar {
     this.lastCareDate,
     required this.activeToday,
     required this.freezeActive,
+    required this.frozenDates,
     this.today,
   });
 
@@ -116,6 +124,7 @@ class StreakCalendar {
       lastCareDate: (raw == null || raw.isEmpty) ? null : DateTime.tryParse(raw),
       activeToday: json['active_today'] == true,
       freezeActive: json['freeze_active'] == true,
+      frozenDates: Streak.parseDates(json['frozen_dates']) ?? {},
       today: (rawToday == null || rawToday.isEmpty)
           ? null
           : DateTime.tryParse(rawToday),

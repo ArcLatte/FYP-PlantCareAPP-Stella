@@ -7,6 +7,8 @@ import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
+import '../../services/app_badge_controller.dart';
+import '../../services/app_refresh_bus.dart';
 import '../../services/notification_service.dart';
 import '../../services/weather_controller.dart';
 import '../../services/weather_service.dart';
@@ -20,7 +22,8 @@ import '../../widgets/xp_toast.dart';
 const _kAllFilter = '__all__';
 const _kUnsortedFilter = '__unsorted__';
 const _kWeatherTextShadow = [
-  Shadow(color: Color(0x660B1424), blurRadius: 8, offset: Offset(0, 1)),
+  Shadow(color: Color(0x8C0B1424), blurRadius: 3, offset: Offset(0, 1)),
+  Shadow(color: Color(0x730B1424), blurRadius: 10, offset: Offset(0, 2)),
 ];
 
 /// Status-based filter applied on top of the location chips.
@@ -66,10 +69,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingPlants = true;
   String _username = '';
   String? _tier;
+  String? _avatarUrl;
   Weather? _weather;
   final WeatherController _weatherController = WeatherController.instance;
   String _filter = _kAllFilter;
   _StatusFilter _statusFilter = _StatusFilter.all;
+  final TextEditingController _gardenSearchController = TextEditingController();
+  String _gardenQuery = '';
 
   final ScrollController _scrollController = ScrollController();
   // True once the weather header has scrolled out from behind the status bar,
@@ -97,6 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _weatherController.removeListener(_onWeatherChanged);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _gardenSearchController.dispose();
     super.dispose();
   }
 
@@ -121,12 +128,18 @@ class _HomeScreenState extends State<HomeScreen> {
     await Future.wait([_loadPlants(), _loadWeather(), _loadTier()]);
   }
 
-  /// Fetch the user's tier so the header avatar can wear its frame.
-  /// Non-critical — a failure just leaves the avatar unframed.
+  /// Fetch the profile so the header avatar can show the user's photo and
+  /// wear its tier frame. Non-critical — a failure just leaves the avatar as
+  /// the initial fallback, unframed.
   Future<void> _loadTier() async {
     try {
       final profile = await ApiService.getProfile();
-      if (mounted) setState(() => _tier = profile.tier);
+      if (mounted) {
+        setState(() {
+          _tier = profile.tier;
+          _avatarUrl = profile.avatarUrl;
+        });
+      }
     } catch (_) {}
   }
 
@@ -139,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _plants = plants;
         _isLoadingPlants = false;
       });
-      // Rebuild the local watering reminders off the fresh schedule.
+      // Rebuild local care reminders from the fresh schedule.
       NotificationService.scheduleCareReminders(plants);
     } catch (e) {
       if (!mounted) return;
@@ -157,7 +170,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onRefresh() async {
-    await Future.wait([_loadPlants(), _loadWeather(forceRefresh: true)]);
+    await Future.wait([
+      _loadPlants(),
+      _loadWeather(forceRefresh: true),
+      _loadTier(), // pick up avatar / tier changes made on the profile
+    ]);
   }
 
   Future<void> _waterPlant(Plant plant) async {
@@ -169,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (i != -1) _plants[i] = updated;
       });
       AppSnackBar.success(context, '${plant.name} watered');
+      AppRefreshBus.plantsChanged();
       XpToast.flush(context);
       NotificationService.scheduleCareReminders(_plants);
     } catch (e) {
@@ -191,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (i != -1) _plants[i] = updated;
       });
       AppSnackBar.success(context, '${plant.name} fertilized');
+      AppRefreshBus.plantsChanged();
       XpToast.flush(context);
       NotificationService.scheduleCareReminders(_plants);
     } catch (e) {
@@ -213,6 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (i != -1) _plants[i] = updated;
       });
       AppSnackBar.success(context, '${plant.name} misted');
+      AppRefreshBus.plantsChanged();
       XpToast.flush(context);
       NotificationService.scheduleCareReminders(_plants);
     } catch (e) {
@@ -294,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
             isNav: true,
             onTap: () {
               Navigator.pop(ctx);
-              context.push('/scan/${plant.id}').then((_) {
+              context.push('/scan').then((_) {
                 if (mounted) _loadPlants();
               });
             },
@@ -362,128 +382,6 @@ class _HomeScreenState extends State<HomeScreen> {
     XpToast.flush(context);
   }
 
-  // ───────── Care-due sheet (bell) ─────────
-
-  /// Plants with any care activity due now.
-  List<Plant> get _dueToday => _plants
-      .where((p) => p.needsWater || p.needsFertilizer || p.needsMisting)
-      .toList();
-
-  // Kept as a compact fallback for older deep links; the header bell now opens
-  // the full Care alerts page.
-  // ignore: unused_element
-  Future<void> _openCareSheet() async {
-    final due = _dueToday;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.divider,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Today's care",
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              if (due.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.check_circle_rounded,
-                          color: AppColors.primary,
-                          size: 44,
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'All caught up — nothing due today!',
-                          style: Theme.of(sheetContext).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 340),
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final p in due)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.eco_rounded,
-                              color: AppColors.primary,
-                              size: 22,
-                            ),
-                          ),
-                          title: Text(
-                            p.name,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                          subtitle: Text(
-                            [
-                              if (p.needsWater) 'Water',
-                              if (p.needsFertilizer) 'Fertilize',
-                              if (p.needsMisting) 'Mist',
-                            ].join(' · '),
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: const Icon(
-                            Icons.chevron_right_rounded,
-                            color: AppColors.textMuted,
-                          ),
-                          onTap: () async {
-                            Navigator.pop(sheetContext);
-                            await context.push('/plants/${p.id}');
-                            _loadPlants();
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // ───────── Filter helpers ─────────
 
   List<String> get _availableFilters {
@@ -501,7 +399,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Plant> get _filteredPlants {
-    // First narrow by location chip, then by status filter.
+    // Narrow by location, status, then the garden search query.
     Iterable<Plant> result = _plants;
     if (_filter == _kUnsortedFilter) {
       result = result.where((p) => p.location.isEmpty);
@@ -509,6 +407,14 @@ class _HomeScreenState extends State<HomeScreen> {
       result = result.where((p) => p.location == _filter);
     }
     result = result.where(_matchesStatus);
+    final query = _gardenQuery.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      result = result.where((p) {
+        return p.name.toLowerCase().contains(query) ||
+            p.species.toLowerCase().contains(query) ||
+            p.location.toLowerCase().contains(query);
+      });
+    }
     return result.toList();
   }
 
@@ -629,108 +535,119 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        body: Stack(
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 460,
-              child: ColoredBox(
-                color: WeatherBackdrop.gradientColors(
-                  _weather?.iconCode ?? '01d',
-                ).first,
-              ),
+        // No backdrop behind the scroll view: the header's own overscroll slab
+        // covers pull-to-refresh, and anything painted here would bleed
+        // through behind the plant grid below the "Your Garden" panel.
+        body: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: AppColors.primary,
+          backgroundColor: AppColors.surface,
+          child: CustomScrollView(
+            controller: _scrollController,
+            // Keep the weather scene anchored while pulling to refresh. The
+            // RefreshIndicator still receives overscroll notifications and
+            // shows its spinner, but the page itself no longer rubber-bands.
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
             ),
-            RefreshIndicator(
-              onRefresh: _onRefresh,
-              color: AppColors.primary,
-              backgroundColor: AppColors.surface,
-              child: CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  // Weather header + the "Your Garden" panel live in ONE sliver so
-                  // the panel paints ON TOP of the weather (the viewport paints an
-                  // earlier sliver above later ones, which would otherwise let the
-                  // weather cover the panel). The panel has a rounded top and is
-                  // pulled up to overlap the weather, so the blue shows through its
-                  // corners. Panel colour == scaffold colour, so the space it
-                  // vacates below (from the translate) blends into the grid.
-                  SliverToBoxAdapter(
-                    child: Column(
-                      children: [
-                        _buildWeatherCard(),
-                        Transform.translate(
-                          offset: const Offset(0, -28),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: AppColors.background,
-                              borderRadius: BorderRadius.vertical(
-                                top: Radius.circular(28),
-                              ),
-                            ),
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Column(
-                              children: [
-                                _buildGardenHeader(),
-                                _buildFilterChips(),
-                              ],
+            slivers: [
+              // Weather header + the "Your Garden" panel live in ONE sliver so
+              // the panel paints ON TOP of the weather (the viewport paints an
+              // earlier sliver above later ones, which would otherwise let the
+              // weather cover the panel). The panel has a rounded top and is
+              // pulled up to overlap the weather, so the blue shows through its
+              // corners. The ColoredBox backs the whole sliver — including the
+              // 28px of layout space the translate vacates below the panel —
+              // so nothing behind the scroll view can ever show through here.
+              SliverToBoxAdapter(
+                child: ColoredBox(
+                  color: AppColors.background,
+                  child: Column(
+                    children: [
+                      _buildWeatherCard(),
+                      Transform.translate(
+                        offset: const Offset(0, -28),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(28),
                             ),
                           ),
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(
+                            children: [
+                              _buildGardenHeader(),
+                              _buildGardenSearch(),
+                              _buildFilterChips(),
+                            ],
+                          ),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // The card-grid area paints its own background too, so it always
+              // sits on an opaque surface regardless of what's behind the
+              // scroll view or how tall the screen is.
+              if (_isLoadingPlants)
+                DecoratedSliver(
+                  decoration: const BoxDecoration(color: AppColors.background),
+                  sliver: SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 14,
+                            crossAxisSpacing: 14,
+                            childAspectRatio: 0.72,
+                          ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => const PlantCardSkeleton(),
+                        childCount: 4,
+                      ),
                     ),
                   ),
-                  if (_isLoadingPlants)
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              mainAxisSpacing: 14,
-                              crossAxisSpacing: 14,
-                              childAspectRatio: 0.72,
-                            ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, i) => const PlantCardSkeleton(),
-                          childCount: 4,
-                        ),
-                      ),
-                    )
-                  else if (filtered.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _buildEmptyState(),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              mainAxisSpacing: 14,
-                              crossAxisSpacing: 14,
-                              childAspectRatio: 0.72,
-                            ),
-                        delegate: SliverChildBuilderDelegate((context, i) {
-                          final plant = filtered[i];
-                          return _PlantGridCard(
-                            plant: plant,
-                            onTap: () async {
-                              await context.push('/plants/${plant.id}');
-                              _loadPlants();
-                            },
-                            onLongPress: () => _openQuickActions(plant),
-                          );
-                        }, childCount: filtered.length),
-                      ),
+                )
+              else if (filtered.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: ColoredBox(
+                    color: AppColors.background,
+                    child: _buildEmptyState(),
+                  ),
+                )
+              else
+                DecoratedSliver(
+                  decoration: const BoxDecoration(color: AppColors.background),
+                  sliver: SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 14,
+                            crossAxisSpacing: 14,
+                            childAspectRatio: 0.72,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, i) {
+                        final plant = filtered[i];
+                        return _PlantGridCard(
+                          plant: plant,
+                          onTap: () async {
+                            await context.push('/plants/${plant.id}');
+                            _loadPlants();
+                          },
+                          onLongPress: () => _openQuickActions(plant),
+                        );
+                      }, childCount: filtered.length),
                     ),
-                ],
-              ),
-            ),
-          ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -763,9 +680,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final isWet =
         weatherGroup == '09' || weatherGroup == '10' || weatherGroup == '11';
     final gradientColors = WeatherBackdrop.gradientColors(iconCode);
-    final topScrimAlpha = isNight ? 0.24 : (isWet ? 0.16 : 0.12);
-    final midScrimAlpha = isNight ? 0.14 : (isWet ? 0.08 : 0.06);
-    final bottomScrimAlpha = isNight ? 0.16 : (isWet ? 0.12 : 0.08);
+    final topScrimAlpha = isNight ? 0.18 : (isWet ? 0.10 : 0.06);
+    final midScrimAlpha = isNight ? 0.09 : (isWet ? 0.05 : 0.03);
+    final bottomScrimAlpha = isNight ? 0.10 : (isWet ? 0.07 : 0.04);
     final statFill = const Color(
       0xFF243A4D,
     ).withValues(alpha: isNight ? 0.52 : 0.48);
@@ -847,8 +764,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               Text(
                                 '${_greeting()},',
                                 style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 13,
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                   shadows: _kWeatherTextShadow,
                                 ),
                               ),
@@ -865,67 +783,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Profile avatar → Profile tab. Wears the tier
-                            // frame once the profile fetch lands.
-                            GestureDetector(
-                              onTap: () => context.go('/profile'),
-                              child: _tier == null
-                                  ? _buildHeaderAvatar(40)
-                                  : TierFrame(
-                                      tier: _tier!,
-                                      size: 52,
-                                      child: _buildHeaderAvatar(null),
-                                    ),
-                            ),
-                            const SizedBox(width: 10),
-                            // Notification bell → today's care sheet. Dot
-                            // appears when anything is due.
-                            GestureDetector(
-                              onTap: () => context
-                                  .push('/notifications')
-                                  .then((_) => _loadPlants()),
-                              child: Container(
-                                width: 40,
-                                height: 40,
-                                alignment: Alignment.center,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white24,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    const Icon(
-                                      Icons.notifications_outlined,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                    if (_dueToday.isNotEmpty)
-                                      Positioned(
-                                        right: -1,
-                                        top: -1,
-                                        child: Container(
-                                          width: 9,
-                                          height: 9,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.amber,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 1.2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        _buildHeaderActions(),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -933,15 +791,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         const Icon(
                           Icons.place_outlined,
-                          color: Colors.white70,
+                          color: Colors.white,
                           size: 16,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           _weather?.cityName ?? 'Locating…',
                           style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             shadows: _kWeatherTextShadow,
                           ),
                         ),
@@ -1032,27 +891,91 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Circular initial avatar for the weather header. [size] is null when
+  /// Circular avatar for the weather header — the user's photo if set,
+  /// otherwise their initial (or a person icon). Same image source as the
+  /// profile screen's card so the two stay in sync. [size] is null when
   /// wrapped by [TierFrame], which sizes the child via its padding instead.
   Widget _buildHeaderAvatar(double? size) {
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        color: Colors.white24,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5FAF7),
         shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
       ),
-      child: _username.isEmpty
-          ? const Icon(Icons.person_rounded, color: Colors.white, size: 22)
-          : Text(
-              _username[0].toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+      child: _avatarUrl != null
+          ? Image.network(
+              _avatarUrl!,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (_, _, _) => _headerAvatarFallback(),
+            )
+          : _headerAvatarFallback(),
+    );
+  }
+
+  Widget _headerAvatarFallback() {
+    return _username.isEmpty
+        ? const Icon(
+            Icons.person_rounded,
+            color: AppColors.primaryDark,
+            size: 26,
+          )
+        : Text(
+            _username[0].toUpperCase(),
+            style: const TextStyle(
+              color: AppColors.primaryDark,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
             ),
+          );
+  }
+
+  /// The profile avatar in the top-right of the weather header. No glass
+  /// backing anymore — just the (larger) framed avatar with a soft shadow so
+  /// it still reads against a bright sky.
+  Widget _buildHeaderActions() {
+    const double avatarSize = 58;
+    return Tooltip(
+      message: 'Profile',
+      child: Semantics(
+        button: true,
+        label: 'Open profile',
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              AppBadgeController.instance.clearProfileUnlock();
+              context.go('/profile');
+            },
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x4D0B1424),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: _tier == null
+                  ? _buildHeaderAvatar(avatarSize)
+                  : TierFrame(
+                      tier: _tier!,
+                      size: avatarSize,
+                      child: _buildHeaderAvatar(null),
+                    ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1060,11 +983,50 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildGardenHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'Your Garden',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+      ),
+    );
+  }
+
+  /// Search and status filtering share one row so the section heading and the
+  /// location chips do not become crowded with another independent control.
+  Widget _buildGardenSearch() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Your Garden', style: Theme.of(context).textTheme.titleLarge),
+          Expanded(
+            child: SizedBox(
+              height: 46,
+              child: TextField(
+                controller: _gardenSearchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => setState(() => _gardenQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Search your plants',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 21),
+                  suffixIcon: _gardenQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _gardenSearchController.clear();
+                            setState(() => _gardenQuery = '');
+                          },
+                          icon: const Icon(Icons.close_rounded, size: 19),
+                        ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
           _FilterButton(
             active: _statusFilter != _StatusFilter.all,
             label: _statusFilter == _StatusFilter.all
@@ -1120,9 +1082,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ───────── Empty state ─────────
 
+  /// Centered message shown when the grid has nothing to render. The bottom
+  /// padding lifts it above the nav bar / FAB so it sits at the visual centre
+  /// of the free space. Adding a plant is left to the FAB — no second button.
   Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.fromLTRB(32, 0, 32, 148),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1136,16 +1101,11 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             _plants.isEmpty
                 ? 'Tap the + button in the bottom right to add your first plant.'
+                : _gardenQuery.trim().isNotEmpty
+                ? 'Try another name, species, or location.'
                 : 'No plants match this filter. Try a different one.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _openAddPlant,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Plant'),
-            style: ElevatedButton.styleFrom(minimumSize: const Size(160, 48)),
           ),
         ],
       ),

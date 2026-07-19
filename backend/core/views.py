@@ -28,6 +28,7 @@ from .serializers import (
 from PIL import Image, ImageOps, UnidentifiedImageError
 import json
 import logging
+import re
 import secrets
 
 from .scanning_pipeline import default_scanning_pipeline, ScanStatus
@@ -35,6 +36,47 @@ from .email_service import send_transactional_email
 
 
 logger = logging.getLogger(__name__)
+
+# Note bodies use these lightweight document markers to place uploaded images
+# between text sections. They intentionally remain plain text so older clients
+# can still open a note without losing its content.
+NOTE_IMAGE_MARKER = re.compile(r'\[\[image:([A-Za-z0-9_-]+)\]\]')
+
+
+def _attach_note_images(log, text, document, uploads, raw_tokens):
+    """Create images and replace client-side tokens in text and Delta JSON."""
+    try:
+        tokens = json.loads(raw_tokens or '[]')
+    except (TypeError, ValueError, json.JSONDecodeError):
+        tokens = []
+    if not isinstance(tokens, list) or len(tokens) != len(uploads):
+        tokens = []
+    last_position = log.images.order_by('-position').values_list('position', flat=True).first()
+    next_position = 0 if last_position is None else last_position + 1
+    for offset, uploaded in enumerate(uploads):
+        image = NoteImage.objects.create(
+            note=log, image=uploaded, position=next_position + offset,
+        )
+        if tokens:
+            text = text.replace(f'[[image:{tokens[offset]}]]', f'[[image:{image.id}]]')
+            for operation in document or []:
+                inserted = operation.get('insert') if isinstance(operation, dict) else None
+                if isinstance(inserted, dict) and inserted.get('image') == tokens[offset]:
+                    inserted['image'] = image.image.url
+    return text, document
+
+
+def _note_document(request):
+    raw = request.data.get('document')
+    if raw in (None, ''):
+        return None
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError('Invalid note document.')
+    if not isinstance(value, list):
+        raise ValueError('Invalid note document.')
+    return value
 
 
 # Above this top-1 confidence the model is treated as sure: the scan response
@@ -83,7 +125,7 @@ def _alternatives_locked(preds):
 
 # ─── Gamification helper ─────────────────────────────────────────
 
-def _grant_xp_and_check(user, amount: int) -> dict:
+def _grant_xp_and_check(user, amount: int, *, today=None, client_timezone=None) -> dict:
     """Award XP then run achievement + weekly-challenge checks (which may
     grant more XP / streak saves). Returns a dict to spread into a JSON
     response so the frontend can show the gain / level-up / unlocked-badge /
@@ -93,7 +135,7 @@ def _grant_xp_and_check(user, amount: int) -> dict:
     initial_seeds = user.seeds
     grant = user.award_xp(amount)
     newly = check_achievements(user)
-    weekly = check_weekly_challenge(user)
+    weekly = check_weekly_challenge(user, today, client_timezone)
     # If an achievement/challenge reward leveled us up, prefer the final level.
     leveled = grant['leveled_up'] or (user.level > initial_level)
     return {
@@ -402,7 +444,10 @@ def plant_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
-        serializer = PlantSerializer(data=request.data)
+        serializer = PlantSerializer(
+            data=request.data,
+            context={'request': request},
+        )
         if serializer.is_valid():
             serializer.save(user=request.user)
             xp = _grant_xp_and_check(request.user, 20)
@@ -423,7 +468,12 @@ def plant_detail(request, pk):
         return Response(serializer.data)
 
     elif request.method == 'PUT':
-        serializer = PlantSerializer(plant, data=request.data, partial=True)
+        serializer = PlantSerializer(
+            plant,
+            data=request.data,
+            partial=True,
+            context={'request': request},
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -444,15 +494,21 @@ def water_plant(request, pk):
 
     plant.last_watered = timezone.now()
     plant.save(update_fields=['last_watered'])
-    care = request.user.register_care_activity(today=_client_local_date(request))
+    client_timezone = _client_timezone(request)
+    today = timezone.now().astimezone(client_timezone).date()
+    care = request.user.register_care_activity(today=today)
     CareLog.objects.create(user=request.user, plant=plant, activity='water')
-    xp = _grant_xp_and_check(request.user, 5)
+    xp = _grant_xp_and_check(
+        request.user, 5, today=today, client_timezone=client_timezone,
+    )
     serializer = PlantSerializer(plant)
     return Response({
         **serializer.data,
         **xp,
         'streak_saved': care['saved'],
-        'freezes_left': care['freezes_left'],
+        # XP/weekly rewards can bank a save, so report the final balance.
+        'freezes_left': request.user.streak_freezes,
+        'freeze_low_warning': care['saved'] and request.user.streak_freezes <= 1,
     })
 
 
@@ -472,15 +528,20 @@ def fertilize_plant(request, pk):
 
     plant.last_fertilized = timezone.now()
     plant.save(update_fields=['last_fertilized'])
-    care = request.user.register_care_activity(today=_client_local_date(request))
+    client_timezone = _client_timezone(request)
+    today = timezone.now().astimezone(client_timezone).date()
+    care = request.user.register_care_activity(today=today)
     CareLog.objects.create(user=request.user, plant=plant, activity='fertilize')
-    xp = _grant_xp_and_check(request.user, 5)
+    xp = _grant_xp_and_check(
+        request.user, 5, today=today, client_timezone=client_timezone,
+    )
     serializer = PlantSerializer(plant)
     return Response({
         **serializer.data,
         **xp,
         'streak_saved': care['saved'],
-        'freezes_left': care['freezes_left'],
+        'freezes_left': request.user.streak_freezes,
+        'freeze_low_warning': care['saved'] and request.user.streak_freezes <= 1,
     })
 
 
@@ -500,15 +561,20 @@ def mist_plant(request, pk):
 
     plant.last_misted = timezone.now()
     plant.save(update_fields=['last_misted'])
-    care = request.user.register_care_activity(today=_client_local_date(request))
+    client_timezone = _client_timezone(request)
+    today = timezone.now().astimezone(client_timezone).date()
+    care = request.user.register_care_activity(today=today)
     CareLog.objects.create(user=request.user, plant=plant, activity='mist')
-    xp = _grant_xp_and_check(request.user, 5)
+    xp = _grant_xp_and_check(
+        request.user, 5, today=today, client_timezone=client_timezone,
+    )
     serializer = PlantSerializer(plant)
     return Response({
         **serializer.data,
         **xp,
         'streak_saved': care['saved'],
-        'freezes_left': care['freezes_left'],
+        'freezes_left': request.user.streak_freezes,
+        'freeze_low_warning': care['saved'] and request.user.streak_freezes <= 1,
     })
 
 
@@ -529,6 +595,11 @@ def add_note(request, pk):
     title = (request.data.get('title') or '').strip()[:120]
     text = (request.data.get('note') or '').strip()
     photos = request.FILES.getlist('photos')
+    photo_tokens = request.data.get('photo_tokens')
+    try:
+        document = _note_document(request)
+    except ValueError as error:
+        return Response({'error': str(error)}, status=400)
     photo = request.FILES.get('photo')
     if len(photos) > 6:
         return Response({'error': 'A note can contain up to 6 photos.'}, status=400)
@@ -542,20 +613,23 @@ def add_note(request, pk):
             activity='note',
             note=text,
             title=title,
+            document=document,
         )
         # The singular field remains supported for older app builds.
         if photo:
             log.photo = photo
             log.save(update_fields=['photo'])
-        for position, uploaded in enumerate(photos):
-            NoteImage.objects.create(
-                note=log,
-                image=uploaded,
-                position=position,
-            )
+        if photos:
+            log.note, log.document = _attach_note_images(
+                log, text, document, photos, photo_tokens)
+            log.save(update_fields=['note', 'document'])
     # Notes grant no XP, but they count toward the weekly challenge (e.g.
     # "Journalist") — completing it here still pays its rewards immediately.
-    weekly = check_weekly_challenge(request.user)
+    weekly = check_weekly_challenge(
+        request.user,
+        _client_local_date(request),
+        _client_timezone(request),
+    )
     extra = {}
     if weekly:
         extra = {
@@ -575,6 +649,7 @@ def _note_event(log, plant):
         'id': log.id,
         'title': log.title,
         'note': log.note,
+        'document': log.document,
         'note_photo': images[0]['url'] if images else None,
         'note_images': images,
         'plant_id': plant.id,
@@ -615,6 +690,11 @@ def note_detail(request, pk, log_id):
     title = (request.data.get('title') or '').strip()[:120]
     text = (request.data.get('note') or '').strip()
     photos = request.FILES.getlist('photos')
+    photo_tokens = request.data.get('photo_tokens')
+    try:
+        document = _note_document(request)
+    except ValueError as error:
+        return Response({'error': str(error)}, status=400)
     photo = request.FILES.get('photo')
     remove_photo = str(request.data.get('remove_photo', '')).lower() in (
         '1', 'true', 'yes')
@@ -651,6 +731,7 @@ def note_detail(request, pk, log_id):
     with transaction.atomic():
         log.title = title
         log.note = text
+        log.document = document
         if photo:
             log.photo = photo
         elif remove_photo:
@@ -659,18 +740,10 @@ def note_detail(request, pk, log_id):
         for item in removable:
             item.image.delete(save=False)
             item.delete()
-        last_position = (
-            log.images.order_by('-position')
-            .values_list('position', flat=True)
-            .first()
-        )
-        next_position = 0 if last_position is None else last_position + 1
-        for offset, uploaded in enumerate(photos):
-            NoteImage.objects.create(
-                note=log,
-                image=uploaded,
-                position=next_position + offset,
-            )
+        if photos:
+            log.note, log.document = _attach_note_images(
+                log, text, document, photos, photo_tokens)
+            log.save(update_fields=['note', 'document'])
     return Response(_note_event(log, plant), status=200)
 
 
@@ -680,6 +753,7 @@ def streak(request):
     u = request.user
     client_timezone = _client_timezone(request)
     today = timezone.now().astimezone(client_timezone).date()
+    u.reconcile_streak_freezes(today)
     # Equipped companion pot style. Creature skin tints are no longer shown or
     # applied, but the response keeps `equipped_skin: null` for old clients.
     pot = (
@@ -710,6 +784,10 @@ def streak(request):
         .exclude(activity=CareLog.Activity.NOTE)
         .datetimes('created_at', 'day', tzinfo=client_timezone)
     )
+    frozen_days = u.streak_freeze_usages.filter(
+        date__gte=window_start,
+        date__lte=today,
+    ).values_list('date', flat=True)
     return Response({
         'current_streak': u.effective_streak_for(today),
         'longest_streak': u.longest_streak,
@@ -723,6 +801,7 @@ def streak(request):
         'freezes': u.streak_freezes,
         'freeze_active': u.freeze_active_for(today),
         'recent_care_days': [d.date().isoformat() for d in week_days],
+        'recent_frozen_days': [d.isoformat() for d in frozen_days],
         # Kept for old clients; tint skins are no longer applied.
         # or null — the Tasks scene applies it to the companion.
         'equipped_skin': None,
@@ -741,6 +820,7 @@ def streak_calendar(request):
     u = request.user
     client_timezone = _client_timezone(request)
     today = timezone.now().astimezone(client_timezone).date()
+    u.reconcile_streak_freezes(today)
     days = (
         CareLog.objects
         .filter(user=u)
@@ -755,6 +835,9 @@ def streak_calendar(request):
         'active_today': u.last_care_date == today,
         'today': today.isoformat(),  # server date, so the calendar's "today"
         'freeze_active': u.freeze_active_for(today),
+        'frozen_dates': list(
+            u.streak_freeze_usages.values_list('date', flat=True)
+        ),
     })
 
 
@@ -762,7 +845,11 @@ def streak_calendar(request):
 @permission_classes([IsAuthenticated])
 def weekly_challenge(request):
     """The current week's challenge with the user's live progress."""
-    return Response(challenge_state(request.user))
+    return Response(challenge_state(
+        request.user,
+        _client_local_date(request),
+        _client_timezone(request),
+    ))
 
 
 def _scan_label_health(scan):
@@ -804,6 +891,7 @@ def activity(request):
             'id': log.id,
             'title': log.title,
             'note': log.note,
+            'document': log.document if log.activity == CareLog.Activity.NOTE else None,
             'note_photo': note_images[0]['url'] if note_images else None,
             'note_images': note_images,
             'plant_id': log.plant_id,
@@ -866,12 +954,26 @@ def location_detail(request, pk):
     return Response(status=204)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def species_list(request):
-    species = PlantSpecies.objects.all()
-    serializer = PlantSpeciesSerializer(species, many=True)
-    return Response(serializer.data)
+    if request.method == 'GET':
+        species = PlantSpecies.objects.filter(
+            created_by__isnull=True
+        ) | PlantSpecies.objects.filter(created_by=request.user)
+        return Response(PlantSpeciesSerializer(species.order_by('name'), many=True).data)
+
+    name = (request.data.get('name') or '').strip()
+    if not name:
+        return Response({'name': ['A species name is required.']}, status=400)
+    if PlantSpecies.objects.filter(created_by=request.user, name__iexact=name).exists():
+        return Response({'name': ['You already have a custom species with this name.']}, status=400)
+    species = PlantSpecies.objects.create(
+        name=name,
+        created_by=request.user,
+        default_watering_freq_days=7,
+    )
+    return Response(PlantSpeciesSerializer(species).data, status=201)
 
 
 @api_view(['GET'])
@@ -881,6 +983,8 @@ def species_detail(request, pk):
     try:
         species = PlantSpecies.objects.get(pk=pk)
     except PlantSpecies.DoesNotExist:
+        return Response({'error': 'Species not found.'}, status=404)
+    if species.created_by_id and species.created_by_id != request.user.id:
         return Response({'error': 'Species not found.'}, status=404)
     return Response(PlantSpeciesSerializer(species).data)
 
@@ -923,6 +1027,12 @@ def scan(request):
         plant = Plant.objects.get(pk=plant_id, user=request.user)
     except Plant.DoesNotExist:
         return Response({'error': 'Plant not found.'}, status=404)
+
+    if getattr(plant.species, 'is_custom', False):
+        return Response({
+            'error': 'Scanning is not available for custom species. You can still use this plant profile for care logs and notes.',
+            'code': 'custom_species_scan_unavailable',
+        }, status=400)
 
     try:
         # Apply camera orientation before quality checks and inference so width,
@@ -978,7 +1088,12 @@ def scan(request):
         top3_predictions=top3_predictions,
     )
 
-    xp = _grant_xp_and_check(request.user, 5)
+    xp = _grant_xp_and_check(
+        request.user,
+        5,
+        today=_client_local_date(request),
+        client_timezone=_client_timezone(request),
+    )
 
     return Response({
         'scan_id': scan_result.id,
@@ -1077,6 +1192,7 @@ def plant_activity(request, pk):
             'id': log.id,
             'title': log.title,
             'note': log.note,
+            'document': log.document if log.activity == CareLog.Activity.NOTE else None,
             'note_photo': note_images[0]['url'] if note_images else None,
             'note_images': note_images,
             'plant_id': plant.id,
@@ -1257,7 +1373,9 @@ def profile(request):
 
         u.save()
 
-    return Response(_profile_payload(u, _client_local_date(request)))
+    today = _client_local_date(request)
+    u.reconcile_streak_freezes(today)
+    return Response(_profile_payload(u, today))
 
 
 def _serialize_achievement(ach, user_view, snapshot=None):
@@ -1390,7 +1508,7 @@ def shop_buy(request, code):
         return Response({'error': 'Already owned.'}, status=400)
     if u.seeds < cosmetic.cost_seeds:
         return Response(
-            {'error': f'Not enough seeds ({u.seeds}/{cosmetic.cost_seeds}).'},
+            {'error': f'Not enough coins ({u.seeds}/{cosmetic.cost_seeds}).'},
             status=400,
         )
 

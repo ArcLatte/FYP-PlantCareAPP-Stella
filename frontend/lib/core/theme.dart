@@ -26,6 +26,12 @@ class AppColors {
   static const Color success = Color(0xFF4CAF7D);
   static const Color warning = Color(0xFFF59E0B);
 
+  // Shop accent — the app's existing blue (#4F9FD9 family), a soft mid-blue
+  // that pairs gently with the gold coins rather than fighting them.
+  // Deliberately not green or gold: the shop needs to read as its own
+  // destination, distinct from the green chrome and the gold coins.
+  static const Color shop = Color(0xFF5A97D0);
+
   // Misc
   static const Color divider = Color(0xFFE5EBE5);
   static const Color cardBorder = Color(0xFFE5EBE5);

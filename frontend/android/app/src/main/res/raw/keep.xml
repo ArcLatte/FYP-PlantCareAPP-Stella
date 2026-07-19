@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  flutter_local_notifications resolves this icon by its string name at
+  runtime, so Android's release resource optimizer cannot discover the
+  reference automatically.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notification" />

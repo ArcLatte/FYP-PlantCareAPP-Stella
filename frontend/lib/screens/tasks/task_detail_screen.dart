@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../models/plant.dart';
 import '../../services/api_service.dart';
+import '../../services/app_refresh_bus.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/xp_toast.dart';
@@ -67,6 +68,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         _plants.removeWhere((p) => p.id == plant.id);
         _busy.remove(plant.id);
       });
+      AppRefreshBus.plantsChanged();
       AppSnackBar.success(context, '${plant.name} — ${activity.label} done');
       XpToast.flush(context);
     } catch (e) {
@@ -102,24 +104,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       body: activity == null
           ? const Center(child: Text('Unknown task'))
           : _isLoading
-              ? const _ListSkeleton()
-              : _plants.isEmpty
-                  ? _EmptyState(activity: activity)
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: _plants.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, i) {
-                        final plant = _plants[i];
-                        return _TaskPlantRow(
-                          plant: plant,
-                          activity: activity,
-                          dueLabel: _dueLabel(plant),
-                          busy: _busy.contains(plant.id),
-                          onDone: () => _markDone(plant),
-                        );
-                      },
-                    ),
+          ? const _ListSkeleton()
+          : _plants.isEmpty
+          ? _EmptyState(activity: activity)
+          : ListView.separated(
+              padding: const EdgeInsets.all(20),
+              itemCount: _plants.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, i) {
+                final plant = _plants[i];
+                return _TaskPlantRow(
+                  plant: plant,
+                  activity: activity,
+                  dueLabel: _dueLabel(plant),
+                  busy: _busy.contains(plant.id),
+                  onDone: () => _markDone(plant),
+                );
+              },
+            ),
     );
   }
 }

@@ -5,12 +5,13 @@ import '../../models/cosmetic.dart';
 import '../../models/plant_stage.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/coin.dart';
 import '../../widgets/pot.dart';
 import '../../widgets/profile_card_scenes.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/streak_plant.dart';
 
-/// Seed Shop: spend the seeds earned from level-ups, medals and weekly
+/// Shop: spend the coins earned from level-ups, medals and weekly
 /// challenges. Two aisles: pot styles (the pot the companion sits in) and
 /// namecards (profile-card scenes).
 /// Cosmetics are purely visual — the shop is the "spend" side of the
@@ -133,12 +134,13 @@ class _ShopScreenState extends State<ShopScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Seed Shop'),
+        title: const Text('Shop'),
         actions: [
           if (_shop != null)
             Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Center(child: _SeedBalance(seeds: _shop!.seeds)),
+              // Tapping the balance explains where coins come from.
+              child: Center(child: CoinPill(coins: _shop!.seeds)),
             ),
         ],
       ),
@@ -154,7 +156,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   _buildPreview(),
                   const SizedBox(height: 6),
                   Text(
-                    'Earn seeds from level-ups, medals and weekly challenges.',
+                    'Earn coins from level-ups, medals and weekly challenges '
+                    '— tap your balance to see how.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -248,38 +251,6 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
         ),
     ];
-  }
-}
-
-/// Seeds balance pill (used in the app bar).
-class _SeedBalance extends StatelessWidget {
-  final int seeds;
-  const _SeedBalance({required this.seeds});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.spa_rounded, color: AppColors.primary, size: 16),
-          const SizedBox(width: 5),
-          Text(
-            '$seeds',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -475,10 +446,12 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!item.owned) {
+      // Blue "buy" pill with a gold coin: the coin marks the price, the blue
+      // keeps the action from blending into the gold currency.
       return _pill(
         label: '${item.costSeeds}',
-        icon: Icons.spa_rounded,
-        color: affordable ? AppColors.primary : AppColors.textMuted,
+        leading: const CoinIcon(size: 15),
+        color: affordable ? AppColors.shop : AppColors.textMuted,
         filled: affordable,
         onTap: (affordable && !busy) ? onBuy : null,
       );
@@ -504,6 +477,7 @@ class _ActionButton extends StatelessWidget {
   Widget _pill({
     required String label,
     IconData? icon,
+    Widget? leading,
     required Color color,
     required bool filled,
     VoidCallback? onTap,
@@ -519,7 +493,10 @@ class _ActionButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[
+            if (leading != null) ...[
+              leading,
+              const SizedBox(width: 4),
+            ] else if (icon != null) ...[
               Icon(icon, color: filled ? Colors.white : color, size: 15),
               const SizedBox(width: 4),
             ],

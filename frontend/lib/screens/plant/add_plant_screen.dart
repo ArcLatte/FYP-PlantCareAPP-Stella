@@ -35,6 +35,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
   // ── Step 1: species ──
   List<Map<String, dynamic>> _species = [];
   bool _isLoadingSpecies = true;
+  bool _isCreatingCustomSpecies = false;
   String _speciesQuery = '';
   Map<String, dynamic>? _selectedSpecies;
 
@@ -211,6 +212,70 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       if (_speciesFertilizerFreq == null) _lastFertilized = null;
       if (_speciesMistingFreq == null) _lastMisted = null;
     });
+  }
+
+  Future<void> _createCustomSpecies() async {
+    final controller = TextEditingController(text: _speciesQuery.trim());
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create custom species'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Custom species can be used for plant profiles, care logs, and notes. Disease scanning will not be available for them.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(hintText: 'Species name'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+
+    setState(() {
+      _isCreatingCustomSpecies = true;
+      _errorMessage = null;
+    });
+    try {
+      final species = await ApiService.createCustomSpecies(name);
+      if (!mounted) return;
+      setState(() {
+        _species = [..._species, species];
+        _speciesQuery = '';
+      });
+      _onSpeciesPicked(species);
+      AppSnackBar.success(context, '$name created and selected');
+    } catch (error) {
+      if (!mounted) return;
+      final message = AppErrorMessages.message(
+        error,
+        fallback: 'Could not create custom species.',
+      );
+      setState(() => _errorMessage = message);
+      AppSnackBar.error(context, message);
+    } finally {
+      if (mounted) setState(() => _isCreatingCustomSpecies = false);
+    }
   }
 
   Future<void> _handleBack() async {
@@ -533,6 +598,37 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                   prefixIcon: Icon(Icons.search_rounded),
                 ),
               ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _isCreatingCustomSpecies
+                      ? null
+                      : _createCustomSpecies,
+                  icon: _isCreatingCustomSpecies
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_rounded),
+                  label: Text(
+                    _isCreatingCustomSpecies
+                        ? 'Creating species…'
+                        : 'Create custom species',
+                  ),
+                ),
+              ),
+              if (_step == 0 && _errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _errorMessage!,
+                    style: const TextStyle(
+                      color: AppColors.error,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

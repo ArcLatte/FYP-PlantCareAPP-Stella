@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../models/weekly_challenge.dart';
 import '../models/xp_result.dart';
 import '../services/api_service.dart';
+import '../services/app_badge_controller.dart';
 import 'medal_reveal.dart';
 import 'tier_frame.dart';
 
@@ -30,9 +33,13 @@ class XpToast {
       if (r.streakSaved) {
         messenger.showSnackBar(_streakSavedSnack());
       }
+      if (r.freezeLowWarning) {
+        messenger.showSnackBar(_freezeLowSnack(r.freezesLeft));
+      }
       // Unlocks get the full-screen gacha reveal; level/XP toasts queue
       // after the reveal is dismissed so they don't fight for attention.
       if (r.unlocked.isNotEmpty) {
+        unawaited(AppBadgeController.instance.markProfileUnlock());
         await MedalReveal.show(context, r.unlocked);
       }
       if (r.weeklyCompleted != null) {
@@ -76,10 +83,39 @@ class XpToast {
       elevation: 4,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       duration: const Duration(seconds: 3),
+    );
+  }
+
+  static SnackBar _freezeLowSnack(int freezesLeft) {
+    final label = freezesLeft == 0
+        ? 'No streak saves left'
+        : 'Only $freezesLeft streak save left';
+    return SnackBar(
+      content: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$label — complete a weekly challenge or level up to earn more.',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: const Color(0xFFC77717),
+      behavior: SnackBarBehavior.floating,
+      elevation: 4,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      duration: const Duration(seconds: 4),
     );
   }
 
@@ -104,7 +140,7 @@ class XpToast {
                 ),
                 Text(
                   '+${w.xpReward} XP'
-                  '${w.seedsReward > 0 ? ' · +${w.seedsReward} seeds' : ''}'
+                  '${w.seedsReward > 0 ? ' · +${w.seedsReward} coins' : ''}'
                   '${w.savesBanked > 0 ? ' · ❄️ +${w.savesBanked} streak save' : ''}',
                   style: const TextStyle(
                     color: Colors.white70,
@@ -122,9 +158,7 @@ class XpToast {
       elevation: 6,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       duration: const Duration(seconds: 4),
     );
   }
@@ -136,7 +170,7 @@ class XpToast {
           const Icon(Icons.star_rounded, color: Colors.white, size: 20),
           const SizedBox(width: 10),
           Text(
-            seeds > 0 ? '+$amount XP · +$seeds seeds' : '+$amount XP',
+            seeds > 0 ? '+$amount XP · +$seeds coins' : '+$amount XP',
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
@@ -150,9 +184,7 @@ class XpToast {
       elevation: 4,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       duration: const Duration(seconds: 2),
     );
   }
@@ -214,11 +246,8 @@ class XpToast {
       elevation: 6,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       duration: Duration(seconds: newTier ? 4 : 3),
     );
   }
-
 }

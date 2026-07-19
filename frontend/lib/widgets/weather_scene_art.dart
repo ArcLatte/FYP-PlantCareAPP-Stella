@@ -36,6 +36,11 @@ Widget _sceneAsset(String path, {BoxFit? fit, double? width, double? height}) {
 class WeatherSceneArt extends StatefulWidget {
   final String iconCode;
   final double rainIntensity;
+  final double celestialScale;
+  final double celestialRightFraction;
+  final double celestialTopFraction;
+  final double celestialOpacity;
+  final double sunRaysOpacity;
 
   /// When true the drift animation is stopped (scene freezes). The home screen
   /// pauses the scene once the header scrolls out of view to save frames.
@@ -46,6 +51,11 @@ class WeatherSceneArt extends StatefulWidget {
     required this.iconCode,
     this.rainIntensity = 1.0,
     this.paused = false,
+    this.celestialScale = 1.0,
+    this.celestialRightFraction = 0.06,
+    this.celestialTopFraction = 0.06,
+    this.celestialOpacity = 1.0,
+    this.sunRaysOpacity = 1.0,
   });
 
   static const _base = 'assets/weather';
@@ -120,6 +130,10 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
               builder: (context, c) {
                 final w = c.maxWidth;
                 final h = c.maxHeight;
+                final celestialSize = w * 0.30 * widget.celestialScale;
+                final raySize = w * 0.58 * widget.celestialScale;
+                final celestialRight = w * widget.celestialRightFraction;
+                final celestialTop = h * widget.celestialTopFraction;
                 return Stack(
                   fit: StackFit.expand,
                   children: [
@@ -168,41 +182,47 @@ class _WeatherSceneArtState extends State<WeatherSceneArt>
                     // Rotating soft rays behind the daytime sun.
                     if (cfg.celestial != null && !_isNight)
                       Positioned(
-                        right: w * 0.06 - w * 0.14,
-                        top: h * 0.06 - w * 0.14,
-                        width: w * 0.58,
-                        height: w * 0.58,
-                        child: AnimatedBuilder(
-                          animation: _controller,
-                          builder: (context, _) => CustomPaint(
-                            painter: SunRaysPainter(_controller.value),
+                        right: celestialRight + celestialSize / 2 - raySize / 2,
+                        top: celestialTop + celestialSize / 2 - raySize / 2,
+                        width: raySize,
+                        height: raySize,
+                        child: Opacity(
+                          opacity: widget.sunRaysOpacity,
+                          child: AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, _) => CustomPaint(
+                              painter: SunRaysPainter(_controller.value),
+                            ),
                           ),
                         ),
                       ),
                     // Sun or moon, top-right — gently pulsing and bobbing.
                     if (cfg.celestial != null)
                       Positioned(
-                        right: w * 0.06,
-                        top: h * 0.06,
-                        width: w * 0.30,
-                        height: w * 0.30,
-                        child: AnimatedBuilder(
-                          animation: _controller,
-                          builder: (context, child) {
-                            final t = _controller.value;
-                            return Transform.translate(
-                              offset: Offset(
-                                0,
-                                3 * math.sin(t * 2 * math.pi * 2),
-                              ),
-                              child: Transform.scale(
-                                scale:
-                                    1 + 0.035 * math.sin(t * 2 * math.pi * 4),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: _sceneAsset(cfg.celestial!),
+                        right: celestialRight,
+                        top: celestialTop,
+                        width: celestialSize,
+                        height: celestialSize,
+                        child: Opacity(
+                          opacity: widget.celestialOpacity,
+                          child: AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, child) {
+                              final t = _controller.value;
+                              return Transform.translate(
+                                offset: Offset(
+                                  0,
+                                  3 * math.sin(t * 2 * math.pi * 2),
+                                ),
+                                child: Transform.scale(
+                                  scale:
+                                      1 + 0.035 * math.sin(t * 2 * math.pi * 4),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _sceneAsset(cfg.celestial!),
+                          ),
                         ),
                       ),
                     // Sunlit pollen motes drifting up on gentle days.

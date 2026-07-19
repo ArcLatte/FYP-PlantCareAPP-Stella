@@ -1,3 +1,4 @@
+import gc
 import os
 from dataclasses import dataclass
 
@@ -93,6 +94,7 @@ class DiseaseClassifier:
                     probabilities = torch.softmax(model(tensor)[0], dim=0)
             finally:
                 del model
+                gc.collect()
 
         count = min(3, len(config.classes))
         top = torch.topk(probabilities, count)

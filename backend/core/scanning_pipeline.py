@@ -7,6 +7,7 @@ from django.conf import settings
 from .disease_classifier import DiseaseClassifier
 from .image_quality import ImageQualityAssessor
 from .leaf_gate import LeafGateClassifier
+from .model_runtime import inference_lock
 
 
 class ScanStatus(str, Enum):
@@ -48,21 +49,38 @@ class ScanningPipeline:
                 quality=quality,
             )
 
-        leaf_gate = self.leaf_classifier.classify(image)
-        if not leaf_gate['passed']:
-            return ScanAnalysis(
-                status=ScanStatus.NO_LEAF,
-                quality=quality,
-                leaf_gate=leaf_gate,
-            )
+        # The free Railway container cannot safely hold the cached leaf gate
+        # and a species model at the same time. Keep both stages under one
+        # re-entrant lock, release the leaf model, then load the disease model.
+        with inference_lock:
+            try:
+                leaf_gate = self.leaf_classifier.classify(image)
+            finally:
+                release = getattr(
+                    type(self.leaf_classifier),
+                    'release_cached_model',
+                    None,
+                )
+                if callable(release):
+                    release()
 
-        predictions = self.disease_classifier.classify(species_name, image)
-        if predictions is None:
-            return ScanAnalysis(
-                status=ScanStatus.UNSUPPORTED_SPECIES,
-                quality=quality,
-                leaf_gate=leaf_gate,
+            if not leaf_gate['passed']:
+                return ScanAnalysis(
+                    status=ScanStatus.NO_LEAF,
+                    quality=quality,
+                    leaf_gate=leaf_gate,
+                )
+
+            predictions = self.disease_classifier.classify(
+                species_name,
+                image,
             )
+            if predictions is None:
+                return ScanAnalysis(
+                    status=ScanStatus.UNSUPPORTED_SPECIES,
+                    quality=quality,
+                    leaf_gate=leaf_gate,
+                )
 
         return ScanAnalysis(
             status=ScanStatus.ACCEPTED,

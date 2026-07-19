@@ -49,10 +49,11 @@ const Map<String, _Rig> _rigs = {
   'bloom': _Rig(bodySway: true, sides: true),
 };
 
-/// Eye positions for the blink overlay, as fractions of the (square) stage box,
-/// mirroring the dot-eyes baked into the matching `<stage>.svg`. Only the open
-/// dot-eyed stages blink; the rest have closed/expressive eyes (seed & sprout
-/// sleep, leafy `^^`, budding rests).
+/// Eye positions as fractions of the (square) stage box. These stages ship
+/// *eyeless* SVG faces — the dot eyes are drawn in code by [_EyesPainter] so
+/// they can blink (squash shut vertically) and go happy `^^` when petted.
+/// The rest keep baked closed/expressive eyes (seed & sprout sleep, leafy
+/// `^^`, budding rests).
 const Map<String, ({double dx, double cy, double r})> _eyeGeometry = {
   'seedling': (dx: 0.075, cy: 0.62, r: 0.033),
   'young': (dx: 0.08, cy: 0.58, r: 0.034),
@@ -101,34 +102,46 @@ Widget streakCreatureLayers({
   required double breathe,
   required double blink,
   double squash = 0,
+  double happy = 0,
+  double hop = 0,
   ColorFilter? colorFilter,
 }) {
   final rig = _rigs[stage.image] ?? const _Rig();
 
-  // Body (+ baked head leaves / bud / flower) with the blink overlay.
+  // Body (+ baked head leaves / bud / flower) with the code-drawn eyes.
   Widget body = _svg(stage.image, size, colorFilter: colorFilter);
   final geo = _eyeGeometry[stage.image];
-  if (geo != null && blink > 0.01) {
+  if (geo != null) {
+    Widget eyes = CustomPaint(painter: _EyesPainter(geo, blink, happy));
+    // Eyes get the same scene tint as the face they sit on.
+    if (colorFilter != null) {
+      eyes = ColorFiltered(colorFilter: colorFilter, child: eyes);
+    }
     body = Stack(
       alignment: Alignment.center,
       children: [
         body,
-        SizedBox(
-          width: size,
-          height: size,
-          child: CustomPaint(painter: _EyelidPainter(geo, blink)),
-        ),
+        SizedBox(width: size, height: size, child: eyes),
       ],
     );
   }
   if (rig.bodySway) {
     // Breathe mostly vertically (squash-and-stretch reads more alive than a
-    // uniform pulse); `squash` adds the tap-bounce's extra stretch on top.
-    body = Transform.scale(
-      scaleX: (1 + (breathe - 1) * 0.45) * (1 + squash * 0.9),
-      scaleY: breathe * (1 - squash),
-      alignment: _basePivot,
-      child: Transform.rotate(angle: sway, alignment: _basePivot, child: body),
+    // uniform pulse); `squash` adds the tap-bounce's extra stretch on top,
+    // and `hop` lifts the body for the petted little jump (kept small so the
+    // roots stay hidden behind the pot rim).
+    body = Transform.translate(
+      offset: Offset(0, -hop * size * 0.02),
+      child: Transform.scale(
+        scaleX: (1 + (breathe - 1) * 0.45) * (1 + squash * 0.9),
+        scaleY: breathe * (1 - squash),
+        alignment: _basePivot,
+        child: Transform.rotate(
+          angle: sway,
+          alignment: _basePivot,
+          child: body,
+        ),
+      ),
     );
   }
 
@@ -207,7 +220,7 @@ class _StreakPlantState extends State<StreakPlant>
   // [_scheduleBlink] — sometimes twice in a row — instead of a fixed loop,
   // so the creature reads as alive rather than metronomic.
   late final AnimationController _blink;
-  // Tap response: an excited wiggle + squash-stretch bounce.
+  // Tap response: happy eyes + a hop + an excited wiggle/squash bounce.
   late final AnimationController _pounce;
   // Tap celebration: a one-shot heart/sparkle burst over the creature.
   late final AnimationController _burst;
@@ -235,7 +248,7 @@ class _StreakPlantState extends State<StreakPlant>
     );
     _pounce = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 640),
+      duration: const Duration(milliseconds: 900),
       value: 1,
     );
     _burst = AnimationController(
@@ -303,11 +316,27 @@ class _StreakPlantState extends State<StreakPlant>
     return v < 0.5 ? v / 0.5 : (1 - v) / 0.5;
   }
 
-  // Tap bounce: a damped wiggle + stretch that settles within ~0.6s.
+  // Tap bounce: a damped wiggle + stretch that settles within ~0.9s.
   double _pounceSway() {
     final p = _pounce.value;
     if (p >= 1) return 0;
     return math.sin(p * math.pi * 3) * 0.075 * (1 - p);
+  }
+
+  // Happy `^^` eyes while petted: snap on fast, hold, release near the end.
+  double _pounceHappy() {
+    final p = _pounce.value;
+    if (p >= 1) return 0;
+    final rise = (p / 0.12).clamp(0.0, 1.0);
+    final fall = ((1 - p) / 0.30).clamp(0.0, 1.0);
+    return math.min(rise, fall);
+  }
+
+  // One quick hop early in the bounce, back on the soil by ~60% through.
+  double _pounceHop() {
+    final p = _pounce.value;
+    if (p >= 1) return 0;
+    return math.max(0, math.sin(p * math.pi * 1.6));
   }
 
   double _pounceSquash() {
@@ -356,6 +385,8 @@ class _StreakPlantState extends State<StreakPlant>
                     breathe: _breatheValue(),
                     blink: _blinkAmount(),
                     squash: _pounceSquash(),
+                    happy: _pounceHappy(),
+                    hop: _pounceHop(),
                     colorFilter: widget.colorFilter,
                   ),
                 ),
@@ -388,31 +419,65 @@ class _StreakPlantState extends State<StreakPlant>
   }
 }
 
-/// Paints two short "closed eyelid" strokes over the baked-in dot-eyes during a
-/// blink. The stroke thickens with [amount] (0 = open, 1 = shut).
-class _EyelidPainter extends CustomPainter {
+/// Draws the dot eyes over the eyeless face art. A blink squashes the eye
+/// shut *vertically* — the width never changes, so closing can't read as a
+/// sideways stretch (the old eyelid-stroke overlay did exactly that). While
+/// the creature is petted the dots cross-fade into happy `^^` arcs.
+class _EyesPainter extends CustomPainter {
   final ({double dx, double cy, double r}) geo;
-  final double amount;
-  const _EyelidPainter(this.geo, this.amount);
+  final double blink; // 0 = open → 1 = shut
+  final double happy; // 0 = dot eyes → 1 = happy arcs
+  const _EyesPainter(this.geo, this.blink, this.happy);
+
+  static const Color _ink = Color(0xFF34433A);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (amount <= 0.01) return;
     final r = geo.r * size.width;
     final cy = geo.cy * size.height;
-    final cxL = size.width * (0.5 - geo.dx);
-    final cxR = size.width * (0.5 + geo.dx);
-    final half = 1.2 * r;
-    final paint = Paint()
-      ..color = const Color(0xFF34433A)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 2.2 * r * amount;
-    canvas.drawLine(Offset(cxL - half, cy), Offset(cxL + half, cy), paint);
-    canvas.drawLine(Offset(cxR - half, cy), Offset(cxR + half, cy), paint);
+    for (final cx in [
+      size.width * (0.5 - geo.dx),
+      size.width * (0.5 + geo.dx),
+    ]) {
+      if (happy < 0.99) {
+        // Open eye, squashing to a thin closed lens at full blink.
+        final openness = (1 - blink).clamp(0.10, 1.0);
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(cx, cy),
+            width: 2 * r,
+            height: 2 * r * openness,
+          ),
+          Paint()..color = _ink.withValues(alpha: 1 - happy),
+        );
+        // Catchlight (mirrors the one the SVG art used) fades as the lid
+        // comes down.
+        final hl = (1 - blink * 1.8).clamp(0.0, 1.0) * (1 - happy);
+        if (hl > 0.01) {
+          canvas.drawCircle(
+            Offset(cx + 0.27 * r, cy - 0.30 * r * openness),
+            0.30 * r,
+            Paint()..color = Colors.white.withValues(alpha: hl),
+          );
+        }
+      }
+      if (happy > 0.01) {
+        final arc = Path()
+          ..moveTo(cx - 1.15 * r, cy + 0.35 * r)
+          ..quadraticBezierTo(cx, cy - 1.05 * r, cx + 1.15 * r, cy + 0.35 * r);
+        canvas.drawPath(
+          arc,
+          Paint()
+            ..color = _ink.withValues(alpha: happy)
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round
+            ..strokeWidth = 0.8 * r,
+        );
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(_EyelidPainter old) =>
-      old.amount != amount || old.geo != geo;
+  bool shouldRepaint(_EyesPainter old) =>
+      old.blink != blink || old.happy != happy || old.geo != geo;
 }

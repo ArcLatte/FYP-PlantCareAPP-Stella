@@ -283,7 +283,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           enabled: !_isLoading,
           errorText: _codeError,
           onChanged: (_) {
-            if (_codeError != null) setState(() => _codeError = null);
+            setState(() => _codeError = null);
           },
           onSubmitted: (_) {
             if (!_isLoading) _verifyCode();
@@ -485,16 +485,18 @@ class _CodeInput extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: hasError
-                              ? AppColors.error.withValues(alpha: 0.05)
-                              : AppColors.primary.withValues(alpha: 0.05),
+                              ? AppColors.error.withValues(alpha: 0.07)
+                              : AppColors.primary.withValues(
+                                  alpha: index < digits.length ? 0.12 : 0.07,
+                                ),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: hasError
                                 ? AppColors.error
                                 : isActive
                                 ? AppColors.primary
-                                : AppColors.primary.withValues(alpha: 0.22),
-                            width: isActive || hasError ? 1.8 : 1,
+                                : AppColors.primary.withValues(alpha: 0.38),
+                            width: isActive || hasError ? 1.8 : 1.2,
                           ),
                         ),
                         child: Text(

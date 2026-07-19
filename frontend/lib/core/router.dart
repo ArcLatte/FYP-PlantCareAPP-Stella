@@ -9,11 +9,11 @@ import '../screens/plant/add_plant_screen.dart';
 import '../screens/plant/edit_plant_screen.dart';
 import '../screens/plant/plant_detail_screen.dart';
 import '../screens/scan/scan_screen.dart';
+import '../screens/scan/plant_picker_screen.dart';
 import '../screens/scan/result_screen.dart';
 import '../screens/disease/disease_detail_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/history/history_detail_screen.dart';
-import '../screens/notifications/notifications_screen.dart';
 import '../screens/library/library_screen.dart';
 import '../screens/library/species_detail_screen.dart';
 import '../screens/library/species_diseases_screen.dart';
@@ -96,10 +96,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AddPlantScreen(),
     ),
     GoRoute(
-      path: '/notifications',
-      builder: (context, state) => const NotificationsScreen(),
-    ),
-    GoRoute(
       path: '/plants/:id',
       builder: (context, state) {
         final plantId = int.parse(state.pathParameters['id']!);
@@ -115,11 +111,17 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(path: '/scan', builder: (context, state) => const ScanScreen()),
     GoRoute(
+      path: '/scan/select-plant',
+      builder: (context, state) => PlantPickerScreen(
+        selectedPlantId: int.tryParse(
+          state.uri.queryParameters['selected'] ?? '',
+        ),
+      ),
+    ),
+    GoRoute(
       path: '/scan/:plantId',
-      builder: (context, state) {
-        final plantId = int.parse(state.pathParameters['plantId']!);
-        return ScanScreen(plantId: plantId);
-      },
+      // Keep old deep links working, but never preselect a plant for a scan.
+      builder: (context, state) => const ScanScreen(),
     ),
     GoRoute(
       path: '/result/:scanId',

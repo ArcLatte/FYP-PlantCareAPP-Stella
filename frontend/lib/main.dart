@@ -1,9 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
+import 'services/notification_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  NotificationService.configureNavigation((route) => appRouter.go(route));
+  await NotificationService.init(requestPermission: false);
+  final initialRoute = await NotificationService.initialRoute();
   runApp(const StellaApp());
+  if (initialRoute != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      appRouter.go(initialRoute);
+    });
+  }
 }
 
 class StellaApp extends StatelessWidget {
@@ -16,6 +28,12 @@ class StellaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       scrollBehavior: const AppScrollBehavior(),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        FlutterQuillLocalizations.delegate,
+      ],
       routerConfig: appRouter,
     );
   }
@@ -29,15 +47,15 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
-      const _SoftBouncePhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      );
+      const _SoftBouncePhysics(parent: AlwaysScrollableScrollPhysics());
 
   // Suppress the glow overlay so we don't double-render anything on Android.
   @override
   Widget buildOverscrollIndicator(
-          BuildContext context, Widget child, ScrollableDetails details) =>
-      child;
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
 }
 
 /// Bouncing physics with a softer, slightly overdamped settle spring so
@@ -51,9 +69,6 @@ class _SoftBouncePhysics extends BouncingScrollPhysics {
       _SoftBouncePhysics(parent: buildParent(ancestor));
 
   @override
-  SpringDescription get spring => SpringDescription.withDampingRatio(
-        mass: 0.6,
-        stiffness: 120,
-        ratio: 1.1,
-      );
+  SpringDescription get spring =>
+      SpringDescription.withDampingRatio(mass: 0.6, stiffness: 120, ratio: 1.1);
 }

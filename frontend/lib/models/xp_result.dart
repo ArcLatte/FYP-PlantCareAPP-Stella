@@ -13,6 +13,8 @@ class XpResult {
   /// True when a banked streak save was auto-consumed to bridge missed days
   /// on this action (`streak_saved` in the care response).
   final bool streakSaved;
+  final bool freezeLowWarning;
+  final int freezesLeft;
 
   /// Set when this action completed the weekly challenge.
   final WeeklyCompletion? weeklyCompleted;
@@ -23,15 +25,18 @@ class XpResult {
     required this.leveledUpTo,
     required this.unlocked,
     this.streakSaved = false,
+    this.freezeLowWarning = false,
+    this.freezesLeft = 0,
     this.weeklyCompleted,
   });
 
   bool get hasAnything =>
       xpGained > 0 ||
       leveledUpTo != null ||
-      unlocked.isNotEmpty ||
-      streakSaved ||
-      weeklyCompleted != null;
+       unlocked.isNotEmpty ||
+       streakSaved ||
+       freezeLowWarning ||
+       weeklyCompleted != null;
 
   /// Parse the side-channel fields from any response JSON. Returns null when
   /// none of them are present (so non-XP responses don't trigger a phantom
@@ -47,8 +52,10 @@ class XpResult {
         : <Achievement>[];
     final seeds = (json['seeds_gained'] as num?)?.toInt() ?? 0;
     final saved = json['streak_saved'] == true;
+    final freezeLow = json['freeze_low_warning'] == true;
+    final freezesLeft = (json['freezes_left'] as num?)?.toInt() ?? 0;
     final weekly = WeeklyCompletion.fromJsonOrNull(json['weekly_completed']);
-    if (xp == 0 && lvl == null && unlocked.isEmpty && !saved && weekly == null) {
+    if (xp == 0 && lvl == null && unlocked.isEmpty && !saved && !freezeLow && weekly == null) {
       return null;
     }
     return XpResult(
@@ -57,6 +64,8 @@ class XpResult {
       leveledUpTo: lvl,
       unlocked: unlocked,
       streakSaved: saved,
+      freezeLowWarning: freezeLow,
+      freezesLeft: freezesLeft,
       weeklyCompleted: weekly,
     );
   }

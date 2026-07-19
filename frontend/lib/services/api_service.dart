@@ -252,6 +252,20 @@ class ApiService {
     throw const AppException('Failed to load species');
   }
 
+  static Future<Map<String, dynamic>> createCustomSpecies(String name) async {
+    final response = await http.post(
+      Uri.parse(AppConstants.speciesUrl),
+      headers: await _authHeaders(),
+      body: jsonEncode({'name': name}),
+    );
+    if (response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body));
+    }
+    throw AppException(
+      _errorMessageFromResponse(response, 'Could not create custom species.'),
+    );
+  }
+
   /// Full reference entry for one species (Library species page).
   static Future<SpeciesDetail> getSpeciesDetail(int id) async {
     final response = await _authGet('${AppConstants.speciesUrl}$id/');
@@ -373,6 +387,8 @@ class ApiService {
     String text, {
     String? title,
     List<File> photos = const [],
+    List<String> photoTokens = const [],
+    List<dynamic>? document,
   }) async {
     final url = Uri.parse('${AppConstants.plantsUrl}$id/note/');
     final http.Response response;
@@ -383,6 +399,8 @@ class ApiService {
       await _addTimezoneHeader(request.headers);
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
+      request.fields['photo_tokens'] = jsonEncode(photoTokens);
+      if (document != null) request.fields['document'] = jsonEncode(document);
       for (final photo in photos) {
         request.files.add(
           await http.MultipartFile.fromPath('photos', photo.path),
@@ -393,7 +411,11 @@ class ApiService {
       response = await http.post(
         url,
         headers: await _authHeaders(),
-        body: jsonEncode({'note': text, 'title': title ?? ''}),
+        body: jsonEncode({
+          'note': text,
+          'title': title ?? '',
+          'document': ?document,
+        }),
       );
     }
     if (response.statusCode == 201) {
@@ -414,6 +436,8 @@ class ApiService {
     String text, {
     String? title,
     List<File> photos = const [],
+    List<String> photoTokens = const [],
+    List<dynamic>? document,
     Set<int> removeImageIds = const {},
     bool removeLegacyPhoto = false,
   }) async {
@@ -427,6 +451,8 @@ class ApiService {
       request.fields['note'] = text;
       request.fields['title'] = title ?? '';
       request.fields['remove_image_ids'] = jsonEncode(removeImageIds.toList());
+      request.fields['photo_tokens'] = jsonEncode(photoTokens);
+      if (document != null) request.fields['document'] = jsonEncode(document);
       if (removeLegacyPhoto) request.fields['remove_photo'] = 'true';
       for (final photo in photos) {
         request.files.add(
@@ -443,6 +469,7 @@ class ApiService {
           'title': title ?? '',
           'remove_image_ids': removeImageIds.toList(),
           if (removeLegacyPhoto) 'remove_photo': true,
+          'document': ?document,
         }),
       );
     }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../models/weekly_challenge.dart';
+import 'coin.dart';
 
 /// Compact Weekly Challenge card for the Tasks screen: one rotating
 /// consistency goal per ISO week. Completing it banks a streak save on top
@@ -161,9 +162,9 @@ class WeeklyChallengeCard extends StatelessWidget {
               const SizedBox(width: 8),
               if (challenge.seedsReward > 0) ...[
                 _RewardChip(
-                  icon: Icons.spa_rounded,
+                  iconWidget: const CoinIcon(size: 14),
                   label: '+${challenge.seedsReward}',
-                  color: AppColors.primary,
+                  color: CoinColors.rim,
                 ),
                 const SizedBox(width: 8),
               ],
@@ -182,11 +183,13 @@ class WeeklyChallengeCard extends StatelessWidget {
 }
 
 class _RewardChip extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget; // custom art (e.g. the coin) instead of a glyph
   final String label;
   final Color color;
   const _RewardChip({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.label,
     required this.color,
   });
@@ -202,7 +205,7 @@ class _RewardChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 14),
+          iconWidget ?? Icon(icon, color: color, size: 14),
           const SizedBox(width: 4),
           Text(
             label,

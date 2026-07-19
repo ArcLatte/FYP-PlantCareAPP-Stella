@@ -25,6 +25,7 @@ class Plant {
   final String? latestHealth; // 'healthy' | 'diseased' | null
   final LatestDisease? latestDisease; // most recent *confirmed* diagnosis
   final SpeciesDetail? speciesDetail;
+  final bool scanAvailable;
 
   Plant({
     required this.id,
@@ -50,6 +51,7 @@ class Plant {
     this.latestHealth,
     this.latestDisease,
     this.speciesDetail,
+    this.scanAvailable = true,
   });
 
   factory Plant.fromJson(Map<String, dynamic> json) {
@@ -82,6 +84,9 @@ class Plant {
       speciesDetail: detail is Map<String, dynamic>
           ? SpeciesDetail.fromJson(detail)
           : null,
+      scanAvailable: json['species_detail'] is Map<String, dynamic>
+          ? json['species_detail']['scan_available'] != false
+          : json['scan_available'] != false,
     );
   }
 }

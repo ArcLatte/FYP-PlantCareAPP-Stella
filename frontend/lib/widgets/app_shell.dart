@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
+import '../services/app_badge_controller.dart';
+import '../services/location_service.dart';
+import '../services/notification_service.dart';
 
 /// Scaffold wrapper rendered by `StatefulShellRoute.indexedStack` in
 /// `core/router.dart`. Hosts the persistent **floating pill bar** for the
@@ -11,10 +14,18 @@ import '../core/theme.dart';
 /// Visual: a rounded surface bar floats above the bottom safe-area with
 /// horizontal margin. Each cell shows icon-above-label; the active cell
 /// just changes color (primary green) — no expansion.
-class AppShellScaffold extends StatelessWidget {
+class AppShellScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const AppShellScaffold({super.key, required this.navigationShell});
+
+  @override
+  State<AppShellScaffold> createState() => _AppShellScaffoldState();
+}
+
+class _AppShellScaffoldState extends State<AppShellScaffold>
+    with WidgetsBindingObserver {
+  final _badges = AppBadgeController.instance;
 
   // The cells that correspond to shell branches. Each spec's `branchIndex`
   // MUST line up with the branch order declared in `appRouter` (the list
@@ -56,11 +67,54 @@ class AppShellScaffold extends StatelessWidget {
   );
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _badges.addListener(_onBadgesChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startDeviceFeatures();
+    });
+  }
+
+  /// Android presents one permission activity at a time. Request the two app
+  /// permissions sequentially, then build badges and reminder schedules.
+  Future<void> _startDeviceFeatures() async {
+    try {
+      await LocationService.ensurePermission();
+    } catch (_) {
+      // The weather card can remain empty if location is unavailable.
+    }
+    try {
+      await NotificationService.requestNotificationPermission();
+    } catch (_) {
+      // Badges still need to start if notification setup is unavailable.
+    }
+    if (!mounted) return;
+    await _badges.start();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _badges.removeListener(_onBadgesChanged);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _badges.refresh();
+  }
+
+  void _onBadgesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       // Body extends behind the floating pill so screens fill the full height.
       extendBody: true,
-      body: navigationShell,
+      body: widget.navigationShell,
       bottomNavigationBar: SafeArea(
         top: false,
         minimum: const EdgeInsets.only(bottom: 12),
@@ -85,12 +139,13 @@ class AppShellScaffold extends StatelessWidget {
               children: [
                 _NavCell(
                   spec: _tabs[0],
-                  selected: navigationShell.currentIndex == 0,
+                  selected: widget.navigationShell.currentIndex == 0,
                   onTap: () => _goBranch(0),
                 ),
                 _NavCell(
                   spec: _tabs[1],
-                  selected: navigationShell.currentIndex == 1,
+                  selected: widget.navigationShell.currentIndex == 1,
+                  showAttentionDot: _badges.dueCareActions > 0,
                   onTap: () => _goBranch(1),
                 ),
                 _NavCell(
@@ -100,13 +155,17 @@ class AppShellScaffold extends StatelessWidget {
                 ),
                 _NavCell(
                   spec: _tabs[3], // Library
-                  selected: navigationShell.currentIndex == 3,
+                  selected: widget.navigationShell.currentIndex == 3,
                   onTap: () => _goBranch(3),
                 ),
                 _NavCell(
                   spec: _tabs[2], // Profile
-                  selected: navigationShell.currentIndex == 2,
-                  onTap: () => _goBranch(2),
+                  selected: widget.navigationShell.currentIndex == 2,
+                  showNewDot: _badges.hasNewProfileUnlock,
+                  onTap: () {
+                    _badges.clearProfileUnlock();
+                    _goBranch(2);
+                  },
                 ),
               ],
             ),
@@ -119,9 +178,9 @@ class AppShellScaffold extends StatelessWidget {
   void _goBranch(int index) {
     // `initialLocation: true` resets the branch to its root on re-tap, which
     // matches the common bottom-nav UX (tap the active tab to pop back).
-    navigationShell.goBranch(
+    widget.navigationShell.goBranch(
       index,
-      initialLocation: index == navigationShell.currentIndex,
+      initialLocation: index == widget.navigationShell.currentIndex,
     );
   }
 }
@@ -146,11 +205,15 @@ class _NavCell extends StatelessWidget {
   final _TabSpec spec;
   final bool selected;
   final VoidCallback onTap;
+  final bool showAttentionDot;
+  final bool showNewDot;
 
   const _NavCell({
     required this.spec,
     required this.selected,
     required this.onTap,
+    this.showAttentionDot = false,
+    this.showNewDot = false,
   });
 
   @override
@@ -164,7 +227,46 @@ class _NavCell extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 22),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, color: color, size: 22),
+                if (showAttentionDot)
+                  Positioned(
+                    right: -5,
+                    top: -4,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE76F51),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (showNewDot)
+                  Positioned(
+                    right: -5,
+                    top: -4,
+                    child: Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: AppColors.amber,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 2),
             Text(
               spec.label,

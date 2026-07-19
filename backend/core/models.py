@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
@@ -7,7 +9,6 @@ class CustomUser(AbstractUser):
     # ─── Streak-save tunables ────────────────────────────────
     STARTER_SAVES = 2       # every account begins with this many saves
     MAX_SAVES = 3           # bank cap — earning past this is discarded
-    MAX_BRIDGED_DAYS = 2    # saves can cover at most this many missed days
 
     # ─── Seed-earning tunables ───────────────────────────────
     # Seeds are the spendable currency (cosmetics); XP stays the status
@@ -119,24 +120,32 @@ class CustomUser(AbstractUser):
         Returns a small result dict (`saved`, `missed`, `freezes_left`) so
         views can tell the client a save was consumed."""
         today = today or timezone.localdate()
-        result = {'saved': False, 'missed': 0, 'freezes_left': self.streak_freezes}
+        # Reconcile every completed missed day before recording today's care.
+        # This makes a save belong to its actual calendar date rather than
+        # deducting a batch only when the user eventually returns.
+        saved_dates = self.reconcile_streak_freezes(today)
+        result = {
+            'saved': bool(saved_dates),
+            'missed': len(saved_dates),
+            'freezes_left': self.streak_freezes,
+        }
         if self.last_care_date is not None and self.last_care_date >= today:
             return result  # already counted today
 
         if self.last_care_date is None:
             self.current_streak = 1  # first ever care action
         else:
-            missed = (today - self.last_care_date).days - 1  # full uncared days
-            if missed == 0:
-                self.current_streak += 1  # cared yesterday — normal advance
-            elif missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS:
-                # Bridge the gap: spend one save per missed day. Bridged days
-                # preserve the streak but don't inflate it.
-                self.streak_freezes -= missed
+            missed_dates = self._missed_dates(today)
+            if self._all_missed_days_frozen(missed_dates):
+                # Care on a new day advances by one. Frozen dates preserve the
+                # chain, but deliberately never add to this numeric count.
                 self.current_streak += 1
-                result.update(saved=True, missed=missed)
+                # A previous sync may already have consumed the saves, but the
+                # care response should still explain why this streak survived.
+                result['saved'] = bool(missed_dates)
+                result['missed'] = len(missed_dates)
             else:
-                self.current_streak = 1  # gap too big — reset, keep the saves
+                self.current_streak = 1  # an uncovered date broke the streak
 
         self.last_care_date = today
         self.longest_streak = max(self.longest_streak, self.current_streak)
@@ -146,6 +155,56 @@ class CustomUser(AbstractUser):
         ])
         result['freezes_left'] = self.streak_freezes
         return result
+
+    def _missed_dates(self, today):
+        """Completed no-care dates after the last care date and before today."""
+        if self.last_care_date is None:
+            return []
+        first = self.last_care_date + timedelta(days=1)
+        return [
+            first + timedelta(days=offset)
+            for offset in range((today - first).days)
+        ]
+
+    def _all_missed_days_frozen(self, missed_dates) -> bool:
+        if not missed_dates:
+            return True
+        frozen = set(
+            StreakFreezeUsage.objects.filter(
+                user=self,
+                date__in=missed_dates,
+            ).values_list('date', flat=True)
+        )
+        return all(day in frozen for day in missed_dates)
+
+    def reconcile_streak_freezes(self, today=None):
+        """Consume at most one banked save for each completed missed date.
+
+        A web request is the app's synchronization point (there is no worker
+        running at midnight), but each save is permanently stamped with the
+        date it protected. Repeated syncs are therefore safe and cannot spend
+        the same save twice.
+        """
+        today = today or timezone.localdate()
+        missed_dates = self._missed_dates(today)
+        if not missed_dates or self.streak_freezes == 0:
+            return []
+        already_frozen = set(
+            StreakFreezeUsage.objects.filter(
+                user=self,
+                date__in=missed_dates,
+            ).values_list('date', flat=True)
+        )
+        saved_dates = []
+        for day in missed_dates:
+            if day in already_frozen or self.streak_freezes == 0:
+                continue
+            StreakFreezeUsage.objects.create(user=self, date=day)
+            self.streak_freezes -= 1
+            saved_dates.append(day)
+        if saved_dates:
+            self.save(update_fields=['streak_freezes'])
+        return saved_dates
 
     @property
     def effective_streak(self):
@@ -162,9 +221,8 @@ class CustomUser(AbstractUser):
         gap = (today - self.last_care_date).days
         if gap <= 1:
             return self.current_streak  # cared today or yesterday
-        missed = gap - 1
-        if missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS:
-            return self.current_streak  # shielded: a save will cover this
+        if self._all_missed_days_frozen(self._missed_dates(today)):
+            return self.current_streak  # every missed day has a saved record
         return 0
 
     @property
@@ -177,11 +235,32 @@ class CustomUser(AbstractUser):
         """Whether a save shields the streak on a supplied local date."""
         if self.last_care_date is None:
             return False
-        gap = (today - self.last_care_date).days
-        if gap <= 1:
-            return False
-        missed = gap - 1
-        return missed <= self.streak_freezes and missed <= self.MAX_BRIDGED_DAYS
+        missed_dates = self._missed_dates(today)
+        return bool(missed_dates) and self._all_missed_days_frozen(missed_dates)
+
+
+class StreakFreezeUsage(models.Model):
+    """A permanent record of the calendar day protected by a streak save."""
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='streak_freeze_usages',
+    )
+    date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'date'],
+                name='unique_streak_freeze_usage_date',
+            ),
+        ]
+        ordering = ['date']
+
+    def __str__(self):
+        return f'{self.user.username} freeze on {self.date.isoformat()}'
 
 
 class PasswordResetCode(models.Model):
@@ -226,7 +305,16 @@ class PlantSpecies(models.Model):
         BOTH = 'both', 'Indoor or outdoor'
 
     # Existing fields
-    name = models.CharField(max_length=100, unique=True)  # e.g. "Tomato"
+    name = models.CharField(max_length=100)  # e.g. "Tomato"
+    # Built-in species have no owner. Custom species belong only to the user
+    # who created them and deliberately are not part of the scan model.
+    created_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='custom_species',
+    )
     growing_tips = models.TextField(blank=True)
 
     # Identity / blurb
@@ -258,6 +346,10 @@ class PlantSpecies(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_custom(self):
+        return self.created_by_id is not None
 
 
 class Disease(models.Model):
@@ -398,6 +490,9 @@ class CareLog(models.Model):
     # Free-text body for `note` entries (a user journal note). Empty for the
     # water/fertilize/mist actions, which carry no text.
     note = models.TextField(blank=True)
+    # Quill Delta document for rich journal notes. Plain `note` remains the
+    # backwards-compatible searchable/preview text for older notes.
+    document = models.JSONField(null=True, blank=True)
     # Optional progress photo attached to a `note` entry, so the journal can
     # build a visual timeline of the plant over time. Empty for everything else.
     photo = models.ImageField(upload_to='notes/', null=True, blank=True)

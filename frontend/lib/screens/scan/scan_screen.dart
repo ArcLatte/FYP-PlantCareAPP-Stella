@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/app_error.dart';
@@ -25,6 +27,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   List<Plant> _plants = [];
   int? _selectedPlantId;
   bool _isLoadingPlants = true;
+  bool _hasPromptedForPlant = false;
 
   bool _isSubmitting = false;
   File? _capturedImage;
@@ -36,7 +39,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _selectedPlantId = widget.plantId;
     _loadPlants();
     _cameraReady = _initCamera();
   }
@@ -109,13 +111,40 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       setState(() {
         _plants = plants;
         _isLoadingPlants = false;
-        if (_selectedPlantId == null && plants.isNotEmpty) {
-          _selectedPlantId = plants.first.id;
-        }
       });
+      // A scan must be deliberately tied to a profile. Prompt once after the
+      // garden loads instead of silently choosing the first plant.
+      if (_selectedPlantId == null &&
+          plants.isNotEmpty &&
+          !_hasPromptedForPlant) {
+        _hasPromptedForPlant = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _selectedPlantId == null) _openPlantPicker();
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _isLoadingPlants = false);
     }
+  }
+
+  Future<void> _openAddPlant() async {
+    final created = await context.push<bool>('/plants/add');
+    if (!mounted || created != true) return;
+    await _loadPlants();
+  }
+
+  Future<void> _openPlantPicker() async {
+    final selected = await context.push<int>(
+      '/scan/select-plant?selected=${_selectedPlantId ?? ''}',
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _selectedPlantId = selected;
+      _errorMessage = null;
+    });
+    // The chooser can also create a plant. Refresh so its name/photo are
+    // immediately available in the camera selector when it returns.
+    await _loadPlants();
   }
 
   Future<void> _capture() async {
@@ -132,7 +161,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     });
     try {
       final xfile = await controller.takePicture();
-      final file = File(xfile.path);
+      final file = await _compressScanPhoto(File(xfile.path));
       if (!mounted) return;
       setState(() => _capturedImage = file);
       await _submit(file);
@@ -147,6 +176,30 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
           _capturedImage = null;
         });
       }
+    }
+  }
+
+  /// Keeps camera uploads small before sending them to the scan API. The
+  /// classifier resizes every image to 224px, so 1280px JPEG preserves more
+  /// than enough leaf detail while avoiding full-resolution camera uploads.
+  Future<File> _compressScanPhoto(File original) async {
+    final targetPath =
+        '${original.parent.path}/'
+        'scan_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    try {
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        original.absolute.path,
+        targetPath,
+        minWidth: 1280,
+        minHeight: 1280,
+        quality: 85,
+        format: CompressFormat.jpeg,
+        keepExif: false,
+      );
+      return compressed == null ? original : File(compressed.path);
+    } catch (_) {
+      // A scan should still be possible if a device cannot compress its image.
+      return original;
     }
   }
 
@@ -214,10 +267,12 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             Positioned.fill(child: _buildPreview()),
 
             // Framing guide is UI-only; it is not part of the saved photo.
-            if (!_isSubmitting &&
-                _camera?.value.isInitialized == true &&
-                _cameraError == null)
-              Positioned.fill(child: _buildScanGuide()),
+            // Stays up while analyzing so the sweep animation plays over the
+            // frozen capture (the modal overlay dims everything above it).
+            if (_cameraError == null &&
+                (_camera?.value.isInitialized == true ||
+                    _capturedImage != null))
+              Positioned.fill(child: _ScanGuide(scanning: _isSubmitting)),
 
             // Top: back button + plant selector
             Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
@@ -327,57 +382,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildScanGuide() {
-    return IgnorePointer(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(28, 112, 28, 142),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.48),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.center_focus_strong_rounded,
-                    color: Colors.white,
-                    size: 17,
-                  ),
-                  SizedBox(width: 7),
-                  Flexible(
-                    child: Text(
-                      'Place one leaf inside the frame',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: 0.86,
-                  child: CustomPaint(painter: _ScanFramePainter()),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildPlantSelector() {
     if (_isLoadingPlants) {
       return Container(
@@ -395,22 +399,36 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       );
     }
     if (_plants.isEmpty) {
-      return Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        alignment: Alignment.center,
-        child: const Text(
-          'Add a plant first',
-          style: TextStyle(color: Colors.white),
+      return GestureDetector(
+        onTap: _openAddPlant,
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_rounded, color: AppColors.primary, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Add a plant first',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, color: Colors.white70),
+            ],
+          ),
         ),
       );
     }
     return GestureDetector(
-      onTap: _showPlantPickerSheet,
+      onTap: _openPlantPicker,
       child: Container(
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -572,79 +590,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       ),
     );
   }
-
-  void _showPlantPickerSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textMuted,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Select plant',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              ..._plants.map((p) {
-                final selected = p.id == _selectedPlantId;
-                return ListTile(
-                  leading: Icon(
-                    Icons.eco_rounded,
-                    color: selected ? AppColors.primary : AppColors.textMuted,
-                  ),
-                  title: Text(
-                    p.name,
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                  subtitle: Text(
-                    p.species,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                  trailing: selected
-                      ? const Icon(
-                          Icons.check_rounded,
-                          color: AppColors.primary,
-                        )
-                      : null,
-                  onTap: () {
-                    setState(() => _selectedPlantId = p.id);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _CircleButton extends StatelessWidget {
@@ -670,42 +615,246 @@ class _CircleButton extends StatelessWidget {
   }
 }
 
-class _ScanFramePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bounds = Rect.fromLTWH(1, 1, size.width - 2, size.height - 2);
-    final guidePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.38)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(bounds, const Radius.circular(24)),
-      guidePaint,
-    );
+/// Framing guide overlay: hint pill + animated frame. Idle, the corner
+/// brackets breathe gently; while [scanning] a scan line sweeps the frame.
+class _ScanGuide extends StatefulWidget {
+  final bool scanning;
 
-    const cornerLength = 34.0;
-    const inset = 1.0;
-    final cornerPaint = Paint()
-      ..color = AppColors.primary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    final path = Path()
-      ..moveTo(inset, cornerLength)
-      ..lineTo(inset, inset)
-      ..lineTo(cornerLength, inset)
-      ..moveTo(size.width - cornerLength, inset)
-      ..lineTo(size.width - inset, inset)
-      ..lineTo(size.width - inset, cornerLength)
-      ..moveTo(size.width - inset, size.height - cornerLength)
-      ..lineTo(size.width - inset, size.height - inset)
-      ..lineTo(size.width - cornerLength, size.height - inset)
-      ..moveTo(cornerLength, size.height - inset)
-      ..lineTo(inset, size.height - inset)
-      ..lineTo(inset, size.height - cornerLength);
-    canvas.drawPath(path, cornerPaint);
+  const _ScanGuide({required this.scanning});
+
+  @override
+  State<_ScanGuide> createState() => _ScanGuideState();
+}
+
+class _ScanGuideState extends State<_ScanGuide>
+    with SingleTickerProviderStateMixin {
+  static const _idleCycle = Duration(milliseconds: 2600);
+  static const _sweepCycle = Duration(milliseconds: 1700);
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.scanning ? _sweepCycle : _idleCycle,
+  )..repeat();
+
+  @override
+  void didUpdateWidget(covariant _ScanGuide oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scanning != widget.scanning) {
+      _controller.duration = widget.scanning ? _sweepCycle : _idleCycle;
+      _controller.repeat();
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _ScanFramePainter oldDelegate) => false;
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(28, 112, 28, 142),
+        child: Column(
+          children: [
+            // Hint pill fades out while analyzing — the modal overlay carries
+            // the messaging then.
+            AnimatedOpacity(
+              opacity: widget.scanning ? 0 : 1,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.center_focus_strong_rounded,
+                      color: Colors.white,
+                      size: 17,
+                    ),
+                    SizedBox(width: 7),
+                    Flexible(
+                      child: Text(
+                        'Place one leaf inside the frame',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: 0.86,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, _) {
+                      final t = _controller.value;
+                      // 0 → 1 → 0 over one loop, eased at both ends.
+                      final pulse = 0.5 - 0.5 * math.cos(2 * math.pi * t);
+                      return Transform.scale(
+                        scale: widget.scanning ? 1.0 : 1.0 + 0.012 * pulse,
+                        child: CustomPaint(
+                          painter: _ScanFramePainter(
+                            t: t,
+                            pulse: pulse,
+                            scanning: widget.scanning,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScanFramePainter extends CustomPainter {
+  /// Loop position, 0..1. Drives the scan-line sweep while scanning.
+  final double t;
+
+  /// Eased 0 → 1 → 0 over one loop. Drives the idle breathing.
+  final double pulse;
+  final bool scanning;
+
+  _ScanFramePainter({
+    required this.t,
+    required this.pulse,
+    required this.scanning,
+  });
+
+  static const _radius = 28.0;
+  // Straight arm length of each corner bracket, past the rounded corner.
+  static const _arm = 24.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
+    final rrect = RRect.fromRectAndRadius(
+      bounds,
+      const Radius.circular(_radius),
+    );
+
+    final outlinePaint = Paint()
+      ..color = Colors.white.withValues(
+        alpha: scanning ? 0.22 : 0.22 + 0.12 * pulse,
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawRRect(rrect, outlinePaint);
+
+    // Corner brackets that follow the rounded corners, with a soft glow
+    // underneath so they read against both bright and dark foliage.
+    final brackets = _cornerBrackets(bounds);
+    final glowPaint = Paint()
+      ..color = AppColors.primary.withValues(
+        alpha: scanning ? 0.5 : 0.2 + 0.3 * pulse,
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    canvas.drawPath(brackets, glowPaint);
+    final bracketPaint = Paint()
+      ..color = scanning
+          ? AppColors.primary
+          : AppColors.primary.withValues(alpha: 0.75 + 0.25 * pulse)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(brackets, bracketPaint);
+
+    if (scanning) {
+      // Scan line sweeping top → bottom with a fading trail, clipped to the
+      // frame so nothing spills past the rounded corners.
+      canvas.save();
+      canvas.clipRRect(rrect);
+      final lineY = bounds.top + bounds.height * t;
+      final trailTop = math.max(bounds.top, lineY - bounds.height * 0.26);
+      if (lineY - trailTop > 1) {
+        final trailRect = Rect.fromLTRB(
+          bounds.left,
+          trailTop,
+          bounds.right,
+          lineY,
+        );
+        final trailPaint = Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.primary.withValues(alpha: 0),
+              AppColors.primary.withValues(alpha: 0.3),
+            ],
+          ).createShader(trailRect);
+        canvas.drawRect(trailRect, trailPaint);
+      }
+      final linePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.95)
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2);
+      canvas.drawLine(
+        Offset(bounds.left + 12, lineY),
+        Offset(bounds.right - 12, lineY),
+        linePaint,
+      );
+      canvas.restore();
+    }
+  }
+
+  /// One path holding all four corner brackets: straight arm, rounded arc
+  /// matching the outline's corner radius, straight arm.
+  Path _cornerBrackets(Rect b) {
+    const r = _radius;
+    const rad = Radius.circular(r);
+    return Path()
+      // Top-left
+      ..moveTo(b.left, b.top + r + _arm)
+      ..lineTo(b.left, b.top + r)
+      ..arcToPoint(Offset(b.left + r, b.top), radius: rad)
+      ..lineTo(b.left + r + _arm, b.top)
+      // Top-right
+      ..moveTo(b.right - r - _arm, b.top)
+      ..lineTo(b.right - r, b.top)
+      ..arcToPoint(Offset(b.right, b.top + r), radius: rad)
+      ..lineTo(b.right, b.top + r + _arm)
+      // Bottom-right
+      ..moveTo(b.right, b.bottom - r - _arm)
+      ..lineTo(b.right, b.bottom - r)
+      ..arcToPoint(Offset(b.right - r, b.bottom), radius: rad)
+      ..lineTo(b.right - r - _arm, b.bottom)
+      // Bottom-left
+      ..moveTo(b.left + r + _arm, b.bottom)
+      ..lineTo(b.left + r, b.bottom)
+      ..arcToPoint(Offset(b.left, b.bottom - r), radius: rad)
+      ..lineTo(b.left, b.bottom - r - _arm);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanFramePainter oldDelegate) =>
+      oldDelegate.t != t ||
+      oldDelegate.pulse != pulse ||
+      oldDelegate.scanning != scanning;
 }

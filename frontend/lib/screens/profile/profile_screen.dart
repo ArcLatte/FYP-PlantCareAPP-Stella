@@ -12,6 +12,7 @@ import '../../models/streak.dart';
 import '../../models/user_profile.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/coin.dart';
 import '../../widgets/medal.dart';
 import '../../widgets/pot.dart';
 import '../../widgets/profile_card_scenes.dart';
@@ -259,7 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'Rank up tiers for scenes · earn namecards from '
-                  'achievement series or the Seed Shop.',
+                  'achievement series or the Shop.',
                   style: Theme.of(sheetCtx).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 14),
@@ -310,7 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ]),
                         const SizedBox(height: 16),
                         Text(
-                          'SEED SHOP NAMECARDS',
+                          'SHOP NAMECARDS',
                           style: TextStyle(
                             color: AppColors.textMuted,
                             fontSize: 10.5,
@@ -326,7 +327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               theme: t,
                               label: t.name,
                               locked: !_namecards.contains(t.id),
-                              lockLabel: 'Find it in the Seed Shop',
+                              lockLabel: 'Find it in the Shop',
                               selected: _cardThemeId == t.id,
                             ),
                         ]),
@@ -385,15 +386,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onEditTheme: _pickCardTheme,
                     ),
                     const SizedBox(height: 16),
-                    _StatsGrid(profile: _profile!),
-                    const SizedBox(height: 12),
-                    _ShopRow(
-                      seeds: _profile!.seeds,
+                    // Shop banner sits above the stats so the "spend" loop
+                    // is the first thing under the hero card.
+                    _ShopBanner(
+                      coins: _profile!.seeds,
                       onTap: () async {
                         await context.push('/profile/shop');
-                        _load(); // seeds may have been spent
+                        _load(); // coins may have been spent
                       },
                     ),
+                    const SizedBox(height: 12),
+                    _StatsGrid(profile: _profile!),
                     const SizedBox(height: 24),
                   ],
                   _SectionHeader(
@@ -943,7 +946,7 @@ class _StatsGrid extends StatelessWidget {
               child: _StatTile(
                 icon: Icons.emoji_events_rounded,
                 color: const Color(0xFFE5A722),
-                label: 'MEDALS',
+                label: 'ACHIEVEMENTS',
                 value:
                     '${profile.achievementsUnlocked} / ${profile.achievementsTotal}',
               ),
@@ -1039,80 +1042,107 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// Full-width Seed Shop entry: balance on the left, chevron to the shop.
-class _ShopRow extends StatelessWidget {
-  final int seeds;
+/// Shop banner: market-stall icon, coin balance chip, chevron to the shop.
+/// Flat blue card (the app's blue accent) — distinct from the green chrome
+/// and the gold coins, so the "spend" entry point reads as its own
+/// destination. Tapping the coin chip explains how to earn coins; tapping
+/// anywhere else opens the shop.
+class _ShopBanner extends StatelessWidget {
+  final int coins;
   final VoidCallback onTap;
-  const _ShopRow({required this.seeds, required this.onTap});
+  const _ShopBanner({required this.coins, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: AppColors.shop,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBorder),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: AppColors.cardShadow,
+              color: AppColors.shop.withValues(alpha: 0.28),
               blurRadius: 10,
-              offset: Offset(0, 2),
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: Row(
           children: [
+            // Solid white stall tile: pops against the blue, big enough to
+            // read at a glance as the destination.
             Container(
-              width: 40,
-              height: 40,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(12),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(13),
               ),
               child: const Icon(
-                Icons.spa_rounded,
-                color: AppColors.primary,
-                size: 21,
+                Icons.storefront_rounded,
+                color: AppColors.shop,
+                size: 28,
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
+            const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Seed Shop',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    'Shop',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: 1),
+                  SizedBox(height: 1),
                   Text(
-                    'Spend seeds on pots and namecards',
+                    'Spend coins on pots and namecards',
                     maxLines: 2,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '$seeds',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
+            // The chip is its own tap target: balance → "how to earn".
+            GestureDetector(
+              onTap: () => showCoinGuideSheet(context, coins: coins),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CoinIcon(size: 16),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$coins',
+                      style: const TextStyle(
+                        color: CoinColors.dark,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white),
           ],
         ),
       ),

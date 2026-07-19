@@ -11,6 +11,7 @@ import '../../models/plant_stage.dart';
 import '../../models/streak.dart';
 import '../../models/weekly_challenge.dart';
 import '../../services/api_service.dart';
+import '../../services/app_badge_controller.dart';
 import '../../services/app_refresh_bus.dart';
 import '../../services/weather_controller.dart';
 import '../../services/weather_service.dart';
@@ -26,7 +27,7 @@ import 'care_activity.dart';
 import 'streak_calendar_sheet.dart';
 
 const _kStreakTextShadow = [
-  Shadow(color: Color(0x660B1424), blurRadius: 8, offset: Offset(0, 1)),
+  Shadow(color: Color(0x660B1424), blurRadius: 4, offset: Offset(0, 2)),
 ];
 
 class TasksScreen extends StatefulWidget {
@@ -82,6 +83,7 @@ class _TasksScreenState extends State<TasksScreen> {
         _streak = results[1] as Streak;
         _isLoading = false;
       });
+      AppBadgeController.instance.updateFromPlants(_plants);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -140,11 +142,16 @@ class _TasksScreenState extends State<TasksScreen> {
           ? const _TasksSkeleton()
           : Stack(
               children: [
+                // Fills the strip revealed above the streak backdrop during
+                // pull-to-refresh overscroll. Kept well shorter than the
+                // backdrop's minimum height so it can never peek out below
+                // the header on any screen size — everything under the
+                // backdrop paints its own opaque background instead.
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: 620,
+                  height: 300,
                   child: ColoredBox(
                     color: WeatherBackdrop.gradientColors(iconCode).first,
                   ),
@@ -155,73 +162,88 @@ class _TasksScreenState extends State<TasksScreen> {
                   backgroundColor: AppColors.surface,
                   child: ListView(
                     padding: EdgeInsets.zero,
+                    // Show only the refresh spinner on pull; do not move the
+                    // illustrated header and expose space above the scene.
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: ClampingScrollPhysics(),
+                    ),
                     children: [
                       // Full-bleed plant-growth backdrop (like the home weather
                       // header — fills the top, sits behind the status bar).
                       _StreakBackdrop(streak: _streak, weather: _weather),
-                      // Tasks panel sits on top of the backdrop, overlapping upward
-                      // with rounded top corners.
-                      Transform.translate(
-                        offset: const Offset(0, -44),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(28),
+                      // Tasks panel sits on top of the backdrop, overlapping
+                      // upward with rounded top corners. The ColoredBox backs
+                      // the panel AND the 44px of layout space the translate
+                      // vacates below it, so the backdrop color can't bleed
+                      // through there.
+                      ColoredBox(
+                        color: AppColors.background,
+                        child: Transform.translate(
+                          offset: const Offset(0, -44),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(28),
+                              ),
                             ),
-                          ),
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Weekly Challenge sits above Today's tasks: it's a
-                              // week-scoped goal, not a today-only task.
-                              if (_weekly != null) ...[
+                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Weekly Challenge sits above Today's tasks: it's a
+                                // week-scoped goal, not a today-only task.
+                                if (_weekly != null) ...[
+                                  _Entrance(
+                                    index: 0,
+                                    child: WeeklyChallengeCard(
+                                      challenge: _weekly!,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
                                 _Entrance(
-                                  index: 0,
-                                  child: WeeklyChallengeCard(
-                                    challenge: _weekly!,
+                                  index: 1,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        "Today's tasks",
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleLarge,
+                                      ),
+                                      _HistoryButton(onTap: _openHistory),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 20),
-                              ],
-                              _Entrance(
-                                index: 1,
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "Today's tasks",
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge,
-                                    ),
-                                    _HistoryButton(onTap: _openHistory),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              if (_allCaughtUp)
-                                const _Entrance(index: 2, child: _AllCaughtUp())
-                              else ...[
-                                for (final (i, a) in _visibleActivities.indexed)
-                                  if (_dueCount(a) > 0)
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 12,
-                                      ),
-                                      child: _Entrance(
-                                        index: 2 + i,
-                                        child: _TaskCard(
-                                          activity: a,
-                                          count: _dueCount(a),
-                                          onTap: () => _openActivity(a),
+                                const SizedBox(height: 12),
+                                if (_allCaughtUp)
+                                  const _Entrance(
+                                    index: 2,
+                                    child: _AllCaughtUp(),
+                                  )
+                                else ...[
+                                  for (final (i, a)
+                                      in _visibleActivities.indexed)
+                                    if (_dueCount(a) > 0)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 12,
+                                        ),
+                                        child: _Entrance(
+                                          index: 2 + i,
+                                          child: _TaskCard(
+                                            activity: a,
+                                            count: _dueCount(a),
+                                            onTap: () => _openActivity(a),
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       ),
@@ -537,16 +559,16 @@ class _StreakBackdropState extends State<_StreakBackdrop>
   List<bool> _frozenDays() {
     final frozen = List<bool>.filled(7, false);
     final s = widget.streak;
-    if (s == null || !s.freezeActive || s.lastCareDate == null) return frozen;
+    if (s == null) return frozen;
 
     final today = _today();
     final start = _stripStart();
-    final l = s.lastCareDate!;
-    final last = DateTime(l.year, l.month, l.day);
+    final saved = s.recentFrozenDays;
+    if (saved == null) return frozen;
 
     for (int i = 0; i < 7; i++) {
       final day = start.add(Duration(days: i));
-      if (day.isAfter(last) && day.isBefore(today)) frozen[i] = true;
+      if (!day.isAfter(today) && saved.contains(day)) frozen[i] = true;
     }
     return frozen;
   }
@@ -560,17 +582,12 @@ class _StreakBackdropState extends State<_StreakBackdrop>
 
   /// Week strip wrapped in the pulse driver: while today is still uncared,
   /// its dot glows softly to invite the day's first action.
-  Widget _buildWeekStrip(
-    List<bool> lit,
-    List<bool> frozen,
-    Color labelColor,
-    Color titleColor,
-  ) {
-    // Today's weekday letter pops in water-blue; on dark scenes (white
-    // title text) a lighter blue keeps it readable.
-    final todayBlue = titleColor.computeLuminance() > 0.65
+  Widget _buildWeekStrip(List<bool> lit, List<bool> frozen, Color labelColor) {
+    // Keep today in the stronger water blue even when the other labels are
+    // white; the lighter night tint washes out against the daytime sky.
+    final todayBlue = labelColor.computeLuminance() > 0.65
         ? const Color(0xFF9AD4F7)
-        : _kWater;
+        : const Color(0xFF147FEA);
     final start = _stripStart();
     final activeToday = widget.streak?.activeToday ?? false;
     if (activeToday || widget.streak == null) {
@@ -861,10 +878,14 @@ class _StreakBackdropState extends State<_StreakBackdrop>
       palette = _StreakScenePalette.rainDay();
     }
     final rainIntensity = widget.weather?.rainIntensity ?? 1.0;
-    final titleColor = lightText ? Colors.white : AppColors.textPrimary;
-    final secondaryColor = lightText
+    const secondaryGreen = Color(0xFF315C45);
+    final sceneSecondaryColor = lightText
         ? Colors.white.withValues(alpha: 0.84)
-        : AppColors.textSecondary;
+        : secondaryGreen;
+    const headerTitleColor = Colors.white;
+    final headerSecondaryColor = lightText
+        ? Colors.white.withValues(alpha: 0.88)
+        : secondaryGreen;
 
     return ClipRect(
       child: Container(
@@ -878,7 +899,15 @@ class _StreakBackdropState extends State<_StreakBackdrop>
         ),
         child: Stack(
           children: [
-            WeatherSceneArt(iconCode: iconCode, rainIntensity: rainIntensity),
+            WeatherSceneArt(
+              iconCode: iconCode,
+              rainIntensity: rainIntensity,
+              celestialScale: 0.72,
+              celestialRightFraction: 0.01,
+              celestialTopFraction: 0.035,
+              celestialOpacity: 0.88,
+              sunRaysOpacity: 0.52,
+            ),
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -886,10 +915,10 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: lightText ? 0.34 : 0.10),
-                      Colors.black.withValues(alpha: lightText ? 0.18 : 0.04),
+                      Colors.black.withValues(alpha: lightText ? 0.26 : 0.05),
+                      Colors.black.withValues(alpha: lightText ? 0.12 : 0.02),
                       Colors.transparent,
-                      const Color(0xFFD8EFD8).withValues(alpha: 0.22),
+                      const Color(0xFFD8EFD8).withValues(alpha: 0.16),
                     ],
                     stops: const [0.0, 0.30, 0.58, 1.0],
                   ),
@@ -906,11 +935,11 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     headline,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: titleColor,
+                      color: headerTitleColor,
                       fontSize: current == 0 ? 30 : 34,
                       fontWeight: FontWeight.w900,
                       height: 1.0,
-                      shadows: lightText ? _kStreakTextShadow : null,
+                      shadows: _kStreakTextShadow,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -918,7 +947,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                     'Lv ${PlantStage.all.indexOf(stage) + 1} · ${stage.name}',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: secondaryColor,
+                      color: headerSecondaryColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                       shadows: lightText ? _kStreakTextShadow : null,
@@ -958,8 +987,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                         weekStrip: _buildWeekStrip(
                           lit,
                           frozen,
-                          secondaryColor,
-                          titleColor,
+                          sceneSecondaryColor,
                         ),
                       ),
                     )
@@ -975,8 +1003,7 @@ class _StreakBackdropState extends State<_StreakBackdrop>
                       weekStrip: _buildWeekStrip(
                         lit,
                         frozen,
-                        secondaryColor,
-                        titleColor,
+                        sceneSecondaryColor,
                       ),
                     ),
                 ],
@@ -1127,7 +1154,8 @@ class _DayCell extends StatelessWidget {
   /// 0–1 breathing-glow strength for an uncared today dot.
   final double pulse;
 
-  static const double _d = 26; // circle diameter
+  static const double _normalD = 24; // surrounding-day circle diameter
+  static const double _todayD = 32; // current day is the visual anchor
   static const double _barH = 7; // connector thickness
   // Lighter ice tint for shielded days, distinct from the cared water-blue.
   static const Color _iceFill = Color(0xFF9CCFEE);
@@ -1155,6 +1183,7 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textColor = isToday ? todayLabelColor : labelColor;
+    final diameter = isToday ? _todayD : _normalD;
     return Column(
       children: [
         Text(
@@ -1173,7 +1202,7 @@ class _DayCell extends StatelessWidget {
         ),
         const SizedBox(height: 7),
         SizedBox(
-          height: _d,
+          height: _todayD,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -1190,8 +1219,8 @@ class _DayCell extends StatelessWidget {
                 builder: (context, s, child) =>
                     Transform.scale(scale: s, child: child),
                 child: Container(
-                  width: _d,
-                  height: _d,
+                  width: diameter,
+                  height: diameter,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: lit ? _kWater : (frozen ? _iceFill : Colors.white),
@@ -1215,16 +1244,16 @@ class _DayCell extends StatelessWidget {
                         : null,
                   ),
                   child: lit
-                      ? const Icon(
+                      ? Icon(
                           Icons.water_drop_rounded,
                           color: Colors.white,
-                          size: 15,
+                          size: isToday ? 17 : 14,
                         )
                       : frozen
-                      ? const Icon(
+                      ? Icon(
                           Icons.ac_unit_rounded,
                           color: Colors.white,
-                          size: 14,
+                          size: isToday ? 17 : 13,
                         )
                       : null,
                 ),
@@ -1323,7 +1352,7 @@ class _StageProgress extends StatelessWidget {
         : Colors.black.withValues(alpha: 0.10);
     final textColor = lightText
         ? Colors.white.withValues(alpha: 0.9)
-        : AppColors.textSecondary;
+        : const Color(0xFF315C45);
 
     return Column(
       mainAxisSize: MainAxisSize.min,

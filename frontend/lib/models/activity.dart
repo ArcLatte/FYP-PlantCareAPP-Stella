@@ -9,6 +9,7 @@ class ActivityEvent {
   final String? activity; // care: 'water' | 'fertilize' | 'mist' | 'note'
   final String? noteTitle; // note: optional short subject/heading
   final String? note; // care/note: the user's journal text
+  final List<dynamic>? noteDocument; // Quill Delta operations
   final List<NoteImageAttachment> noteImages;
   final int? plantId;
   final String? plantName;
@@ -23,6 +24,7 @@ class ActivityEvent {
     this.activity,
     this.noteTitle,
     this.note,
+    this.noteDocument,
     this.noteImages = const [],
     this.plantId,
     this.plantName,
@@ -44,6 +46,7 @@ class ActivityEvent {
     final note = json['note']?.toString();
     final title = json['title']?.toString();
     final rawImages = json['note_images'];
+    final rawDocument = json['document'];
     final images = rawImages is List
         ? rawImages
               .whereType<Map>()
@@ -65,6 +68,19 @@ class ActivityEvent {
       activity: json['activity']?.toString(),
       noteTitle: (title != null && title.isNotEmpty) ? title : null,
       note: (note != null && note.isNotEmpty) ? note : null,
+      noteDocument: rawDocument is List
+          ? rawDocument.map((operation) {
+              if (operation is! Map) return operation;
+              final copy = Map<String, dynamic>.from(operation);
+              final insert = copy['insert'];
+              if (insert is Map && insert['image'] != null) {
+                final embed = Map<String, dynamic>.from(insert);
+                embed['image'] = _absoluteUrl(embed['image']) ?? embed['image'];
+                copy['insert'] = embed;
+              }
+              return copy;
+            }).toList()
+          : null,
       noteImages: images,
       plantId: (json['plant_id'] as num?)?.toInt(),
       plantName: json['plant_name']?.toString(),
